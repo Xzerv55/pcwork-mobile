@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Generate Android project
-        run: ./scripts/prepare_android.sh
+        run: bash ./scripts/prepare_android.sh
 
       - name: Install Flutter dependencies
         run: flutter pub get
