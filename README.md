@@ -1,9 +1,9 @@
-# PCWork Mobile v15
+# PCWork Mobile v16
 
-**Приложение:** 0.15.0+15  
-**Единен WordPress плъгин:** PCWork Mobile – Complete System 1.7.0
+**Приложение:** 0.16.0+16  
+**Обхват на този архив:** Flutter приложение и GitHub Actions конфигурация.
 
-В архива има само актуалният Flutter проект и единственият WordPress плъгин. Няма архиви на предишни версии или дублирани плъгини.
+Архивът съдържа актуалния Flutter проект. В получения от теб v15 ZIP не беше намерен файл на WordPress плъгина, затова той не е включен във v16. Няма стари версии или дублирани архиви.
 
 ## Ново във v12 – клиентско табло
 
@@ -28,7 +28,7 @@
 - `lib/` – Flutter изходен код.
 - `assets/` – PCWork лого и шрифтове с кирилица.
 - `pubspec.yaml` – зависимости и версия.
-- `wordpress-plugin/pcwork-mobile-complete-system.zip` – единственият WordPress плъгин.
+- WordPress плъгинът не е включен в този ZIP; използвай отделния актуален архив на плъгина.
 - `.github/workflows/flutter-build.yml` – автоматично изграждане чрез GitHub Actions.
 
 ## Кога и къде се инсталира Flutter SDK?
@@ -64,12 +64,7 @@ flutter build ios --release --no-codesign
 
 ## WordPress плъгин
 
-1. Направете резервно копие на WordPress файловете и базата данни.
-2. Ако са активни старите три PCWork плъгина, деактивирайте ги, но не ги изтривайте преди тест.
-3. Качете `wordpress-plugin/pcwork-mobile-complete-system.zip` от Разширения → Добавяне на нов → Качване на разширение.
-4. Активирайте **PCWork Mobile – Complete System**.
-5. Проверете настройките в **PCWork Mobile → Интеграции** и правата/локациите на служителите.
-6. Извършете тестове в staging среда преди production.
+WordPress плъгинът не присъства във входния v15 ZIP, поради което не е променян и не е добавен към този архив. Не деактивирай и не заменяй работещия плъгин само въз основа на този ZIP. За актуализация е необходим отделният ZIP на обединения PCWork Mobile – Complete System.
 
 ## Проверки и ограничения
 
@@ -134,3 +129,18 @@ flutter build ios --release --no-codesign
 В тази работна среда няма Flutter SDK и интернет/DNS достъп за изтеглянето му. Затова v15 подготвя възпроизводим Android build в GitHub Actions, но **APK файл още не е компилиран или тестван на телефон**. Реалният build ще се изпълни в GitHub runner след качване на проекта и стартиране на workflow-а. Зелен резултат в Actions и инсталация на физическо устройство са нужни, преди да отчетем APK като успешно изграден и проверен.
 
 `app-debug.apk` е за вътрешно тестване. За Google Play/production release е необходимо отделно управление на release keystore и подписване; не качвайте private keystore или Firebase Service Account JSON в source кода.
+
+
+## Ново във v16 – корекции за анализ и CI
+
+- Поправена е конфигурацията на Firebase options: всички `String.fromEnvironment` стойности вече използват константни ключове, което премахва `const_with_non_constant_argument`.
+- Android workflow-ът стартира подготовката чрез `bash`, така че не зависи от executable bit на скрипта.
+- Премахва се генерираният от `flutter create` примерен `test/widget_test.dart`, който очаква `MyApp`, докато приложението използва `PCWorkApp`.
+- Премахнати са неизползваните `_loadLocations` и `_showSignInInfo`, както и свързаните неизползвани полета.
+- Обновени са `DropdownButtonFormField` параметрите към `initialValue`.
+- Поправени са дребни lint проверки за `isNotEmpty`.
+- Версията е `0.16.0+16`; Android и iOS workflow-ите са именувани за v16.
+
+### Статус на проверката
+
+Изходният код и конфигурациите са редактирани и архивът е проверен структурно. В тази среда няма Flutter SDK, затова `flutter pub get`, `flutter analyze` и реален APK/IPA build не са изпълнени. Потвърждението за успешна компилация ще бъде GitHub Actions run след качване на v16.

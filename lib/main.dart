@@ -77,10 +77,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pcwork_api_url', cleaned);
-   setState(() {
-  apiUrl = cleaned;
-  apiReady = false;
-});
+    setState(() { apiUrl = cleaned; apiReady = false; });
   }
 
   Future<void> _checkApi({bool silent = false}) async {
@@ -152,12 +149,11 @@ class _PCWorkAppState extends State<PCWorkApp> {
   Widget _infoTile(IconData icon, String label) => Card(child: ListTile(leading: Icon(icon, color: cyan), title: Text(label), trailing: const Icon(Icons.chevron_right)));
 
   Widget _repairs() {
-  if (signedInUser == null) {
-  return ListView(padding: const EdgeInsets.all(20), children: [
+    if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
       const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 3), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
-    ]);
+    ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
     return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
       future: future,
@@ -176,7 +172,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
           const SizedBox(height: 12),
           TextField(controller: repairSearch, onChanged: (_) => setState(() {}), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('Търси номер, устройство или модел','Search number, device or model'), border: const OutlineInputBorder(), suffixIcon: repairSearch.text.isEmpty ? null : IconButton(onPressed: () { repairSearch.clear(); setState(() {}); }, icon: const Icon(Icons.close)))),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(value: repairStatusFilter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status'), border: const OutlineInputBorder()), items: [DropdownMenuItem(value:'all', child:Text(tr('Всички статуси','All statuses'))), ...['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'].map((v)=>DropdownMenuItem(value:v,child:Text(_statusLabel(v))))], onChanged:(v)=>setState(()=>repairStatusFilter=v ?? 'all')),
+          DropdownButtonFormField<String>(initialValue: repairStatusFilter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status'), border: const OutlineInputBorder()), items: [DropdownMenuItem(value:'all', child:Text(tr('Всички статуси','All statuses'))), ...['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'].map((v)=>DropdownMenuItem(value:v,child:Text(_statusLabel(v))))], onChanged:(v)=>setState(()=>repairStatusFilter=v ?? 'all')),
           const SizedBox(height: 12),
           if (filtered.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(rows.isEmpty ? tr('Все още няма ремонти, свързани с профила ви.','There are no repairs linked to your account yet.') : tr('Няма ремонти, отговарящи на търсенето.','No repairs match your search.'), textAlign: TextAlign.center)),
           ...filtered.map((r) => Card(child: ListTile(leading: CircleAvatar(child: Icon(r.status == 'ready' ? Icons.check_circle_outline : Icons.build, color: cyan)), title: Text(r.number.isEmpty ? 'Ремонт #${r.id}' : r.number), subtitle: Text([r.device, r.model, _statusLabel(r.status)].where((v) => v.isNotEmpty).join(' · ')), trailing: const Icon(Icons.chevron_right), onTap: () => _showRepairDetails(r))))
@@ -322,7 +318,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
         Text(tr('Създава се ремонт с уникален номер и начален статус „Приет“.', 'Creates a repair with a unique number and initial “Received” status.'), style: const TextStyle(color: Colors.white60)),
         const SizedBox(height: 12),
         Expanded(child: ListView(children: [
-          DropdownButtonFormField<ServiceLocation>(value: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект', 'Service location'), border: const OutlineInputBorder()), items: options.map((l) => DropdownMenuItem(value: l, child: Text(l.name))).toList(), onChanged: (v) => setSheet(() => selected = v)),
+          DropdownButtonFormField<ServiceLocation>(initialValue: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект', 'Service location'), border: const OutlineInputBorder()), items: options.map((l) => DropdownMenuItem(value: l, child: Text(l.name))).toList(), onChanged: (v) => setSheet(() => selected = v)),
           const SizedBox(height: 12), field(customerEmail, 'Имейл на клиент*', type: TextInputType.emailAddress),
           field(customerName, 'Име на клиент'), field(customerPhone, 'Телефон', type: TextInputType.phone),
           const Divider(height: 24), field(deviceType, 'Тип устройство*'), field(model, 'Марка и модел*'), field(serial, 'Сериен номер'),
@@ -418,6 +414,5 @@ class _PCWorkAppState extends State<PCWorkApp> {
     ])));
   }
 
-  void _showSignInInfo() => showDialog(context: context, builder: (ctx) => AlertDialog(title: Text(tr('Вход и регистрация', 'Sign in and registration')), content: Text(tr('Екраните за вход с имейл/парола и телефон/SMS са следващият етап. Не въвеждайте парола тук, докато удостоверяването не бъде свързано със защитения API.', 'Email/password and phone/SMS sign-in screens are the next stage. Do not enter credentials here until authentication is connected to the secure API.')), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))]));
   void _message(String value) { if (!mounted) return; _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(value))); }
 }

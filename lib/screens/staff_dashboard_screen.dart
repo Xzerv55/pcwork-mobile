@@ -41,7 +41,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       return RefreshIndicator(onRefresh: () async { final f = widget.api.getRepairs(widget.token); setState(() => future = f); await f; }, child: ListView(padding: const EdgeInsets.all(16), children: [
         Row(children: [Expanded(child: _metric(tr('Всички','All'), all.length)), Expanded(child: _metric(tr('В работа','In progress'), all.where((r)=>!['completed','cancelled','ready'].contains(r.status)).length)), Expanded(child: _metric(tr('Готови','Ready'), all.where((r)=>r.status=='ready').length))]),
         const SizedBox(height: 14), TextField(controller: search, onChanged: (_) => setState(() {}), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('Търси №, клиент, телефон, сериен №…','Search no., customer, phone, serial…'), border: const OutlineInputBorder(), suffixIcon: search.text.isEmpty ? null : IconButton(onPressed: () { search.clear(); setState(() {}); }, icon: const Icon(Icons.close)))),
-        const SizedBox(height: 10), DropdownButtonFormField<String>(value: filter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status')), items: [DropdownMenuItem(value:'all', child: Text(tr('Всички статуси','All statuses'))), ...statuses.map((s)=>DropdownMenuItem(value:s, child: Text(label(s))))], onChanged: (v)=>setState(()=>filter=v ?? 'all')),
+        const SizedBox(height: 10), DropdownButtonFormField<String>(initialValue: filter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status')), items: [DropdownMenuItem(value:'all', child: Text(tr('Всички статуси','All statuses'))), ...statuses.map((s)=>DropdownMenuItem(value:s, child: Text(label(s))))], onChanged: (v)=>setState(()=>filter=v ?? 'all')),
         const SizedBox(height: 12), if (rows.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(tr('Няма намерени ремонти.','No repairs found.'), textAlign: TextAlign.center)),
         ...rows.map((r) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Expanded(child: Text(r.number, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold))), Chip(label: Text(label(r.status))) ]),
@@ -77,12 +77,12 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: Text('${tr('Разпределение','Assignment')} ${r.number}'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        DropdownButtonFormField<int>(value: technicians.any((t)=>(t['id'] as num).toInt()==selectedTech) ? selectedTech : 0,
+        DropdownButtonFormField<int>(initialValue: technicians.any((t)=>(t['id'] as num).toInt()==selectedTech) ? selectedTech : 0,
           decoration: InputDecoration(labelText: tr('Техник','Technician')),
           items: [DropdownMenuItem(value:0,child:Text(tr('Без назначен техник','Unassigned'))), ...technicians.map((t)=>DropdownMenuItem(value:(t['id'] as num).toInt(),child:Text((t['name'] ?? t['email']).toString())))],
           onChanged:(v){if(v!=null) selectedTech=v;}),
         const SizedBox(height:10),
-        DropdownButtonFormField<String>(value: priority, decoration: InputDecoration(labelText: tr('Приоритет','Priority')),
+        DropdownButtonFormField<String>(initialValue: priority, decoration: InputDecoration(labelText: tr('Приоритет','Priority')),
           items: ['low','normal','high','urgent'].map((v)=>DropdownMenuItem(value:v,child:Text(_priorityLabel(v)))).toList(), onChanged:(v){if(v!=null) priority=v;}),
         const SizedBox(height:10), TextField(controller:due, decoration:InputDecoration(labelText:tr('Срок (ISO дата/час, по избор)','Due date/time (ISO, optional)'), hintText:'2026-11-10 17:00')),
       ])),
@@ -97,7 +97,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   Future<void> _changeStatus(Repair r) async {
     String selected = r.status;
     final note = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (ctx)=>AlertDialog(title: Text('${tr('Ремонт','Repair')} ${r.number}'), content: Column(mainAxisSize:MainAxisSize.min, children: [DropdownButtonFormField<String>(value: selected, items: statuses.map((s)=>DropdownMenuItem(value:s, child:Text(label(s)))).toList(), onChanged:(v){ if(v!=null) selected=v; }), const SizedBox(height:12), TextField(controller:note, maxLines:3, decoration:InputDecoration(labelText:tr('Бележка към историята (по избор)','History note (optional)')))]), actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false), child:Text(tr('Отказ','Cancel'))), FilledButton(onPressed:()=>Navigator.pop(ctx,true), child:Text(tr('Запази','Save')))]));
+    final ok = await showDialog<bool>(context: context, builder: (ctx)=>AlertDialog(title: Text('${tr('Ремонт','Repair')} ${r.number}'), content: Column(mainAxisSize:MainAxisSize.min, children: [DropdownButtonFormField<String>(initialValue: selected, items: statuses.map((s)=>DropdownMenuItem(value:s, child:Text(label(s)))).toList(), onChanged:(v){ if(v!=null) selected=v; }), const SizedBox(height:12), TextField(controller:note, maxLines:3, decoration:InputDecoration(labelText:tr('Бележка към историята (по избор)','History note (optional)')))]), actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false), child:Text(tr('Отказ','Cancel'))), FilledButton(onPressed:()=>Navigator.pop(ctx,true), child:Text(tr('Запази','Save')))]));
     if (ok != true) { note.dispose(); return; }
     setState(()=>busy=true);
     try { await widget.api.updateRepairStatus(widget.token, r.id, selected, note: note.text.trim()); if(mounted) { reload(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(tr('Статусът е обновен.','Status updated.')))); } }

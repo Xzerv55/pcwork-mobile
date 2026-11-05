@@ -1,32 +1,36 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 
-/// Firebase credentials are supplied at build time using --dart-define.
-/// Keep these values public Firebase app configuration only; never put a
-/// service-account private key or other server secret in the mobile app.
+/// Public Firebase app configuration is injected at build time with
+/// --dart-define. Never place service-account keys or other private secrets here.
 class DefaultFirebaseOptions {
-  static String _v(String key) => String.fromEnvironment(key);
+  static const String _projectId = String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const String _messagingSenderId = String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
+  static const String _androidApiKey = String.fromEnvironment('FIREBASE_ANDROID_API_KEY');
+  static const String _androidAppId = String.fromEnvironment('FIREBASE_ANDROID_APP_ID');
+  static const String _iosApiKey = String.fromEnvironment('FIREBASE_IOS_API_KEY');
+  static const String _iosAppId = String.fromEnvironment('FIREBASE_IOS_APP_ID');
+  static const String _iosBundleId = String.fromEnvironment('FIREBASE_IOS_BUNDLE_ID');
 
   static bool get isConfigured {
-    final common = _v('FIREBASE_PROJECT_ID').isNotEmpty &&
-        _v('FIREBASE_MESSAGING_SENDER_ID').isNotEmpty;
-    if (!common) return false;
+    if (_projectId.isEmpty || _messagingSenderId.isEmpty) return false;
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return _v('FIREBASE_IOS_API_KEY').isNotEmpty &&
-          _v('FIREBASE_IOS_APP_ID').isNotEmpty;
+      return _iosApiKey.isNotEmpty && _iosAppId.isNotEmpty;
     }
-    return _v('FIREBASE_ANDROID_API_KEY').isNotEmpty &&
-        _v('FIREBASE_ANDROID_APP_ID').isNotEmpty;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return _androidApiKey.isNotEmpty && _androidAppId.isNotEmpty;
+    }
+    return false;
   }
 
   static FirebaseOptions get currentPlatform {
     final ios = defaultTargetPlatform == TargetPlatform.iOS;
     return FirebaseOptions(
-      apiKey: _v(ios ? 'FIREBASE_IOS_API_KEY' : 'FIREBASE_ANDROID_API_KEY'),
-      appId: _v(ios ? 'FIREBASE_IOS_APP_ID' : 'FIREBASE_ANDROID_APP_ID'),
-      messagingSenderId: _v('FIREBASE_MESSAGING_SENDER_ID'),
-      projectId: _v('FIREBASE_PROJECT_ID'),
-      iosBundleId: ios ? _v('FIREBASE_IOS_BUNDLE_ID') : null,
+      apiKey: ios ? _iosApiKey : _androidApiKey,
+      appId: ios ? _iosAppId : _androidAppId,
+      messagingSenderId: _messagingSenderId,
+      projectId: _projectId,
+      iosBundleId: ios ? (_iosBundleId.isEmpty ? null : _iosBundleId) : null,
     );
   }
 }

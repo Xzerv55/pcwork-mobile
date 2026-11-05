@@ -55,11 +55,11 @@ class _RepairEvidenceScreenState extends State<RepairEvidenceScreen> {
       final base = widget.baseUrl.replaceFirst(RegExp(r'/+$'), '');
       final uri = Uri.parse('$base/wp-json/pcwork/v1/repairs/${widget.repairId}/evidence');
       final request = http.MultipartRequest('POST', uri)..headers['Authorization'] = 'Bearer ${widget.token}';
-      if (!_customer.isEmpty) {
+      if (_customer.isNotEmpty) {
         final bytes = await _customer.toPngBytes();
         if (bytes != null) request.fields['customer_signature'] = 'data:image/png;base64,${base64Encode(bytes)}';
       }
-      if (widget.isStaff && !_staff.isEmpty) {
+      if (widget.isStaff && _staff.isNotEmpty) {
         final bytes = await _staff.toPngBytes();
         if (bytes != null) request.fields['staff_signature'] = 'data:image/png;base64,${base64Encode(bytes)}';
       }
