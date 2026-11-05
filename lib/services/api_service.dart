@@ -1,6 +1,33 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+/// Decodes JSON safely and reports useful errors when WordPress returns HTML,
+/// an empty response, or a proxy/server error page.
+dynamic _decodeResponse(http.Response response) {
+  final body = response.body.trim();
+  if (body.isEmpty) return <String, dynamic>{};
+  try {
+    return jsonDecode(body);
+  } on FormatException {
+    final preview = body.length > 180 ? '${body.substring(0, 180)}…' : body;
+    throw Exception(
+      'Сървърът върна невалиден JSON (HTTP ${response.statusCode}). '
+      'Проверете WordPress API и дали сайтът не връща HTML грешка. '
+      'Отговор: $preview',
+    );
+  }
+}
+
+String _responseMessage(dynamic decoded, int statusCode) {
+  if (decoded is Map) {
+    final value = decoded['message'] ?? decoded['error'];
+    if (value != null && value.toString().trim().isNotEmpty) {
+      return value.toString();
+    }
+  }
+  return 'HTTP $statusCode';
+}
+
 class ApiService {
   ApiService({required this.baseUrl});
   final String baseUrl;
@@ -23,7 +50,7 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Грешка при зареждане на обектите (HTTP ${response.statusCode})');
     }
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     final dynamic rows = decoded is List ? decoded : (decoded is Map ? (decoded['data'] ?? decoded['locations'] ?? decoded['items']) : null);
     if (rows is! List) throw Exception('Сървърът върна неочакван формат за сервизните обекти.');
     return rows.whereType<Map>().map((row) => ServiceLocation.fromJson(Map<String, dynamic>.from(row))).toList();
@@ -32,12 +59,14 @@ class ApiService {
 
   Future<List<Repair>> getRepairs(String token) async {
     final response = await http.get(_uri('repairs'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
-    final rows = decoded is Map ? (decoded['data'] ?? decoded['repairs'] ?? []) : decoded;
+    final rows = decoded is Map
+        ? (decoded['data'] ?? decoded['repairs'] ?? decoded['items'] ?? [])
+        : decoded;
     if (rows is! List) throw Exception('Невалиден формат на списъка с ремонти.');
     return rows.whereType<Map>().map((e) => Repair.fromJson(Map<String, dynamic>.from(e))).toList();
   }
@@ -46,9 +75,9 @@ class ApiService {
     final response = await http.patch(_uri('repairs/$id/status'),
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
       body: jsonEncode({'status': status, 'note': note})).timeout(const Duration(seconds: 20));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
@@ -59,23 +88,46 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getTechnicians(String token, String locationCode) async {
     final uri = _uri('staff/technicians').replace(queryParameters: {'location_code': locationCode});
     final response = await http.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
-    final rows = decoded is Map ? (decoded['data'] ?? []) : [];
+    final rows = decoded is Map ? (decoded['data'] ?? decoded['technicians'] ?? []) : [];
     if (rows is! List) return [];
     return rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  Future<Map<int, Map<String, dynamic>>> getTechnicianSchedules(String token) async {
+    final response = await http.get(_uri('staff/schedule'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) {
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
+      throw Exception(message);
+    }
+    final rows = decoded is Map ? (decoded['data'] ?? {}) : {};
+    if (rows is! Map) return {};
+    return rows.map((key, value) => MapEntry(int.tryParse(key.toString()) ?? 0, value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{}));
+  }
+
+  Future<void> saveTechnicianSchedule(String token, int technicianId, Map<String, dynamic> schedule) async {
+    final response = await http.post(_uri('staff/schedule'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      body: jsonEncode({'technician_id': technicianId, 'schedule': schedule})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) {
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
+      throw Exception(message);
+    }
   }
 
   Future<Repair> updateRepairAssignment(String token, int id, {required int technicianId, required String priority, String dueAt = ''}) async {
     final response = await http.patch(_uri('repairs/$id/assignment'),
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
       body: jsonEncode({'assigned_technician_id': technicianId, 'priority': priority, 'due_at': dueAt})).timeout(const Duration(seconds: 20));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
@@ -85,9 +137,9 @@ class ApiService {
 
   Future<Repair> getRepair(String token, int id) async {
     final response = await http.get(_uri('repairs/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
     final data = decoded is Map ? (decoded['data'] ?? decoded['repair'] ?? decoded) : decoded;
@@ -101,9 +153,9 @@ class ApiService {
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
       body: jsonEncode(payload),
     ).timeout(const Duration(seconds: 25));
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (response.statusCode != 201 && response.statusCode != 200) {
-      final message = decoded is Map ? (decoded['message'] ?? 'HTTP ${response.statusCode}') : 'HTTP ${response.statusCode}';
+      final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
@@ -114,7 +166,7 @@ class ApiService {
   Future<Uri?> getBookingUrl() async {
     final response = await http.get(_uri('booking/config')).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) return null;
-    final decoded = jsonDecode(response.body);
+    final decoded = _decodeResponse(response);
     if (decoded is! Map) return null;
     final data = decoded['data'] is Map ? decoded['data'] as Map : decoded;
     final enabled = data['enabled'] ?? data['active'] ?? data['bookly_enabled'];

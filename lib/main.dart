@@ -44,8 +44,15 @@ class _PCWorkAppState extends State<PCWorkApp> {
   @override
   void initState() {
     super.initState();
-    _loadSettings();
-    _restoreSession();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _loadSettings();
+    if (!mounted) return;
+    await _checkApi(silent: true);
+    if (!mounted) return;
+    await _restoreSession();
   }
 
   Future<void> _restoreSession() async {
@@ -61,7 +68,6 @@ class _PCWorkAppState extends State<PCWorkApp> {
       english = prefs.getBool('pcwork_english') ?? false;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
     });
-    _checkApi(silent: true);
   }
 
   Future<void> _savePreference(String key, Object value) async {
