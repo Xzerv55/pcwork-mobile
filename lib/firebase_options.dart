@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatf
 /// Keep these values public Firebase app configuration only; never put a
 /// service-account private key or other server secret in the mobile app.
 class DefaultFirebaseOptions {
-  static String _v(String key) => const String.fromEnvironment(key);
+  static String _v(String key) => String.fromEnvironment(key);
 
   static bool get isConfigured {
     final common = _v('FIREBASE_PROJECT_ID').isNotEmpty &&
