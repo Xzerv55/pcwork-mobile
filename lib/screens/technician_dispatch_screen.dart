@@ -147,7 +147,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
         TextField(controller: end, decoration: InputDecoration(labelText: tr('Край (ЧЧ:ММ)', 'End (HH:MM)'))),
         TextField(controller: absences, maxLines: 3, decoration: InputDecoration(labelText: tr('Отсъствия – дати YYYY-MM-DD, разделени със запетая', 'Absence dates YYYY-MM-DD, comma separated'), hintText: '2026-12-24, 2026-12-25')),
       ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, {'working_days': days.toList()..sort(), 'start_time': start.text.trim(), 'end_time': end.text.trim(), 'absences': absences.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()}), child: Text(tr('Запази', 'Save'))],
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, {'working_days': days.toList()..sort(), 'start_time': start.text.trim(), 'end_time': end.text.trim(), 'absences': absences.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList()}), child: Text(tr('Запази', 'Save')))],
     )));
     absences.dispose(); start.dispose(); end.dispose();
     if (result == null) return;
@@ -244,10 +244,12 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError) return Center(child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('${tr('Грешка при зареждане:', 'Could not load data:')} ${snapshot.error}'),
-        ));
+        if (snapshot.hasError) {
+          return Center(child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('${tr('Грешка при зареждане:', 'Could not load data:')} ${snapshot.error}'),
+          ));
+        }
         final data = snapshot.data!;
         final recommendations = _buildRecommendations(data);
         final assignable = recommendations.where((r) => r.technicianId != null).length;

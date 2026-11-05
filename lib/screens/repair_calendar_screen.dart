@@ -46,10 +46,12 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError) return Center(child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text('${tr('Грешка при зареждане:', 'Loading error:')} ${snapshot.error}'),
-        ));
+        if (snapshot.hasError) {
+          return Center(child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('${tr('Грешка при зареждане:', 'Loading error:')} ${snapshot.error}'),
+          ));
+        }
         final repairs = snapshot.data ?? <Repair>[];
         final active = repairs.where(_active).toList();
         final scheduled = active.where((r) => _due(r) != null).toList();
