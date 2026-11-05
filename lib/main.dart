@@ -30,9 +30,6 @@ class _PCWorkAppState extends State<PCWorkApp> {
   bool apiReady = false;
   bool checkingApi = false;
   String? apiMessage;
-  List<ServiceLocation> locations = [];
-  bool loadingLocations = false;
-  String? locationsError;
   AuthUser? signedInUser;
   bool authBusy = false;
   Future<List<Repair>>? repairsFuture;
@@ -80,7 +77,10 @@ class _PCWorkAppState extends State<PCWorkApp> {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pcwork_api_url', cleaned);
-    setState(() { apiUrl = cleaned; apiReady = false; locations = []; });
+   setState(() {
+  apiUrl = cleaned;
+  apiReady = false;
+});
   }
 
   Future<void> _checkApi({bool silent = false}) async {
@@ -93,16 +93,6 @@ class _PCWorkAppState extends State<PCWorkApp> {
       if (!mounted) return;
       setState(() { apiReady = false; apiMessage = tr('Няма връзка със сървъра: $e', 'Server connection failed: $e'); });
     } finally { if (mounted) setState(() => checkingApi = false); }
-  }
-
-  Future<void> _loadLocations() async {
-    setState(() { loadingLocations = true; locationsError = null; });
-    try {
-      final result = await api.getLocations();
-      if (!mounted) return;
-      setState(() { locations = result; });
-    } catch (e) { if (mounted) setState(() { locationsError = e.toString(); }); }
-    finally { if (mounted) setState(() => loadingLocations = false); }
   }
 
   Future<void> _enablePush([String? knownToken]) async {
@@ -162,7 +152,8 @@ class _PCWorkAppState extends State<PCWorkApp> {
   Widget _infoTile(IconData icon, String label) => Card(child: ListTile(leading: Icon(icon, color: cyan), title: Text(label), trailing: const Icon(Icons.chevron_right)));
 
   Widget _repairs() {
-    if (signedInUser == null) return ListView(padding: const EdgeInsets.all(20), children: [
+  if (signedInUser == null) {
+  return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
       const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 3), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
