@@ -36,6 +36,9 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
       - name: Install Flutter dependencies
         run: flutter pub get
 
@@ -71,7 +74,7 @@ jobs:
       - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: pcwork-android-v15-apks
+          name: pcwork-android-v26-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/app-release.apk

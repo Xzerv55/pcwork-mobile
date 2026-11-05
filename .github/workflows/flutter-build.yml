@@ -18,6 +18,8 @@ jobs:
           cache: true
       - name: Generate iOS platform files
         run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+      - name: Remove generated placeholder test for MyApp
+        run: rm -f test/widget_test.dart
       - name: Get dependencies
         run: flutter pub get
       - name: Analyze Dart code
@@ -38,5 +40,5 @@ jobs:
           --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
       - uses: actions/upload-artifact@v4
         with:
-          name: pcwork-ios-app-unsigned
+          name: pcwork-ios-v26-app-unsigned
           path: build/ios/iphoneos/Runner.app
