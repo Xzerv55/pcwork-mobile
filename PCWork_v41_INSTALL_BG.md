@@ -1,4 +1,4 @@
-# Инсталиране на PCWork Mobile v41
+# Инсталиране на PCWork Mobile v42
 
 1. Направете commit/push на съдържанието на архива в GitHub `Xzerv55/pcwork-mobile`.
 2. Запазете `.github/workflows` и вашия `android/app/google-services.json`. Архивът съдържа само примерен Firebase config.

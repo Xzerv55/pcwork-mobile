@@ -58,7 +58,7 @@ class PushNotificationService {
         );
       });
       await _openedSubscription?.cancel();
-      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((_) => onOpened());
+      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
       final initial = await messaging.getInitialMessage();
       if (initial != null) onOpened(initial.data);
     } catch (_) {
