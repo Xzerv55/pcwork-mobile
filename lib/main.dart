@@ -212,12 +212,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     });
   }
 
-  // Lift the existing navigation glyphs slightly to remove excess top padding.
-  // Icon size remains the Material default; only vertical positioning changes.
-  Widget _navIcon(IconData icon) => Transform.translate(
-        offset: const Offset(0, -4),
-        child: Icon(icon),
-      );
+  // Keep the navigation icon and label group vertically centered.
+  // No translation or size reduction: NavigationBar supplies equal top/bottom
+  // breathing room around its icon-and-label layout.
+  Widget _navIcon(IconData icon) => Icon(icon);
 
   Widget _tabContent(int index) {
     switch (index) {

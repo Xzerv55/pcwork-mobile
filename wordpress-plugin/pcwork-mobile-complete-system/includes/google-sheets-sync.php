@@ -35,10 +35,13 @@ final class PCWork_Google_Sheets_Sync {
             'httpversion' => '1.1',
             'blocking' => true,
             'headers' => [
-                'Content-Type' => 'application/json; charset=utf-8',
+                'Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8',
                 'Accept' => 'application/json',
             ],
-            'body' => $payload,
+            // Apps Script exposes URL-encoded POST fields through e.parameter
+            // consistently, including when e.postData.contents is unavailable.
+            // The exact JSON string remains the HMAC-signed payload.
+            'body' => ['payload' => $payload],
         ]);
 
         if (is_wp_error($response)) return $response;
@@ -76,7 +79,7 @@ final class PCWork_Google_Sheets_Sync {
         return $response;
     }
     public static function init() {
-        add_action('pcwork_repair_status_changed', [__CLASS__, 'sync_repair'], 5, 4);
+        add_action('pcwork_repair_saved', [__CLASS__, 'sync_repair'], 5, 4);
     }
 
     public static function sync_repair($repair_id, $customer_user_id, $status, $repair_number = '') {

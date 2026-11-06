@@ -176,6 +176,8 @@ final class PCWork_Mobile_Repairs_API {
         if ($technician > 0 && $technician !== (int)$row->assigned_technician_id) {
             do_action('pcwork_repair_assigned', $id, $technician, (string)$row->repair_number, $priority, $due ?: '');
         }
+        // Sync every saved edit (status, technician, priority or due date).
+        do_action('pcwork_repair_saved', $id, (int)$row->customer_user_id, $status, (string)$row->repair_number);
         wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','repair_id'=>$id,'updated'=>'1'], admin_url('admin.php')));
         exit;
     }
@@ -483,6 +485,7 @@ final class PCWork_Mobile_Repairs_API {
         $id = (int)$wpdb->insert_id;
         $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>'received','note'=>'Устройството е прието в сервиза.','created_at'=>$now]);
         do_action('pcwork_repair_status_changed', $id, (int)$customer->ID, 'received', $number);
+        do_action('pcwork_repair_saved', $id, (int)$customer->ID, 'received', $number);
         $row = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
         return new WP_REST_Response(['data'=>self::present($row, true),'message'=>'Ремонтът е регистриран.'], 201);
     }
@@ -688,6 +691,7 @@ final class PCWork_Mobile_Repairs_API {
             return new WP_REST_Response(['data'=>self::present($fresh, true),'message'=>'Заявката вече е обработена.'], 200);
         }
         do_action('pcwork_repair_status_changed', $id, (int)$row->customer_user_id, $status, (string)$row->repair_number);
+        do_action('pcwork_repair_saved', $id, (int)$row->customer_user_id, $status, (string)$row->repair_number);
         $fresh = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
         return new WP_REST_Response(['data'=>self::present($fresh, true)], 200);
     }

@@ -1,19 +1,21 @@
-# PCWork Mobile v52
+# PCWork Mobile v53
 
-- Flutter app: `0.52.0+52`
-- Unified WordPress plugin: `3.6.1` (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Flutter app: `0.53.0+53`
+- Unified WordPress plugin: `3.7.0` (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Google Apps Script webhook: `2.5.0` (`google-apps-script/Code.gs`)
 - Languages: Bulgarian / English
 - Android package / iOS bundle ID: `com.pcworkbg.pcwork_mobile`
 
-## v52 changes
-- Corrected the home-screen phone and TikTok cards to show only the service name and icon; the phone number and TikTok handle remain only in their launch actions.
-- Adjusted the persistent bottom navigation bar spacing and lifted its existing icons slightly without reducing icon size.
-- Kept transient overlays and sheets dismissible when switching main navigation sections.
-- Improved Firebase service-account private-key normalization and OpenSSL RSA-SHA256 signing diagnostics. The private key is never logged or exposed.
-- Invalidates the cached Firebase OAuth access token when integration settings are saved.
-- Synchronized Flutter, README, GitHub Actions artifact labels and WordPress plugin versions.
+## v53 changes
+- Vertically centers the existing bottom-navigation icon/label groups by removing the previous upward translation; all six destinations and icon sizes are preserved.
+- Uses a signed URL-encoded `payload` field for Apps Script webhook requests, with matching fallback handling in `Code.gs`.
+- Synchronizes repairs on creation and every supported save/update, including technician, priority and due-date changes; updates match the existing Repair ID.
+- Normalizes common Firebase Service Account PEM copy/paste artifacts before OpenSSL parsing without exposing private key material.
 
-## Build
-Run `flutter pub get`, `bash ./scripts/cleanup_legacy_chat.sh`, then `flutter analyze`. Build Android through the included GitHub Actions workflow. Keep the real `android/app/google-services.json` in the private project checkout; it is intentionally not included in this archive. Never commit Firebase Service Account private keys.
+## Build and deployment
+- Run `flutter pub get`, `bash ./scripts/cleanup_legacy_chat.sh`, then `flutter analyze`.
+- Build Android through the included GitHub Actions workflow. Keep the real `android/app/google-services.json` in the private project checkout; it is intentionally not included in this archive.
+- Deploy `google-apps-script/Code.gs` as a new version of the existing Apps Script Web App deployment, preserving Script Properties and the `/exec` URL.
+- Never commit or share Firebase Service Account private keys or the Google Sheets HMAC secret.
 
-See `RELEASE_NOTES_v52.md` and `PCWork_v52_INSTALL_BG.md`.
+See `RELEASE_NOTES_v53.md` and `PCWork_v53_INSTALL_BG.md`.

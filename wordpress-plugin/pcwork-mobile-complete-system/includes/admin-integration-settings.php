@@ -374,15 +374,29 @@ final class PCWork_Admin_Integration_Settings {
         if (!function_exists('openssl_pkey_get_private') || !function_exists('openssl_sign')) {
             return new WP_Error('pcwork_firebase_openssl', 'PHP OpenSSL не е активен на хостинга. Активирай OpenSSL extension и опитай отново.');
         }
-        // Some hosting panels / copied JSON values store PEM line breaks as literal \n        // sequences. Normalize these before asking OpenSSL to parse the private key.
-        $private_key = trim((string)$account['private_key']);
+        // Normalize PEM copied through JSON, admin textareas and hosting panels.
+        // Never log or return the private key itself.
+        $private_key = (string) $account['private_key'];
+        $private_key = preg_replace('/^\xEF\xBB\xBF/', '', $private_key); // UTF-8 BOM
+        $private_key = html_entity_decode($private_key, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $private_key = preg_replace('/<br\s*\/?\s*>/i', "\n", $private_key);
         $private_key = str_replace(["\\r\\n", "\\n", "\\r"], "\n", $private_key);
         $private_key = str_replace(["\r\n", "\r"], "\n", $private_key);
-        $private_key = preg_replace('/[ \t]+(?=-----END)/', '', $private_key);
+        $private_key = trim($private_key, " \t\n\r\0\x0B\"'");
+        // Rebuild a canonical PEM body so whitespace/wrapping does not break OpenSSL.
+        if (!preg_match('/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/', $private_key, $pem_match)) {
+            return new WP_Error('pcwork_firebase_key_format', 'Service Account private_key не съдържа пълен PEM блок BEGIN/END PRIVATE KEY. Постави целия оригинален JSON файл.');
+        }
+        $pem_type = $pem_match[1];
+        $pem_body = preg_replace('/\s+/', '', $pem_match[2]);
+        if ($pem_body === '' || !preg_match('/^[A-Za-z0-9+\/=]+$/', $pem_body)) {
+            return new WP_Error('pcwork_firebase_key_format', 'Съдържанието на PEM private_key е празно или има невалидни символи. Постави оригиналния Service Account JSON без редактиране.');
+        }
+        $private_key = '-----BEGIN ' . $pem_type . "-----\n" . chunk_split($pem_body, 64, "\n") . '-----END ' . $pem_type . "-----\n";
         $key_resource = openssl_pkey_get_private($private_key);
         if ($key_resource === false) {
             $openssl_error = openssl_error_string();
-            return new WP_Error('pcwork_firebase_key_parse', 'OpenSSL не може да прочете private_key от Service Account JSON. Провери дали е цял PEM ключът (BEGIN/END PRIVATE KEY) и дали JSON не е повреден.' . ($openssl_error ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : ''));
+            return new WP_Error('pcwork_firebase_key_parse', 'OpenSSL не може да прочете нормализирания PEM private_key. Провери дали Service Account JSON е оригинален и пълен.' . ($openssl_error ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : ''));
         }
         $now=time(); $b64=function($v){ return rtrim(strtr(base64_encode($v),'+/','-_'),'='); };
         $header=$b64(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));
