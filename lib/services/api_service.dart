@@ -422,6 +422,25 @@ class ApiService {
     return uri;
   }
 
+  Future<Uri?> getChatyUrl() async {
+    final response = await http.get(_uri('chaty/config')).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      final decoded = _decodeResponse(response);
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    final decoded = _decodeResponse(response);
+    if (decoded is! Map) return null;
+    final data = decoded['data'] is Map ? decoded['data'] as Map : decoded;
+    if (data['enabled'] != true) return null;
+    final raw = data['chat_url'];
+    if (raw is! String || raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    final apiHost = Uri.tryParse(baseUrl.trim())?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    final chatHost = uri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    if (uri == null || uri.scheme != 'https' || apiHost == null || chatHost != apiHost) return null;
+    return uri;
+  }
+
   Future<Uri?> getBookingUrl() async {
     final response = await http.get(_uri('booking/config')).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) return null;

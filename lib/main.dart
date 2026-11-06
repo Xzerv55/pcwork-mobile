@@ -12,7 +12,7 @@ import 'screens/repair_protocol_screen.dart';
 import 'screens/repair_evidence_screen.dart';
 import 'screens/repair_documents_screen.dart';
 import 'screens/staff_dashboard_screen.dart';
-import 'screens/chatway_screen.dart';
+import 'screens/contact_hub_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/shop_screen.dart';
 
@@ -199,15 +199,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       case 0: return _home();
       case 1: return _repairs();
       case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, english: english);
-      case 3: return ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
     }
   }
-
-  @override
-  void dispose() { repairSearch.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {

@@ -127,10 +127,143 @@ final class PCWork_Mobile_Repairs_API {
         if (get_option('pcwork_repairs_api_db_version') !== '1.8.0') self::activate();
     }
 
-    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); }
+    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); }
+    public static function admin_menu() {
+        add_submenu_page('pcwork-mobile', 'Сервизни ремонти', 'Сервизни ремонти', 'manage_options', 'pcwork-repairs', [__CLASS__, 'render_admin_page']);
+    }
+
+    public static function admin_update_repair() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        check_admin_referer('pcwork_update_repair');
+        global $wpdb;
+        $id = absint($_POST['repair_id'] ?? 0);
+        $row = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
+        if (!$row) wp_die('Ремонтът не е намерен.');
+        $allowed_statuses = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
+        $status = sanitize_key($_POST['status'] ?? $row->status);
+        $note = sanitize_textarea_field(wp_unslash($_POST['note'] ?? ''));
+        $technician = absint($_POST['assigned_technician_id'] ?? 0);
+        $priority = sanitize_key($_POST['priority'] ?? 'normal');
+        $due_raw = sanitize_text_field(wp_unslash($_POST['due_at'] ?? ''));
+        if (!in_array($status, $allowed_statuses, true)) wp_die('Невалиден статус.');
+        if (!in_array($priority, ['low','normal','high','urgent'], true)) wp_die('Невалиден приоритет.');
+        if ($technician) {
+            $user = get_user_by('id', $technician);
+            if (!$user || (!user_can($technician, 'pcwork_manage_repairs') && !user_can($technician, 'manage_options'))) wp_die('Избраният техник няма права за сервизни ремонти.');
+            $codes = get_user_meta($technician, 'pcwork_location_codes', true);
+            if (!user_can($technician, 'manage_options') && (!is_array($codes) || !in_array((string)$row->location_code, array_map('strval', $codes), true))) wp_die('Техникът няма достъп до този сервизен обект.');
+        }
+        $due = null;
+        if ($due_raw !== '') {
+            $timestamp = strtotime($due_raw);
+            if (!$timestamp) wp_die('Невалидна крайна дата.');
+            $due = gmdate('Y-m-d H:i:s', $timestamp);
+        }
+        $now = current_time('mysql');
+        $updated = $wpdb->update(self::repairs_table(), [
+            'status'=>$status, 'assigned_technician_id'=>$technician, 'priority'=>$priority,
+            'due_at'=>$due, 'updated_at'=>$now,
+        ], ['id'=>$id], ['%s','%d','%s','%s','%s'], ['%d']);
+        if ($updated === false) wp_die('Промените не бяха записани.');
+        if ($status !== (string)$row->status || $note !== '') {
+            $history_note = $note !== '' ? $note : 'Статусът е променен от административния панел.';
+            $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>$status,'note'=>$history_note,'created_at'=>$now]);
+            if ($status !== (string)$row->status) do_action('pcwork_repair_status_changed', $id, (int)$row->customer_user_id, $status, (string)$row->repair_number);
+        }
+        if ($technician !== (int)$row->assigned_technician_id || $priority !== (string)$row->priority || $due !== $row->due_at) {
+            $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>$status,'note'=>sprintf('Разпределение: техник #%d; приоритет: %s; срок: %s', $technician, $priority, $due ?: 'няма'), 'created_at'=>$now]);
+        }
+        wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','repair_id'=>$id,'updated'=>'1'], admin_url('admin.php')));
+        exit;
+    }
+
+    public static function admin_download_repair_document() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за изтегляне на този документ.');
+        $doc_id = absint($_GET['document_id'] ?? 0);
+        check_admin_referer('pcwork_download_document_' . $doc_id);
+        global $wpdb;
+        $doc = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::documents_table() . ' WHERE id=%d', $doc_id));
+        if (!$doc) wp_die('Документът не е намерен.');
+        if (!empty($doc->attachment_id)) {
+            $url = wp_get_attachment_url((int)$doc->attachment_id);
+            if ($url) { wp_safe_redirect($url); exit; }
+        }
+        if (empty($doc->storage_key)) wp_die('Този стар документ няма файл в защитеното хранилище.');
+        $dir = self::private_dir();
+        if (is_wp_error($dir)) wp_die(esc_html($dir->get_error_message()));
+        $path = trailingslashit($dir) . wp_basename($doc->storage_key);
+        if (!is_file($path) || !is_readable($path)) wp_die('Файлът липсва от защитеното хранилище.');
+        $allowed = ['image/png','image/jpeg','image/webp','application/pdf'];
+        $mime = in_array($doc->mime_type, $allowed, true) ? $doc->mime_type : 'application/octet-stream';
+        $filename = sanitize_file_name($doc->original_name ?: ('pcwork-document-' . $doc_id));
+        nocache_headers();
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . filesize($path));
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
+    }
+
+    public static function render_admin_page() {
+        if (!current_user_can('manage_options')) return;
+        global $wpdb;
+        $table = self::repairs_table();
+        $history_table = self::history_table();
+        $documents_table = self::documents_table();
+        $id = absint($_GET['repair_id'] ?? 0);
+        echo '<div class="wrap"><h1>Сервизни ремонти</h1><p>Централизирано управление на ремонтите, статуса, историята, документите и разпределението към техник.</p>';
+        if (!empty($_GET['updated'])) echo '<div class="notice notice-success is-dismissible"><p>Промените по ремонта са записани.</p></div>';
+        if ($id) {
+            $repair = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id=%d", $id));
+            if (!$repair) { echo '<div class="notice notice-error"><p>Ремонтът не е намерен.</p></div>'; }
+            else {
+                $history = $wpdb->get_results($wpdb->prepare("SELECT * FROM $history_table WHERE repair_id=%d ORDER BY id DESC", $id));
+                $documents = $wpdb->get_results($wpdb->prepare("SELECT * FROM $documents_table WHERE repair_id=%d ORDER BY id DESC", $id));
+                $technicians = get_users(['fields'=>['ID','display_name'],'number'=>300]);
+                echo '<p><a class="button" href="'.esc_url(admin_url('admin.php?page=pcwork-repairs')).'">← Всички ремонти</a></p>';
+                echo '<h2>'.esc_html($repair->repair_number).' · '.esc_html($repair->device_type.' '.$repair->device_model).'</h2>';
+                echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;max-width:1100px">';
+                echo '<section class="postbox" style="padding:16px"><h3>Клиент и прием</h3><p><b>'.esc_html($repair->customer_name).'</b><br>'.esc_html($repair->customer_email).'<br>'.esc_html($repair->customer_phone).'</p><p>Обект: '.esc_html($repair->location_name).'</p><p>Сериен номер: '.esc_html($repair->serial_number ?: '—').'</p><p>Проблем: '.nl2br(esc_html($repair->problem_description)).'</p><p>Състояние: '.nl2br(esc_html($repair->external_condition)).'</p><p>Аксесоари: '.nl2br(esc_html($repair->accessories)).'</p><p>Бележки при прием: '.nl2br(esc_html($repair->intake_notes)).'</p></section>';
+                echo '<section class="postbox" style="padding:16px"><h3>Управление и разпределение</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'"><input type="hidden" name="action" value="pcwork_update_repair"><input type="hidden" name="repair_id" value="'.(int)$id.'">';
+                wp_nonce_field('pcwork_update_repair');
+                echo '<p><label for="pcw-status"><b>Статус</b></label><br><select id="pcw-status" name="status" style="width:100%">';
+                $statuses = ['received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'];
+                foreach ($statuses as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($repair->status,$key,false).'>'.esc_html($label).'</option>';
+                echo '</select></p><p><label for="pcw-tech"><b>Отговорен техник</b></label><br><select id="pcw-tech" name="assigned_technician_id" style="width:100%"><option value="0">Без назначен техник</option>';
+                foreach ($technicians as $tech) if (user_can($tech->ID,'pcwork_manage_repairs') || user_can($tech->ID,'manage_options')) echo '<option value="'.(int)$tech->ID.'" '.selected((int)$repair->assigned_technician_id,(int)$tech->ID,false).'>'.esc_html($tech->display_name).'</option>';
+                echo '</select></p><p><label for="pcw-priority"><b>Приоритет</b></label><br><select id="pcw-priority" name="priority" style="width:100%">';
+                foreach (['low'=>'Нисък','normal'=>'Нормален','high'=>'Висок','urgent'=>'Спешен'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($repair->priority,$key,false).'>'.esc_html($label).'</option>';
+                echo '</select></p><p><label for="pcw-due"><b>Краен срок</b></label><br><input id="pcw-due" type="datetime-local" name="due_at" value="'.esc_attr($repair->due_at ? date('Y-m-d\\TH:i',strtotime($repair->due_at)) : '').'" style="width:100%"></p><p><label for="pcw-note"><b>Бележка към историята</b></label><br><textarea id="pcw-note" name="note" rows="4" style="width:100%"></textarea></p><p><button class="button button-primary">Запази промените</button></p></form></section></div>';
+                echo '<h2>История на ремонта</h2><table class="widefat striped"><thead><tr><th>Дата</th><th>Статус</th><th>Бележка / действие</th></tr></thead><tbody>';
+                if (!$history) echo '<tr><td colspan="3">Няма записана история.</td></tr>';
+                foreach ($history as $entry) echo '<tr><td>'.esc_html($entry->created_at).'</td><td>'.esc_html($statuses[$entry->status] ?? $entry->status).'</td><td>'.nl2br(esc_html($entry->note)).'</td></tr>';
+                echo '</tbody></table><h2 style="margin-top:24px">Документи и протоколи</h2><table class="widefat striped"><thead><tr><th>Файл</th><th>Тип</th><th>Дата</th><th>Размер</th><th>Достъп</th></tr></thead><tbody>';
+                if (!$documents) echo '<tr><td colspan="5">Няма прикачени документи или протоколи.</td></tr>';
+                foreach ($documents as $doc) { $download = wp_nonce_url(add_query_arg(['action'=>'pcwork_download_repair_document','document_id'=>(int)$doc->id],admin_url('admin-post.php')), 'pcwork_download_document_' . (int)$doc->id); $file = '<a href="'.esc_url($download).'">'.esc_html($doc->original_name ?: 'Изтегли документ').'</a>'; $access = !empty($doc->storage_key) || !empty($doc->attachment_id) ? 'Защитено изтегляне' : 'Няма наличен файл'; echo '<tr><td>'.$file.'</td><td>'.esc_html($doc->kind).'</td><td>'.esc_html($doc->created_at).'</td><td>'.esc_html(size_format((int)$doc->file_size)).'</td><td>'.esc_html($access).'</td></tr>'; }
+                echo '</tbody></table>';
+            }
+        } else {
+            $status = sanitize_key($_GET['status'] ?? '');
+            $search = sanitize_text_field(wp_unslash($_GET['s'] ?? ''));
+            $where = '1=1'; $args = [];
+            if ($status && in_array($status,['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'],true)) { $where .= ' AND status=%s'; $args[] = $status; }
+            if ($search !== '') { $like = '%' . $wpdb->esc_like($search) . '%'; $where .= ' AND (repair_number LIKE %s OR customer_name LIKE %s OR customer_email LIKE %s OR device_model LIKE %s)'; array_push($args,$like,$like,$like,$like); }
+            $sql = "SELECT * FROM $table WHERE $where ORDER BY updated_at DESC LIMIT 100";
+            $rows = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
+            echo '<form method="get" style="display:flex;gap:8px;align-items:center;margin:16px 0"><input type="hidden" name="page" value="pcwork-repairs"><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Номер, клиент, имейл или модел"><select name="status"><option value="">Всички статуси</option>';
+            foreach (['received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($status,$key,false).'>'.esc_html($label).'</option>';
+            echo '</select><button class="button">Филтрирай</button></form><table class="widefat striped"><thead><tr><th>Ремонт</th><th>Клиент</th><th>Устройство</th><th>Обект</th><th>Статус</th><th>Техник</th><th>Последна промяна</th></tr></thead><tbody>';
+            if (!$rows) echo '<tr><td colspan="7">Няма намерени ремонти.</td></tr>';
+            foreach ($rows as $row) { $tech = $row->assigned_technician_id ? get_user_by('id',(int)$row->assigned_technician_id) : false; $url = add_query_arg(['page'=>'pcwork-repairs','repair_id'=>(int)$row->id],admin_url('admin.php')); echo '<tr><td><a href="'.esc_url($url).'"><b>'.esc_html($row->repair_number).'</b></a></td><td>'.esc_html($row->customer_name).'<br><small>'.esc_html($row->customer_email).'</small></td><td>'.esc_html(trim($row->device_type.' '.$row->device_model)).'</td><td>'.esc_html($row->location_name).'</td><td><strong>'.esc_html($row->status).'</strong></td><td>'.esc_html($tech ? $tech->display_name : '—').'</td><td>'.esc_html($row->updated_at).'</td></tr>'; }
+            echo '</tbody></table><p class="description">Показани са до 100 последно обновени ремонта. Отвори номер на ремонт за история, документи и управление.</p>';
+        }
+        echo '</div>';
+    }
+
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.7.0']); },'permission_callback'=>'__return_true']);
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.8.0']); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$auth]);

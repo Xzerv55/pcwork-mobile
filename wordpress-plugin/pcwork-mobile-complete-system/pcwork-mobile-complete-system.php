@@ -2,13 +2,13 @@
 /**
  * Plugin Name: PCWork Mobile – Complete System
  * Description: Единен модул за мобилно приложение, вход, сервизни ремонти и административни интеграции на PCWork.
- * Version: 2.7.0
+ * Version: 2.8.0
  * Author: PCWork
  * Text Domain: pcwork-mobile
  */
 if (!defined('ABSPATH')) exit;
 
-define('PCWORK_MOBILE_COMPLETE_VERSION', '2.7.0');
+define('PCWORK_MOBILE_COMPLETE_VERSION', '2.8.0');
 define('PCWORK_MOBILE_COMPLETE_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/auth-bridge.php';
@@ -37,7 +37,7 @@ function pcwork_mobile_complete_dashboard() {
     echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;max-width:1000px">';
     $cards = [
         ['Интеграции', 'Bookly, WooCommerce, Google Sheets, Firebase, Chatway, Chaty и ShopLentor.', admin_url('admin.php?page=pcwork-integrations')],
-        ['Сервизни ремонти', 'Ремонти, история, документи, протоколи и разпределение към техник.', admin_url('admin.php?page=pcwork-mobile')],
+        ['Сервизни ремонти', 'Ремонти, история, документи, протоколи и разпределение към техник.', admin_url('admin.php?page=pcwork-repairs')],
         ['REST API', 'Общ API адрес: /wp-json/pcwork/v1/ – използва се от Android и iOS приложението.', rest_url('pcwork/v1/')],
     ];
     foreach ($cards as $card) {
