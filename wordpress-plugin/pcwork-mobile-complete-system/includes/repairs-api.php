@@ -72,6 +72,32 @@ final class PCWork_Mobile_Repairs_API {
             $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $locations WHERE code=%s", $loc[0]));
             if (!$exists) $wpdb->insert($locations, ['code'=>$loc[0], 'name'=>$loc[1], 'active'=>1]);
         }
+        $attendance = $wpdb->prefix . 'pcwork_staff_attendance';
+        dbDelta("CREATE TABLE $attendance (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) unsigned NOT NULL,
+            check_in datetime NOT NULL,
+            check_out datetime NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY user_id (user_id),
+            KEY check_in (check_in)
+        ) $charset;");
+        $leave = $wpdb->prefix . 'pcwork_staff_leave';
+        dbDelta("CREATE TABLE $leave (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) unsigned NOT NULL,
+            start_date date NOT NULL,
+            end_date date NOT NULL,
+            reason text NULL,
+            status varchar(20) NOT NULL DEFAULT 'pending',
+            reviewed_by bigint(20) unsigned NOT NULL DEFAULT 0,
+            reviewed_at datetime NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY user_id (user_id),
+            KEY status (status)
+        ) $charset;");
         $documents = self::documents_table();
         dbDelta("CREATE TABLE $documents (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -88,17 +114,17 @@ final class PCWork_Mobile_Repairs_API {
             KEY repair_id (repair_id),
             KEY kind (kind)
         ) $charset;");
-        update_option('pcwork_repairs_api_db_version', '1.6.0', false);
+        update_option('pcwork_repairs_api_db_version', '1.7.0', false);
     }
 
     public static function maybe_upgrade() {
-        if (get_option('pcwork_repairs_api_db_version') !== '1.6.0') self::activate();
+        if (get_option('pcwork_repairs_api_db_version') !== '1.7.0') self::activate();
     }
 
     public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); }
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'1.7.0']); },'permission_callback'=>'__return_true']);
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.0.0']); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$auth]);
@@ -108,6 +134,12 @@ final class PCWork_Mobile_Repairs_API {
         register_rest_route(self::NS, '/staff/technicians', ['methods'=>'GET','callback'=>[__CLASS__,'list_technicians'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/staff/schedule', ['methods'=>'GET','callback'=>[__CLASS__,'get_staff_schedules'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/staff/schedule', ['methods'=>'POST','callback'=>[__CLASS__,'save_staff_schedule'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/overview', ['methods'=>'GET','callback'=>[__CLASS__,'staff_overview'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'GET','callback'=>[__CLASS__,'get_attendance'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'POST','callback'=>[__CLASS__,'record_attendance'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/leave', ['methods'=>'GET','callback'=>[__CLASS__,'list_leave_requests'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/leave', ['methods'=>'POST','callback'=>[__CLASS__,'create_leave_request'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/staff/leave/(?P<id>\d+)', ['methods'=>'PATCH','callback'=>[__CLASS__,'review_leave_request'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/evidence', ['methods'=>'POST','callback'=>[__CLASS__,'upload_evidence'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/protocol', ['methods'=>'POST','callback'=>[__CLASS__,'upload_protocol_pdf'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/documents', ['methods'=>'GET','callback'=>[__CLASS__,'list_documents'],'permission_callback'=>$auth]);
@@ -444,6 +476,84 @@ final class PCWork_Mobile_Repairs_API {
         $all[(string)$technician] = ['working_days'=>$days, 'start_time'=>$start, 'end_time'=>$end, 'absences'=>$absences, 'updated_at'=>current_time('mysql')];
         update_option('pcwork_technician_schedules', $all, false);
         return rest_ensure_response(['success'=>true, 'data'=>$all[(string)$technician]]);
+    }
+
+    private static function staff_table($suffix) { global $wpdb; return $wpdb->prefix . 'pcwork_staff_' . $suffix; }
+
+    public static function staff_overview($request) {
+        global $wpdb;
+        $actor=get_current_user_id(); if (!self::is_staff($actor)) return new WP_Error('pcwork_staff_required','Само служители могат да преглеждат статистиката.',['status'=>403]);
+        $repairs=self::repairs_table(); $attendance=self::staff_table('attendance'); $leave=self::staff_table('leave');
+        $today=current_time('Y-m-d'); $since=wp_date('Y-m-d H:i:s', current_time('timestamp')-30*DAY_IN_SECONDS);
+        $where=''; $params=[];
+        if (!user_can($actor,'manage_options')) {
+            $codes=get_user_meta($actor,'pcwork_location_codes',true); if (!is_array($codes)) $codes=[];
+            if (!$codes) return rest_ensure_response(['data'=>['active_repairs'=>0,'completed_30d'=>0,'attendance_today'=>[],'pending_leave'=>0,'technician_stats'=>[]]]);
+            $marks=implode(',',array_fill(0,count($codes),'%s')); $where=" AND location_code IN ($marks)"; $params=array_map('strval',$codes);
+        }
+        $active_sql="SELECT COUNT(*) FROM $repairs WHERE status NOT IN ('completed','cancelled','ready') $where";
+        $active=(int)($params ? $wpdb->get_var($wpdb->prepare($active_sql,$params)) : $wpdb->get_var($active_sql));
+        $completed_sql="SELECT COUNT(*) FROM $repairs WHERE status='completed' AND updated_at >= %s $where";
+        $completed=(int)$wpdb->get_var($wpdb->prepare($completed_sql,array_merge([$since],$params)));
+        $attendance_today=$wpdb->get_results($wpdb->prepare("SELECT a.id,a.user_id,a.check_in,a.check_out,u.display_name FROM $attendance a LEFT JOIN {$wpdb->users} u ON u.ID=a.user_id WHERE DATE(a.check_in)=%s ORDER BY a.check_in DESC",$today),ARRAY_A);
+        $pending=(int)$wpdb->get_var("SELECT COUNT(*) FROM $leave WHERE status='pending'");
+        $stats_sql="SELECT assigned_technician_id AS technician_id, COUNT(*) AS completed_count FROM $repairs WHERE status='completed' AND updated_at >= %s AND assigned_technician_id>0 $where GROUP BY assigned_technician_id ORDER BY completed_count DESC";
+        $stats=$wpdb->get_results($wpdb->prepare($stats_sql,array_merge([$since],$params)),ARRAY_A);
+        if (!user_can($actor,'manage_options')) {
+            $visible=[];
+            foreach ((array)$attendance_today as $entry) { $codes=get_user_meta((int)$entry['user_id'],'pcwork_location_codes',true); if (is_array($codes) && array_intersect(array_map('strval',$codes),array_map('strval',$params))) $visible[]=$entry; }
+            $attendance_today=$visible;
+        }
+        foreach ($stats as &$row) { $u=get_user_by('id',(int)$row['technician_id']); $row['technician_name']=$u?$u->display_name:'#'.$row['technician_id']; $row['completed_count']=(int)$row['completed_count']; } unset($row);
+        return rest_ensure_response(['data'=>['active_repairs'=>$active,'completed_30d'=>$completed,'attendance_today'=>$attendance_today?:[],'pending_leave'=>$pending,'is_admin'=>user_can($actor,'manage_options'),'technician_stats'=>$stats?:[]]]);
+    }
+
+    public static function get_attendance($request) {
+        global $wpdb; $actor=get_current_user_id(); if (!self::is_staff($actor)) return new WP_Error('pcwork_staff_required','Само служители могат да преглеждат присъствия.',['status'=>403]);
+        $row=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::staff_table('attendance').' WHERE user_id=%d AND check_out IS NULL ORDER BY id DESC LIMIT 1',$actor),ARRAY_A);
+        return rest_ensure_response(['data'=>['active'=>$row?:null]]);
+    }
+
+    public static function record_attendance($request) {
+        global $wpdb; $actor=get_current_user_id(); if (!self::is_staff($actor)) return new WP_Error('pcwork_staff_required','Само служители могат да записват присъствие.',['status'=>403]);
+        $p=$request->get_json_params(); $action=sanitize_key($p['action']??''); $table=self::staff_table('attendance'); $now=current_time('mysql');
+        $active=$wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id=%d AND check_out IS NULL ORDER BY id DESC LIMIT 1",$actor));
+        if ($action==='check_in') {
+            if ($active) return new WP_Error('pcwork_already_checked_in','Имате вече активна смяна.',['status'=>409]);
+            $ok=$wpdb->insert($table,['user_id'=>$actor,'check_in'=>$now,'created_at'=>$now],['%d','%s','%s']);
+            if (!$ok) return new WP_Error('pcwork_attendance_failed','Неуспешен запис на началото на смяната.',['status'=>500]);
+        } elseif ($action==='check_out') {
+            if (!$active) return new WP_Error('pcwork_not_checked_in','Няма активна смяна за приключване.',['status'=>409]);
+            $ok=$wpdb->update($table,['check_out'=>$now],['id'=>(int)$active->id],['%s'],['%d']);
+            if ($ok===false) return new WP_Error('pcwork_attendance_failed','Неуспешен запис на края на смяната.',['status'=>500]);
+        } else return new WP_Error('pcwork_attendance_action','Невалидно действие.',['status'=>400]);
+        return rest_ensure_response(['success'=>true,'message'=>$action==='check_in'?'Смяната е започната.':'Смяната е приключена.']);
+    }
+
+    public static function list_leave_requests($request) {
+        global $wpdb; $actor=get_current_user_id(); if (!self::is_staff($actor)) return new WP_Error('pcwork_staff_required','Само служители могат да преглеждат отпуски.',['status'=>403]);
+        $table=self::staff_table('leave');
+        if (user_can($actor,'manage_options')) $rows=$wpdb->get_results("SELECT l.*,u.display_name FROM $table l LEFT JOIN {$wpdb->users} u ON u.ID=l.user_id ORDER BY l.created_at DESC LIMIT 100",ARRAY_A);
+        else $rows=$wpdb->get_results($wpdb->prepare("SELECT l.*,u.display_name FROM $table l LEFT JOIN {$wpdb->users} u ON u.ID=l.user_id WHERE l.user_id=%d ORDER BY l.created_at DESC LIMIT 50",$actor),ARRAY_A);
+        return rest_ensure_response(['data'=>$rows?:[]]);
+    }
+
+    public static function create_leave_request($request) {
+        global $wpdb; $actor=get_current_user_id(); if (!self::is_staff($actor)) return new WP_Error('pcwork_staff_required','Само служители могат да заявяват отпуск.',['status'=>403]);
+        $p=$request->get_json_params(); $start=sanitize_text_field($p['start_date']??''); $end=sanitize_text_field($p['end_date']??''); $reason=sanitize_textarea_field($p['reason']??'');
+        if (!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/',$start) || !preg_match('/^\\d{4}-\\d{2}-\\d{2}$/',$end) || $end<$start) return new WP_Error('pcwork_leave_dates','Невалиден период на отпуската.',['status'=>400]);
+        $ok=$wpdb->insert(self::staff_table('leave'),['user_id'=>$actor,'start_date'=>$start,'end_date'=>$end,'reason'=>$reason,'status'=>'pending','created_at'=>current_time('mysql')],['%d','%s','%s','%s','%s','%s']);
+        if (!$ok) return new WP_Error('pcwork_leave_failed','Заявката за отпуск не беше записана.',['status'=>500]);
+        return new WP_REST_Response(['success'=>true,'id'=>(int)$wpdb->insert_id],201);
+    }
+
+    public static function review_leave_request($request) {
+        global $wpdb; $actor=get_current_user_id(); if (!user_can($actor,'manage_options')) return new WP_Error('pcwork_admin_required','Само администратор може да одобрява отпуски.',['status'=>403]);
+        $id=absint($request['id']); $p=$request->get_json_params(); $status=sanitize_key($p['status']??'');
+        if (!in_array($status,['approved','rejected'],true)) return new WP_Error('pcwork_leave_status','Невалиден статус на заявката.',['status'=>400]);
+        $ok=$wpdb->update(self::staff_table('leave'),['status'=>$status,'reviewed_by'=>$actor,'reviewed_at'=>current_time('mysql')],['id'=>$id,'status'=>'pending'],['%s','%d','%s'],['%d','%s']);
+        if (!$ok) return new WP_Error('pcwork_leave_not_pending','Заявката не е намерена или вече е обработена.',['status'=>404]);
+        return rest_ensure_response(['success'=>true,'status'=>$status]);
     }
 
     public static function update_assignment($request) {

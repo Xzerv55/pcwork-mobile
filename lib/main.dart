@@ -10,6 +10,7 @@ import 'screens/repair_protocol_screen.dart';
 import 'screens/repair_evidence_screen.dart';
 import 'screens/repair_documents_screen.dart';
 import 'screens/staff_dashboard_screen.dart';
+import 'screens/chatway_screen.dart';
 
 void main() => runApp(const PCWorkApp());
 
@@ -115,50 +116,135 @@ class _PCWorkAppState extends State<PCWorkApp> {
 
   @override
   Widget build(BuildContext context) {
-    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
       title: 'PCWork',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: cyan, brightness: Brightness.dark), scaffoldBackgroundColor: const Color(0xFF10151D), cardColor: const Color(0xFF1A2330), useMaterial3: true),
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: 'NotoSans',
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(seedColor: cyan, brightness: Brightness.dark).copyWith(
+          primary: cyan, secondary: const Color(0xFF9B7BFF), surface: const Color(0xFF151F2E),
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0A101A),
+        cardColor: const Color(0xFF151F2E),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0A101A), foregroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent, elevation: 0, centerTitle: false,
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF151F2E), elevation: 0,
+          margin: const EdgeInsets.symmetric(vertical: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: Color(0xFF26364A))),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true, fillColor: const Color(0xFF111B29),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2A3A50))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2A3A50))),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: cyan, width: 1.5)),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF0E1724), indicatorColor: cyan.withValues(alpha: .16),
+          elevation: 0, labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
+            fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+            color: states.contains(WidgetState.selected) ? cyan : const Color(0xFF8796AA),
+          )),
+        ),
+        filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
+          backgroundColor: cyan, foregroundColor: const Color(0xFF061319),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        )),
+      ),
       home: Scaffold(
-        appBar: AppBar(title: Text('PCWork  ·  ${labels[tab]}'), actions: [
-          IconButton(tooltip: tr('Език', 'Language'), onPressed: () { setState(() => english = !english); _savePreference('pcwork_english', english); }, icon: const Icon(Icons.language)),
-          IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.settings_outlined)),
-        ]),
-        body: IndexedStack(index: tab, children: [_home(), _repairs(), _booking(), _profile()]),
+        appBar: AppBar(
+          title: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.png', width: 36, height: 36, fit: BoxFit.contain)),
+            const SizedBox(width: 10), const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
+            const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
+            const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
+          ]),
+          actions: [
+            IconButton(tooltip: tr('Език', 'Language'), onPressed: () { setState(() => english = !english); _savePreference('pcwork_english', english); }, icon: const Icon(Icons.language_rounded)),
+            IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
+          ],
+        ),
+        body: DecoratedBox(
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])),
+          child: IndexedStack(index: tab, children: [_home(), _repairs(), ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0), _booking(), _profile()]),
+        ),
         bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
-          NavigationDestination(icon: const Icon(Icons.home_outlined), label: labels[0]),
-          NavigationDestination(icon: const Icon(Icons.build_outlined), label: labels[1]),
-          NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), label: labels[2]),
-          NavigationDestination(icon: const Icon(Icons.person_outline), label: labels[3]),
+          NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
+          NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
+          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[2]),
+          NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[3]),
+          NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[4]),
         ]),
       ),
     );
   }
 
-  Widget _home() => ListView(padding: const EdgeInsets.all(20), children: [
-    Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF173A46), Color(0xFF20283A)]), borderRadius: BorderRadius.circular(22)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Icon(Icons.memory, color: cyan, size: 42), const SizedBox(height: 12),
-      Text(tr('Техниката ви е в добри ръце.', 'Your devices, in good hands.'), style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 8), Text(tr('Сервиз за компютри, лаптопи и PlayStation', 'PC, laptop and PlayStation service')),
-      const SizedBox(height: 18), FilledButton.icon(onPressed: () => setState(() => tab = 2), icon: const Icon(Icons.add), label: Text(tr('Запази час', 'Book a service'))),
-    ])),
-    const SizedBox(height: 18), Row(children: [Expanded(child: _quickCard(Icons.handyman_outlined, tr('Моите ремонти', 'My repairs'), () => setState(() => tab = 1))), const SizedBox(width: 12), Expanded(child: _quickCard(Icons.storefront_outlined, tr('Сервизни обекти', 'Locations'), _showLocations))]),
-    const SizedBox(height: 18), Card(child: ListTile(leading: Icon(apiReady ? Icons.cloud_done : Icons.cloud_off, color: apiReady ? Colors.greenAccent : Colors.orangeAccent), title: Text(tr('Връзка със сървъра', 'Server connection')), subtitle: Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…')), trailing: IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh)))),
-    const SizedBox(height: 12), Text(tr('Полезна информация', 'Useful information'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-    _infoTile(Icons.verified_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms')),
-    _infoTile(Icons.chat_bubble_outline, tr('Връзка с поддръжката', 'Contact support')),
+  Widget _home() => ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 28), children: [
+    Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: const Color(0xFF2B7180).withValues(alpha: .55)),
+        boxShadow: [BoxShadow(color: cyan.withValues(alpha: .10), blurRadius: 30, spreadRadius: -8, offset: const Offset(0, 12))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 52, height: 52, padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(16)), child: Image.asset('assets/images/LogoPCwork.png', fit: BoxFit.contain)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('PCWORK SERVICE', style: TextStyle(color: cyan.withValues(alpha: .95), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
+            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          ])),
+          const Icon(Icons.auto_awesome_rounded, color: Color(0xFFB49BFF), size: 23),
+        ]),
+        const SizedBox(height: 23),
+        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: const TextStyle(fontSize: 25, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.5)),
+        const SizedBox(height: 9),
+        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: const TextStyle(color: Color(0xFFC3D1E0), fontSize: 13)),
+        const SizedBox(height: 20),
+        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => setState(() => tab = 3), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+      ]),
+    ),
+    const SizedBox(height: 22),
+    Row(children: [
+      Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => setState(() => tab = 1))),
+      const SizedBox(width: 12),
+      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => setState(() => tab = 2))),
+    ]),
+    const SizedBox(height: 21),
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
+    ]),
+    const SizedBox(height: 7),
+    Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
+      Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
+      const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
+      IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
+    ]))),
+    const SizedBox(height: 16),
+    Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+    const SizedBox(height: 6),
+    _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms')),
+    _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations')),
   ]);
 
-  Widget _quickCard(IconData icon, String label, VoidCallback onTap) => Card(child: InkWell(borderRadius: BorderRadius.circular(14), onTap: onTap, child: Padding(padding: const EdgeInsets.all(18), child: Column(children: [Icon(icon, color: cyan, size: 30), const SizedBox(height: 9), Text(label, textAlign: TextAlign.center)]))));
-  Widget _infoTile(IconData icon, String label) => Card(child: ListTile(leading: Icon(icon, color: cyan), title: Text(label), trailing: const Icon(Icons.chevron_right)));
+  Widget _quickCard(IconData icon, String label, VoidCallback onTap) => Card(child: InkWell(borderRadius: BorderRadius.circular(22), onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: cyan.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: cyan, size: 23)), const SizedBox(width: 10), Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))), const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF71849A))]))));
+  Widget _infoTile(IconData icon, String label) => Card(child: ListTile(leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: cyan.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: cyan, size: 20)), title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)), trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF71849A))));
 
   Widget _repairs() {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
-      const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 3), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
+      const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 4), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
     ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
     return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(

@@ -1,146 +1,28 @@
-# PCWork Mobile v16
+# PCWork Mobile v30
 
-**Приложение:** 0.16.0+16  
-**Обхват на този архив:** Flutter приложение и GitHub Actions конфигурация.
+**Версия:** `0.30.0+30`  
+**Платформи:** Android и iOS  
+**Език:** Български / English  
+**Основен API:** `https://pcwork-bg.com`
 
-Архивът съдържа актуалния Flutter проект. В получения от теб v15 ZIP не беше намерен файл на WordPress плъгина, затова той не е включен във v16. Няма стари версии или дублирани архиви.
+## Какво е новото във v30
+- Оригиналното PCWork 3D лого вече е икона на самото приложение (Android/iOS).
+- Android adaptive launcher icon с графитен фон и оригиналния знак.
+- Native стартов екран (splash screen) с PCWork логото.
+- Логото в горната лента е с правилно пропорционално показване, без изрязване.
+- Запазени са Chatway интеграцията, клиентската/служителската функционалност и тъмната PCWork визия.
 
-## Ново във v12 – клиентско табло
+## GitHub компилация
+1. Качи съдържанието на `pcwork-mobile-main` в GitHub хранилището и замени старите файлове.
+2. Отвори **Actions → PCWork Android APK**.
+3. Изчакай стъпките `flutter analyze` и `Build ... APK`.
+4. Изтегли `pcwork-android-v30-apks`.
+5. За iOS стартирай ръчно workflow **PCWork iOS unsigned build** и изтегли `pcwork-ios-v30-app-unsigned`.
 
-- Обобщение на ремонтите: всички, активни и готови.
-- Търсене по номер на ремонт, устройство, модел, сериен номер и сервизен обект.
-- Филтриране по статус.
-- Визуална времева линия на етапите на ремонта.
-- В клиентския изглед бележките от вътрешната история не се показват; служебните роли могат да ги виждат.
-- Запазени са всички възможности от v11: прием на устройство, служебно табло, назначаване на техник, приоритети, срокове, протоколи, QR, документи, снимки и подписи.
+Workflow-ите автоматично генерират launcher и splash ресурсите след `flutter pub get`.
 
+## Chatway
+Chatway остава конфигуриран през WordPress: **PCWork Mobile → Интеграции → Chatway**. Не поставяй Visitor Verification Security Key в Flutter кода или GitHub.
 
-## Ново във v13 – споделяне и по-удобна история на ремонтите
-
-- Добавено е споделяне на кратка информация за ремонта чрез системното меню за споделяне на Android/iOS. Споделянето включва номер, устройство, статус, сервизен обект и краен срок, когато са налични; не включва вътрешни бележки, телефон или имейл.
-- Добавено е копиране на номера на ремонта с едно натискане.
-- Ремонтите се подреждат по дата на създаване – най-новите първо.
-- В детайлите се показват крайният срок, приоритетът и назначеният техник според ролята. Приоритетът и името на техника са ограничени до служебните профили.
-- Изборът на език и визуалният режим за преглед като служител се запазват локално между стартиранията. Визуалният режим не дава допълнителни права.
-
-## Структура
-
-- `lib/` – Flutter изходен код.
-- `assets/` – PCWork лого и шрифтове с кирилица.
-- `pubspec.yaml` – зависимости и версия.
-- WordPress плъгинът не е включен в този ZIP; използвай отделния актуален архив на плъгина.
-- `.github/workflows/flutter-build.yml` – автоматично изграждане чрез GitHub Actions.
-
-## Кога и къде се инсталира Flutter SDK?
-
-Flutter SDK е безплатният инструментариум за компилиране на приложението. Той не се инсталира в WordPress и не е отделен модул в самото приложение.
-
-В тази работна среда SDK не е наличен и няма достъп до интернет за изтеглянето му. За да не чакаме локална инсталация, добавих GitHub Actions workflow: при качване на проекта в GitHub и стартиране на workflow, GitHub runner автоматично изтегля стабилната версия на Flutter SDK, генерира платформените файлове и изпълнява `flutter pub get` и `flutter analyze`.
-
-### Android
-
-Workflow-ът изгражда release APK и го публикува като artifact `pcwork-android-apk`. Необходимо е проектът да бъде качен в GitHub repository и workflow-ът да бъде стартиран от Actions.
-
-### iOS
-
-Workflow-ът използва macOS runner и изгражда неподписано iOS приложение (`Runner.app`). За реален IPA за iPhone разпространение са нужни Apple Developer signing сертификати/provisioning profile и конфигуриране на signing secrets. Това не може да бъде заместено само с Flutter SDK.
-
-## Локално изграждане
-
-След инсталиране на Flutter stable SDK:
-
-```bash
-flutter create --platforms=android,ios .
-flutter pub get
-flutter analyze
-flutter build apk --release
-```
-
-За iOS се използва macOS с Xcode:
-
-```bash
-flutter build ios --release --no-codesign
-```
-
-## WordPress плъгин
-
-WordPress плъгинът не присъства във входния v15 ZIP, поради което не е променян и не е добавен към този архив. Не деактивирай и не заменяй работещия плъгин само въз основа на този ZIP. За актуализация е необходим отделният ZIP на обединения PCWork Mobile – Complete System.
-
-## Проверки и ограничения
-
-- Архивите се проверяват с `unzip -t`.
-- PHP файловете на единния плъгин трябва да преминат `php -l` при локална проверка.
-- В тази среда няма Flutter SDK и не е изпълнен `flutter analyze`; APK/IPA не са компилирани тук.
-- GitHub Actions workflow-ът е добавен, но не е изпълнен оттук и резултатният build не е проверен.
-- Реални интеграционни тестове със сайта, Google Sheets, SMTP и Firebase са необходими преди production.
-- За iOS IPA е необходимо Apple signing. За Android подписан APK/AAB за Play Store е необходимо конфигуриране на release keystore.
-
-
-## Ново във v14 – push известия за Android и iOS
-
-- Добавена е интеграция с Firebase Cloud Messaging (FCM) чрез `firebase_core` и `firebase_messaging`.
-- След вход приложението иска разрешение за известия, получава FCM registration token и го регистрира в WordPress с Bearer токена на профила.
-- Поддържа се автоматично обновяване и повторна регистрация на FCM token.
-- При известие, докато приложението е отворено, се показва съобщение в приложението и се обновява списъкът с ремонти.
-- При натискане на push известие приложението отваря раздел „Ремонти“.
-- При изход устройството се отписва от push известията за текущия профил.
-- WordPress push endpoints вече използват същата Bearer авторизация като мобилния API. Това поправя несъвместимостта между custom JWT входа на приложението и проверката `is_user_logged_in()`.
-- WordPress плъгинът е актуализиран до 1.7.0; FCM изпращането през Firebase HTTP v1 и сервизния акаунт остава от сървърната страна.
-
-### Необходими Firebase настройки
-
-1. Създай/използвай Firebase проект и добави Android приложение със същия application ID, който ще използва PCWork.
-2. Добави iOS приложение със същия Bundle ID за iOS build.
-3. В GitHub repository → Settings → Secrets and variables → Actions добави:
-   - `FIREBASE_PROJECT_ID`
-   - `FIREBASE_MESSAGING_SENDER_ID`
-   - `FIREBASE_ANDROID_API_KEY`
-   - `FIREBASE_ANDROID_APP_ID`
-   - `FIREBASE_IOS_API_KEY`
-   - `FIREBASE_IOS_APP_ID`
-   - `FIREBASE_IOS_BUNDLE_ID`
-4. В WordPress → PCWork Mobile → Интеграции включи Push известията и въведи Firebase Project ID и пълния Firebase Service Account JSON. Сервизният акаунт е само за WordPress сървъра; никога не го поставяй в мобилното приложение или GitHub `dart-define` secrets.
-5. Запази настройките и използвай тестовото FCM устройство, за да провериш връзката.
-6. За iOS активирай Push Notifications capability и настрой APNs authentication key/certificate във Firebase Console. Без APNs конфигурация iOS няма да получава реални push известия.
-
-### Поведение без конфигуриран Firebase
-
-Приложението продължава да работи и без Firebase конфигурация. Push модулът се пропуска, без да блокира входа или останалите функции. За реални известия трябва да бъдат въведени Firebase client app параметрите в GitHub Actions и сървърният Service Account JSON в WordPress.
-
-### Проверки и ограничения във v14
-
-- Не е изпълнен `flutter pub get`, `flutter analyze` или реален Android/iOS build в тази среда, тъй като Flutter SDK и интернет достъпът липсват.
-- Не са извършени live тестове с Firebase, APNs или production WordPress сайт.
-- За iOS push са нужни валидни APNs настройки; за Android устройството трябва да има съвместими Google Play services.
-- Push известията за промяна на статус се изпращат от WordPress само след конфигуриране на Firebase и активиране на push интеграцията.
-
-
-## Ново във v15 – подготовка за Android APK
-
-- Версията на Flutter приложението е `0.15.0+15`.
-- Добавен е Android build workflow `PCWork Android APK`, който се стартира ръчно от GitHub Actions или автоматично при push към `main`/`master`.
-- Добавен е скрипт `scripts/prepare_android.sh`, който генерира Android host проекта с application ID `com.pcworkbg.pcwork_mobile`, име `PCWork` и минимален Android API 23.
-- Workflow-ът изпълнява `flutter pub get`, `flutter analyze` и създава `app-debug.apk` за инсталиране/тестване и `app-release.apk` за допълнителни device тестове. Двата файла се публикуват като artifact `pcwork-android-v15-apks`.
-- Подробните стъпки за GitHub, изтегляне и инсталиране са в `ANDROID_APK_GUIDE_BG.md`.
-- iOS unsigned workflow-ът е отделен и се стартира ръчно, за да не дублира Android build при всеки push.
-
-### Важна граница на изпълнението
-
-В тази работна среда няма Flutter SDK и интернет/DNS достъп за изтеглянето му. Затова v15 подготвя възпроизводим Android build в GitHub Actions, но **APK файл още не е компилиран или тестван на телефон**. Реалният build ще се изпълни в GitHub runner след качване на проекта и стартиране на workflow-а. Зелен резултат в Actions и инсталация на физическо устройство са нужни, преди да отчетем APK като успешно изграден и проверен.
-
-`app-debug.apk` е за вътрешно тестване. За Google Play/production release е необходимо отделно управление на release keystore и подписване; не качвайте private keystore или Firebase Service Account JSON в source кода.
-
-
-## Ново във v16 – корекции за анализ и CI
-
-- Поправена е конфигурацията на Firebase options: всички `String.fromEnvironment` стойности вече използват константни ключове, което премахва `const_with_non_constant_argument`.
-- Android workflow-ът стартира подготовката чрез `bash`, така че не зависи от executable bit на скрипта.
-- Премахва се генерираният от `flutter create` примерен `test/widget_test.dart`, който очаква `MyApp`, докато приложението използва `PCWorkApp`.
-- Премахнати са неизползваните `_loadLocations` и `_showSignInInfo`, както и свързаните неизползвани полета.
-- Обновени са `DropdownButtonFormField` параметрите към `initialValue`.
-- Поправени са дребни lint проверки за `isNotEmpty`.
-- Версията е `0.16.0+16`; Android и iOS workflow-ите са именувани за v16.
-
-### Статус на проверката
-
-Изходният код и конфигурациите са редактирани и архивът е проверен структурно. В тази среда няма Flutter SDK, затова `flutter pub get`, `flutter analyze` и реален APK/IPA build не са изпълнени. Потвърждението за успешна компилация ще бъде GitHub Actions run след качване на v16.
+## Важно
+В тази среда няма инсталиран Flutter SDK. YAML файловете са проверени за синтаксис, но `flutter analyze` и реалните Android/iOS компилации трябва да се потвърдят от GitHub Actions. За iOS инсталация върху устройство е необходима и подписана компилация с Apple Developer профил.

@@ -121,6 +121,49 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getStaffOverview(String token) async {
+    final response = await http.get(_uri('staff/overview'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден формат на служебната статистика.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> getAttendance(String token) async {
+    final response = await http.get(_uri('staff/attendance'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+  }
+
+  Future<void> recordAttendance(String token, String action) async {
+    final response = await http.post(_uri('staff/attendance'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'action': action})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<List<Map<String, dynamic>>> getLeaveRequests(String token) async {
+    final response = await http.get(_uri('staff/leave'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<void> submitLeaveRequest(String token, {required String startDate, required String endDate, required String reason}) async {
+    final response = await http.post(_uri('staff/leave'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'start_date': startDate, 'end_date': endDate, 'reason': reason})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<void> reviewLeaveRequest(String token, int id, String decision) async {
+    final response = await http.patch(_uri('staff/leave/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'status': decision})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
   Future<Repair> updateRepairAssignment(String token, int id, {required int technicianId, required String priority, String dueAt = ''}) async {
     final response = await http.patch(_uri('repairs/$id/assignment'),
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
@@ -161,6 +204,30 @@ class ApiService {
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
     if (data is! Map) throw Exception('Сървърът върна невалиден протокол.');
     return Map<String, dynamic>.from(data);
+  }
+
+  Future<Uri?> getChatwayUrl({String? token}) async {
+    final authenticated = token != null && token.trim().isNotEmpty;
+    final response = authenticated
+        ? await http.post(_uri('chatway/session'),
+            headers: {'Authorization': 'Bearer ${token!.trim()}', 'Content-Type': 'application/json'},
+            body: jsonEncode(<String, dynamic>{})).timeout(const Duration(seconds: 15))
+        : await http.get(_uri('chatway/config')).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      final decoded = _decodeResponse(response);
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    final decoded = _decodeResponse(response);
+    if (decoded is! Map) return null;
+    final data = decoded['data'] is Map ? decoded['data'] as Map : decoded;
+    if (data['enabled'] != true) return null;
+    final raw = data['chat_url'];
+    if (raw is! String || raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    final apiHost = Uri.tryParse(baseUrl.trim())?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    final chatHost = uri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+    if (uri == null || uri.scheme != 'https' || apiHost == null || chatHost != apiHost) return null;
+    return uri;
   }
 
   Future<Uri?> getBookingUrl() async {
