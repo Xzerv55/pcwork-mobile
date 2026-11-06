@@ -196,11 +196,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   void _selectTab(int index) {
     if (index < 0 || index > 5) return;
-    // The persistent navigation sits outside the route Navigator. Dismiss an
-    // open settings sheet before switching tabs; draft values are discarded.
-    if (_settingsOpen) {
-      _navigatorKey.currentState?.pop();
+    // Dismiss every transient route (dialogs, sheets and pushed overlays) before
+    // switching the main section. Unsaved draft state is intentionally discarded.
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.popUntil((route) => route.isFirst);
     }
+    _settingsOpen = false;
     setState(() {
       tab = index;
       _visitedTabs.add(index);
@@ -224,7 +226,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Магазин', 'Shop'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Магазин', 'Shop'), tr('Поддръжка', 'Support'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
@@ -358,6 +360,19 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(width: 12),
       Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => _selectTab(3))),
     ]),
+    const SizedBox(height: 20),
+    Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+    const SizedBox(height: 8),
+    Row(children: [
+      Expanded(child: _contactCard(Icons.call_rounded, tr('Обади се', 'Call us'), '088 663 8848', const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
+      const SizedBox(width: 10),
+      Expanded(child: _contactCard(Icons.chat_rounded, 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
+    ]),
+    Row(children: [
+      Expanded(child: _contactCard(Icons.facebook, 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
+      const SizedBox(width: 10),
+      Expanded(child: _contactCard(Icons.music_note_rounded, 'TikTok', '@css.ps4.ps5', const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+    ]),
     const SizedBox(height: 21),
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
@@ -375,6 +390,33 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms'), _showWarrantyTerms),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
   ]);
+
+  Future<void> _launchContact(Uri uri) async {
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) _message(tr('Не успяхме да отворим приложението или връзката.', 'Could not open the app or link.'));
+    } catch (e) {
+      if (mounted) _message('${tr('Грешка при отваряне:', 'Could not open:')} $e');
+    }
+  }
+
+  Widget _contactCard(IconData icon, String title, String subtitle, Color accent, VoidCallback onTap) =>
+      Card(child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 14),
+          child: Row(children: [
+            Container(width: 39, height: 39, decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: accent, size: 21)),
+            const SizedBox(width: 9),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 3),
+              Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8))),
+            ])),
+          ]),
+        ),
+      ));
 
   Widget _quickCard(IconData icon, String label, VoidCallback onTap) => Card(child: InkWell(borderRadius: BorderRadius.circular(22), onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: cyan.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: cyan, size: 23)), const SizedBox(width: 10), Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))), const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF71849A))]))));
   Widget _infoTile(IconData icon, String label, [VoidCallback? onTap]) => Card(child: ListTile(onTap: onTap, leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: cyan.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: cyan, size: 20)), title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)), trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF71849A))));

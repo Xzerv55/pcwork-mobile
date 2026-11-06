@@ -78,7 +78,7 @@ class PushNotificationService {
   /// into the WordPress test-token field.
   Future<String> getDeviceToken() async {
     if (!DefaultFirebaseOptions.isConfigured) {
-      throw Exception('Firebase не е конфигуриран в тази компилация. Провери GitHub Actions Secrets: FIREBASE_PROJECT_ID, FIREBASE_MESSAGING_SENDER_ID, FIREBASE_ANDROID_API_KEY и FIREBASE_ANDROID_APP_ID. След добавянето им стартирай нова компилация.');
+      throw Exception('Firebase не е конфигуриран в тази компилация. За Android провери дали android/app/google-services.json е наличен в GitHub и съдържа клиент за com.pcworkbg.pcwork_mobile. След това стартирай нова компилация от GitHub Actions.');
     }
     try {
       await initialize().timeout(const Duration(seconds: 15));
