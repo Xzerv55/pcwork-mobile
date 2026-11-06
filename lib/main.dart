@@ -232,7 +232,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Icons.person_rounded,
     ];
     final selectedColor = isDarkTheme ? cyan : const Color(0xFF087F83);
-    final mutedColor = const Color(0xFF8796AA);
+   const mutedColor = Color(0xFF8796AA);
     return SafeArea(
       top: false,
       child: Container(
