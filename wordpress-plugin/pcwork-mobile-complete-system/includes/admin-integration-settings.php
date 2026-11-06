@@ -7,6 +7,11 @@ final class PCWork_Admin_Integration_Settings {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'menu'], 99);
+        add_action('show_user_profile', [__CLASS__, 'marketing_profile_field']);
+        add_action('edit_user_profile', [__CLASS__, 'marketing_profile_field']);
+        add_action('personal_options_update', [__CLASS__, 'save_marketing_profile_field']);
+        add_action('edit_user_profile_update', [__CLASS__, 'save_marketing_profile_field']);
+        add_action('pcwork_send_marketing_campaign', [__CLASS__, 'send_marketing_campaign'], 10, 1);
         add_action('admin_init', [__CLASS__, 'register']);
         add_action('admin_init', [__CLASS__, 'maybe_encrypt_legacy_sheets_secret'], 20);
         add_action('admin_enqueue_scripts', [__CLASS__, 'styles']);
@@ -83,6 +88,7 @@ final class PCWork_Admin_Integration_Settings {
 
     public static function menu() {
         add_submenu_page('pcwork-mobile', 'Интеграции', 'Интеграции', 'manage_options', 'pcwork-integrations', [__CLASS__, 'render']);
+        add_submenu_page('pcwork-mobile', 'Маркетинг и Push', 'Маркетинг и Push', 'manage_options', 'pcwork-marketing', [__CLASS__, 'render_marketing']);
     }
 
     public static function register() {
@@ -424,7 +430,8 @@ final class PCWork_Admin_Integration_Settings {
         $s=self::get_settings(); $access=self::firebase_access_token($s); if(is_wp_error($access)) return $access;
         $url='https://fcm.googleapis.com/v1/projects/'.rawurlencode($s['firebase_project_id']).'/messages:send';
         $safe_data=['source'=>'pcwork']; foreach((array)$data as $key=>$value){ $key=sanitize_key((string)$key); if($key!=='') $safe_data[$key]=substr(sanitize_text_field((string)$value),0,500); }
-        $payload=['message'=>['token'=>$device_token,'notification'=>['title'=>$title,'body'=>$body],'data'=>$safe_data]];
+        $notification=['title'=>$title,'body'=>$body]; if(!empty($data['image']))$notification['image']=$data['image'];
+        $payload=['message'=>['token'=>$device_token,'notification'=>$notification,'data'=>$safe_data]];
         $response=wp_remote_post($url,['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($payload)]);
         if(is_wp_error($response)) return $response; $code=wp_remote_retrieve_response_code($response);
         if($code<200 || $code>=300) return new WP_Error('pcwork_fcm_send','FCM върна HTTP '.$code.': '.wp_strip_all_tags(wp_remote_retrieve_body($response)));
@@ -476,6 +483,74 @@ final class PCWork_Admin_Integration_Settings {
                 'repair_id'=>$repair_id,'status'=>$status,'sent'=>$sent,'sent_at'=>current_time('mysql',true)
             ]);
         }
+    }
+
+    /** Explicit customer opt-in; marketing is disabled until the user enables it. */
+    public static function marketing_profile_field($user) {
+        if (!current_user_can('edit_user', $user->ID)) return;
+        $enabled = get_user_meta($user->ID, 'pcwork_marketing_opt_in', true) === '1';
+        echo '<h2>PCWork – маркетингови известия</h2><table class="form-table"><tr><th><label for="pcwork_marketing_opt_in">Рекламни Push известия</label></th><td><label><input type="checkbox" id="pcwork_marketing_opt_in" name="pcwork_marketing_opt_in" value="1" '.checked($enabled, true, false).'> Клиентът е дал съгласие да получава промоции и новини от PCWork.</label><p class="description">Не включвай отметката без изрично съгласие на клиента.</p></td></tr></table>';
+    }
+    public static function save_marketing_profile_field($user_id) {
+        if (!current_user_can('edit_user', $user_id)) return;
+        update_user_meta($user_id, 'pcwork_marketing_opt_in', isset($_POST['pcwork_marketing_opt_in']) ? '1' : '0');
+        if (!isset($_POST['pcwork_marketing_opt_in'])) update_user_meta($user_id, 'pcwork_marketing_opt_out_at', current_time('mysql', true));
+    }
+
+    public static function render_marketing() {
+        if (!current_user_can('manage_options')) return;
+        if (!empty($_POST['pcw_campaign_submit'])) {
+            check_admin_referer('pcw_marketing_campaign');
+            $title = sanitize_text_field(wp_unslash($_POST['campaign_title'] ?? ''));
+            $body = sanitize_textarea_field(wp_unslash($_POST['campaign_body'] ?? ''));
+            $url = esc_url_raw(wp_unslash($_POST['campaign_url'] ?? ''));
+            $image = esc_url_raw(wp_unslash($_POST['campaign_image'] ?? ''));
+            $audience = sanitize_key($_POST['campaign_audience'] ?? 'all');
+            $when = sanitize_text_field(wp_unslash($_POST['campaign_when'] ?? 'now'));
+            if ($title === '' || $body === '') {
+                echo '<div class="notice notice-error"><p>Заглавието и текстът са задължителни.</p></div>';
+            } elseif (($url && !wp_http_validate_url($url)) || ($image && !wp_http_validate_url($image))) {
+                echo '<div class="notice notice-error"><p>Линкът и изображението трябва да са валидни HTTP/HTTPS адреси.</p></div>';
+            } else {
+                $id = wp_generate_uuid4();
+                $campaign = ['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'image'=>$image,'audience'=>in_array($audience,['all','customers'],true)?$audience:'all','created'=>current_time('mysql'),'status'=>'scheduled'];
+                $history = get_option('pcwork_marketing_campaigns', []); if (!is_array($history)) $history=[];
+                $history[$id]=$campaign; update_option('pcwork_marketing_campaigns',$history,false);
+                if ($when === 'now') { self::send_marketing_campaign($id); echo '<div class="notice notice-success"><p>Кампанията е обработена. Резултатът е записан в историята.</p></div>'; }
+                else {
+                    $timestamp = strtotime($when);
+                    if (!$timestamp || $timestamp < time()+60) { unset($history[$id]); update_option('pcwork_marketing_campaigns',$history,false); echo '<div class="notice notice-error"><p>Избери бъдеща дата и час (поне 1 минута напред).</p></div>'; }
+                    else { wp_schedule_single_event($timestamp,'pcwork_send_marketing_campaign',[$id]); echo '<div class="notice notice-success"><p>Кампанията е планирана за '.esc_html(wp_date('d.m.Y H:i',$timestamp)).'.</p></div>'; }
+                }
+            }
+        }
+        $history=get_option('pcwork_marketing_campaigns',[]); if(!is_array($history))$history=[];
+        $eligible=0; $users=get_users(['fields'=>['ID'],'number'=>-1,'meta_key'=>'pcwork_marketing_opt_in','meta_value'=>'1']);
+        foreach($users as $u){$devices=get_user_meta($u->ID,'pcwork_fcm_devices',true);if(is_array($devices))$eligible+=count($devices);}
+        echo '<div class="wrap"><h1>PCWork – Маркетинг и Push кампании</h1><p>Изпращай промоции до клиенти, които изрично са се съгласили да получават маркетингови известия.</p><div class="notice notice-info"><p><strong>Абонирани устройства:</strong> '.absint($eligible).' · <strong>Клиенти със съгласие:</strong> '.count($users).'</p></div>';
+        echo '<form method="post" style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:20px;max-width:760px">'; wp_nonce_field('pcw_marketing_campaign');
+        echo '<h2>Нова кампания</h2><p><label>Заглавие<br><input required maxlength="80" name="campaign_title" class="large-text"></label></p><p><label>Съобщение<br><textarea required maxlength="240" rows="4" name="campaign_body" class="large-text"></textarea></label></p><p><label>Линк при отваряне (по избор)<br><input type="url" name="campaign_url" class="large-text" placeholder="https://pcwork-bg.com/..."></label></p><p><label>Изображение HTTPS URL (по избор)<br><input type="url" name="campaign_image" class="large-text"></label></p><p><label>Получатели<br><select name="campaign_audience"><option value="all">Всички клиенти със съгласие</option><option value="customers">Клиенти (customer) със съгласие</option></select></label></p><p><label>Изпращане<br><select id="pcw-campaign-when" name="campaign_when"><option value="now">Веднага</option><option value="schedule">Планирай</option></select></label> <input id="pcw-campaign-date" type="datetime-local" name="campaign_when" style="display:none"></p><p><button class="button button-primary" name="pcw_campaign_submit" value="1">Изпрати / планирай кампания</button></p><p class="description">Клиентите без съгласие са изключени. Всяко устройство се изпраща само веднъж за кампанията. За планираните кампании WordPress Cron трябва да е активен.</p></form>';
+        echo '<h2 style="margin-top:28px">История на кампаниите</h2><table class="widefat striped" style="max-width:1100px"><thead><tr><th>Дата</th><th>Кампания</th><th>Статус</th><th>Изпратени</th><th>Грешки</th></tr></thead><tbody>';
+        foreach(array_reverse($history) as $c) echo '<tr><td>'.esc_html($c['created']??'').'</td><td><strong>'.esc_html($c['title']??'').'</strong><br>'.esc_html($c['body']??'').'</td><td>'.esc_html($c['status']??'').'</td><td>'.absint($c['sent']??0).'</td><td>'.absint($c['failed']??0).'</td></tr>';
+        if(!$history)echo '<tr><td colspan="5">Все още няма кампании.</td></tr>';
+        echo '</tbody></table><script>(function(){var s=document.getElementById("pcw-campaign-when"),d=document.getElementById("pcw-campaign-date");function sync(){d.style.display=s.value==="schedule"?"inline-block":"none";s.name=s.value==="schedule"?"campaign_mode":"campaign_when";d.name=s.value==="schedule"?"campaign_when":"campaign_date_unused";}s.addEventListener("change",sync);sync();})();</script></div>';
+    }
+
+    public static function send_marketing_campaign($id) {
+        $s=self::get_settings(); if (($s['push_enabled']??'0')!=='1' || empty($s['firebase_project_id']) || empty($s['firebase_service_account_json'])) return;
+        $history=get_option('pcwork_marketing_campaigns',[]); if(!isset($history[$id]) || ($history[$id]['status']??'')==='sent')return;
+        $c=$history[$id]; $sent=0;$failed=0;$seen=[];
+        $args=['fields'=>['ID'],'number'=>-1,'meta_key'=>'pcwork_marketing_opt_in','meta_value'=>'1'];
+        if(($c['audience']??'all')==='customers')$args['role']='customer';
+        $users=get_users($args);
+        foreach($users as $u){$devices=get_user_meta($u->ID,'pcwork_fcm_devices',true);if(!is_array($devices))continue;
+            foreach($devices as $token=>$meta){if(isset($seen[$token]))continue;$seen[$token]=true;
+                $data=['event'=>'marketing_campaign','campaign_id'=>$id];if(!empty($c['url']))$data['url']=$c['url'];if(!empty($c['image']))$data['image']=$c['image'];
+                $result=self::send_fcm_message($token,$c['title'],$c['body'],$data);
+                if(is_wp_error($result))$failed++;else $sent++;
+            }
+        }
+        $history[$id]['sent']=$sent;$history[$id]['failed']=$failed;$history[$id]['status']='sent';$history[$id]['sent_at']=current_time('mysql');update_option('pcwork_marketing_campaigns',$history,false);
     }
 
     public static function status() {

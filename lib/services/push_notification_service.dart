@@ -23,7 +23,7 @@ class PushNotificationService {
 
   Future<void> register(String bearerToken,
       {required void Function(String title, String body) onForeground,
-      required void Function() onOpened}) async {
+      required void Function(Map<String, dynamic> data) onOpened}) async {
     if (!DefaultFirebaseOptions.isConfigured) return;
     try {
       await initialize();
@@ -60,7 +60,7 @@ class PushNotificationService {
       await _openedSubscription?.cancel();
       _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((_) => onOpened());
       final initial = await messaging.getInitialMessage();
-      if (initial != null) onOpened();
+      if (initial != null) onOpened(initial.data);
     } catch (_) {
       // Missing Firebase/APNs configuration must not block login or app use.
     }

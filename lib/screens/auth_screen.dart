@@ -49,7 +49,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate()) return;
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -232,7 +233,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 children: [
                                   const Icon(Icons.error_outline, color: Color(0xFFFF8585), size: 20),
                                   const SizedBox(width: 9),
-                                  Expanded(child: Text(_error!, style: const TextStyle(color: Color(0xFFFFB0B0), fontSize: 12))),
+                                  Expanded(child: Text(_error ?? tr('Възникна неочаквана грешка.', 'An unexpected error occurred.'), style: const TextStyle(color: Color(0xFFFFB0B0), fontSize: 12))),
                                 ],
                               ),
                             ),

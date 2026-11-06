@@ -178,8 +178,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (!mounted) return;
       _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
       if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
-    }, onOpened: () {
-      if (mounted) _selectTab(1);
+    }, onOpened: (data) async {
+      if (!mounted) return;
+      final target = (data['url'] ?? '').toString().trim();
+      final uri = Uri.tryParse(target);
+      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _selectTab(1);
+      }
     });
   }
 
@@ -329,11 +336,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
     _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms')),
-    _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations')),
+    _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
   ]);
 
   Widget _quickCard(IconData icon, String label, VoidCallback onTap) => Card(child: InkWell(borderRadius: BorderRadius.circular(22), onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: cyan.withValues(alpha: .11), borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: cyan, size: 23)), const SizedBox(width: 10), Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))), const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Color(0xFF71849A))]))));
-  Widget _infoTile(IconData icon, String label) => Card(child: ListTile(leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: cyan.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: cyan, size: 20)), title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)), trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF71849A))));
+  Widget _infoTile(IconData icon, String label, [VoidCallback? onTap]) => Card(child: ListTile(onTap: onTap, leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: cyan.withValues(alpha: .10), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: cyan, size: 20)), title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)), trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF71849A))));
 
   Widget _repairs() {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
@@ -490,10 +497,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     showModalBottomSheet(context: context, isScrollControlled: true, builder: (ctx) => FutureBuilder<Repair>(future: api.getRepair(token, repair.id), builder: (context, snap) {
       if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
       if (snap.hasError) return SizedBox(height: 220, child: Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('${snap.error}'))));
-      final r = snap.data!;
-      final isStaff = signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role));
+      final r = snap.data;
+      if (r == null) return SizedBox(height: 220, child: Center(child: Text(tr('Няма данни за този ремонт.', 'No repair details were returned.'))));
+      final currentUser = signedInUser;
+      final roles = currentUser?.roles ?? const <String>[];
+      final isStaff = roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role));
       return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
-        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager'].contains(role))))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
+        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: roles.any((role) => ['administrator','pcwork_staff','shop_manager'].contains(role))))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
     }));
   }
 
@@ -511,7 +521,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Widget _booking() => ListView(padding: const EdgeInsets.all(20), children: [
     Text(tr('Записване на час за сервиз', 'Book a service appointment'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
-    Text(tr('Изберете един от двата адреса от страницата Контакти и след това отворете формата за резервации.', 'Choose one of the two addresses from the Contact page and then open the booking form.')),
+    Text(tr('Първо изберете сервизен обект. Ще видите всички 9 обекта от мрежата на PCWork. Обектите с предстоящо откриване са обозначени и не могат да бъдат избирани за посещение.', 'First choose a service location. All 9 PCWork locations are listed. Upcoming locations are marked and cannot yet be selected for visits.')),
     if (selectedLocation != null) ...[
       const SizedBox(height: 12),
       Card(child: ListTile(
@@ -526,8 +536,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       )),
     ],
     const SizedBox(height: 16), FilledButton.icon(onPressed: _showLocations, icon: const Icon(Icons.location_on_outlined), label: Text(tr('Избери сервизен обект', 'Choose a location'))),
-    const SizedBox(height: 10), OutlinedButton.icon(onPressed: _openBookly, icon: const Icon(Icons.open_in_browser), label: Text(tr('Отвори онлайн резервации', 'Open online booking'))),
-    const SizedBox(height: 12), Text(tr('Резервацията използва Bookly страницата на сайта. Директно записване в приложението ще бъде добавено след потвърждаване на наличния Bookly API модул.', 'Booking currently uses the website’s Bookly page. Native in-app booking will follow after confirming the installed Bookly API module.')),
+    const SizedBox(height: 10), FilledButton.icon(onPressed: selectedLocation == null ? null : _openBookly, icon: const Icon(Icons.open_in_browser), label: Text(tr('Продължи към резервация', 'Continue to booking'))),
+    if (selectedLocation == null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('Изборът на обект е задължителен, за да продължите.', 'Selecting a location is required to continue.'), style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))),
+    const SizedBox(height: 12), Text(tr('Резервацията се довършва в защитената Bookly форма на сайта.', 'The reservation is completed in the secure Bookly form on the website.')),
   ]);
 
   Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
@@ -907,6 +918,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                               ),
                               trailing: item.isUpcoming ? const Icon(Icons.schedule_outlined, color: Colors.orangeAccent) : Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? cyan : Colors.white54),
                             ),
+                            if (item.canSelect)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                                child: SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    setState(() => selectedLocation = item);
+                                    await _saveLocationPreference(item);
+                                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                    _message(tr('Избран обект: ${item.name}', 'Selected location: ${item.name}'));
+                                  },
+                                  icon: const Icon(Icons.check_circle_outline),
+                                  label: Text(tr('Избери този обект', 'Select this location')),
+                                )),
+                              ),
                             if (item.mapsUrl.isNotEmpty)
                               Align(
                                 alignment: Alignment.centerRight,

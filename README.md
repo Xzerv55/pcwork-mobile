@@ -1,9 +1,15 @@
-# PCWork Mobile v39
-Flutter Android/iOS app for PCWork service operations.
+# PCWork Mobile v41
 
-- App version: 0.39.0+39
-- WordPress integration plugin: 2.9.0 (`wordpress-plugin/pcwork-mobile-complete-system/`)
-- Android package / iOS bundle: `com.pcworkbg.pcwork_mobile`
-- Firebase Android config path: `android/app/google-services.json`
+- App version: 0.41.0+41
+- Unified WordPress plugin: 3.0.0 (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Android package / iOS bundle ID: `com.pcworkbg.pcwork_mobile`
+- Languages: Bulgarian and English
 
-See `PCWork_v39_INSTALL_BG.md` and `V39_CHANGELOG_BG.md`.
+## v41
+- Marketing & Push campaigns in WordPress administration.
+- Immediate and scheduled campaigns, optional destination URL and image URL.
+- Audience limited to customers with explicit marketing opt-in; optional customer-role targeting.
+- Campaign history with sent/failed device counts.
+- Existing Firebase Messaging device registration and repair-status notifications retained.
+
+See `PCWork_v41_INSTALL_BG.md` and `V40_CHANGELOG_BG.md`.

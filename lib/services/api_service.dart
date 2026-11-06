@@ -153,18 +153,37 @@ class ApiService {
       final dynamic rows = decoded is List ? decoded : (decoded is Map ? (decoded['data'] ?? decoded['locations'] ?? decoded['items']) : null);
       if (rows is! List) throw Exception('Сървърът върна неочакван формат за сервизните обекти.');
       final result = rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+      if (result.isEmpty) return _fallbackLocations();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_locationsCacheKey(), jsonEncode(result));
       return result.map(ServiceLocation.fromJson).toList();
     } catch (error) {
-      if (!_isNetworkError(error)) rethrow;
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_locationsCacheKey());
-      if (cached == null) rethrow;
-      final rows = jsonDecode(cached) as List;
-      return rows.whereType<Map>().map((row) => ServiceLocation.fromJson(Map<String, dynamic>.from(row))).toList();
+      // The service directory is public and has a built-in fallback so that
+      // customers can still view the agreed nine locations during API outages.
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getString(_locationsCacheKey());
+        if (cached != null && cached.isNotEmpty) {
+          final rows = jsonDecode(cached) as List;
+          final locations = rows.whereType<Map>().map((row) => ServiceLocation.fromJson(Map<String, dynamic>.from(row))).toList();
+          if (locations.isNotEmpty) return locations;
+        }
+      } catch (_) { /* Use the static directory below. */ }
+      return _fallbackLocations();
     }
   }
+
+  List<ServiceLocation> _fallbackLocations() => const [
+    ServiceLocation(name: 'София, Люлин - 5', code: 'sofia-lyulin', address: 'гр. София, Люлин - 5', description: 'PS4 и PS5', hours: 'Понеделник – Неделя · 09:00–21:00', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=София%20Люлин%205'),
+    ServiceLocation(name: 'София, Люлин - 2', code: 'sofia-lyulin-2', address: 'гр. София, Люлин - 2', description: 'Изграждане AI системи', hours: 'Понеделник – Неделя · 09:00–21:00', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=София%20Люлин%202'),
+    ServiceLocation(name: 'София, Симеоновско шосе', code: 'sofia-simeonovsko', address: 'гр. София, Симеоновско шосе', description: 'Изграждане AI системи', hours: 'Понеделник – Неделя · 09:00–21:00', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=София%20Симеоновско%20шосе'),
+    ServiceLocation(name: 'София, Индустриална 11', code: 'sofia-industrialna-11', address: 'гр. София, Индустриална 11', description: 'Изграждане AI системи', hours: 'Понеделник – Неделя · 09:00–21:00', mapsUrl: 'https://www.google.com/maps/search/?api=1&query=София%20Индустриална%2011'),
+    ServiceLocation(name: 'Варна, Център', code: 'varna-center', address: 'гр. Варна, Център', description: 'Предстоящо откриване', availability: 'upcoming', availabilityLabel: 'Предстоящо откриване', isUpcoming: true, canSelect: false),
+    ServiceLocation(name: 'Бургас, Център', code: 'burgas-center', address: 'гр. Бургас, Център', description: 'Предстоящо откриване', availability: 'upcoming', availabilityLabel: 'Предстоящо откриване', isUpcoming: true, canSelect: false),
+    ServiceLocation(name: 'Пловдив, Велико Търново', code: 'plovdiv-veliko-tarnovo', address: 'Пловдив, Велико Търново', description: 'Предстоящо откриване', availability: 'upcoming', availabilityLabel: 'Предстоящо откриване', isUpcoming: true, canSelect: false),
+    ServiceLocation(name: 'Пловдив, Център', code: 'plovdiv-center', address: 'гр. Пловдив, Център', description: 'Предстоящо откриване', availability: 'upcoming', availabilityLabel: 'Предстоящо откриване', isUpcoming: true, canSelect: false),
+    ServiceLocation(name: 'Шумен, Център', code: 'shumen-center', address: 'гр. Шумен, Център', description: 'Предстоящо откриване', availability: 'upcoming', availabilityLabel: 'Предстоящо откриване', isUpcoming: true, canSelect: false),
+  ];
 
 
   Future<List<Repair>> getRepairs(String token) async {

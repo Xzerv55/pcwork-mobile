@@ -263,7 +263,7 @@ final class PCWork_Mobile_Repairs_API {
 
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.8.0']); },'permission_callback'=>'__return_true']);
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'3.1.0']); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$auth]);

@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.9.0
+Stable tag: 3.1.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -38,3 +38,11 @@ License: GPLv2 or later
 
 = 2.9.0 =
 * Final integration release aligned with PCWork Mobile v39; preserves existing integration settings and repair API.
+
+= 3.0.0 =
+* Adds opt-in marketing push campaigns with scheduling, URL/image, targeting and campaign history.
+* Preserves existing integration settings and repair notifications.
+
+= 3.1.0 =
+* Align plugin package version with PCWork Mobile v41.
+* Keep the public service-location endpoint used by the nine-location mobile directory.
