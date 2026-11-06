@@ -44,5 +44,5 @@ jobs:
           --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
       - uses: actions/upload-artifact@v4
         with:
-          name: pcwork-ios-v38-app-unsigned
+          name: pcwork-ios-v39-app-unsigned
           path: build/ios/iphoneos/Runner.app
