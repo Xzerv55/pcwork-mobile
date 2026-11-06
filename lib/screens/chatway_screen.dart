@@ -6,16 +6,18 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../services/api_service.dart';
 
 class ChatwayScreen extends StatefulWidget {
-  const ChatwayScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey});
+  const ChatwayScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final int sessionKey;
+  final bool english;
 
   @override
   State<ChatwayScreen> createState() => _ChatwayScreenState();
 }
 
 class _ChatwayScreenState extends State<ChatwayScreen> {
+  String tr(String bg, String en) => widget.english ? en : bg;
   late Future<Uri?> _chatUrl;
   WebViewController? _controller;
   int _progress = 0;
@@ -61,7 +63,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
     _lastUrl = url;
     _navigationTimer?.cancel();
     _navigationTimer = Timer(const Duration(seconds: 28), () {
-      if (mounted && _progress < 100) setState(() => _webError = 'Връзката с чат страницата отне твърде дълго. Провери интернет връзката и опитай отново.');
+      if (mounted && _progress < 100) setState(() => _webError = tr('Връзката с чат страницата отне твърде дълго. Провери интернет връзката и опитай отново.', 'The chat page took too long to load. Check your internet connection and try again.'));
     });
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -75,6 +77,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
           _navigationTimer?.cancel();
           if (!mounted) return;
           setState(() => _progress = 100);
+          unawaited(_controller?.runJavaScript("document.documentElement.lang='${widget.english ? 'en' : 'bg'}'; document.documentElement.setAttribute('lang','${widget.english ? 'en' : 'bg'}');") ?? Future<void>.value());
           _widgetCheckTimer?.cancel();
           _widgetCheckTimer = Timer(const Duration(seconds: 13), () async {
             final activeController = _controller;
@@ -82,9 +85,9 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
             try {
               final result = await activeController.runJavaScriptReturningResult(r"typeof window.$chatway !== 'undefined'");
               final ready = result == true || result.toString().toLowerCase() == 'true';
-              if (!ready && mounted) setState(() => _webError = 'Страницата се отвори, но Chatway не зареди своя чат модул. Провери дали скриптът на Chatway не е блокиран от кеширане, защитна стена или оптимизатор на JavaScript.');
+              if (!ready && mounted) setState(() => _webError = tr('Страницата се отвори, но Chatway не зареди своя чат модул. Провери дали скриптът на Chatway не е блокиран от кеширане, защитна стена или оптимизатор на JavaScript.', 'The page opened, but Chatway did not load its chat module. Check whether caching, a firewall or a JavaScript optimizer is blocking it.'));
             } catch (_) {
-              if (mounted) setState(() => _webError = 'Не успяхме да проверим зареждането на Chatway. Опитай отново.');
+              if (mounted) setState(() => _webError = tr('Не успяхме да проверим зареждането на Chatway. Опитай отново.', 'Could not verify that Chatway loaded. Please try again.'));
             }
           });
         },
@@ -108,7 +111,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
           return NavigationDecision.prevent;
         },
       ))
-      ..loadRequest(url);
+      ..loadRequest(url, headers: {'Accept-Language': widget.english ? 'en-US,en;q=0.9' : 'bg-BG,bg;q=0.9'});
     setState(() => _controller = controller);
   }
 
@@ -130,18 +133,19 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
         if (snapshot.hasError) {
           return _messageState(
             icon: Icons.cloud_off_rounded,
-            title: 'Чатът не може да бъде зареден',
+            title: tr('Чатът не може да бъде зареден', 'The chat could not be loaded'),
             message: '${snapshot.error}',
-            action: 'Опитай отново',
+            action: tr('Опитай отново', 'Try again'),
           );
         }
         final url = snapshot.data;
         if (url == null) {
           return _messageState(
             icon: Icons.chat_bubble_outline_rounded,
-            title: 'Chatway още не е свързан',
-            message: 'В WordPress отвори PCWork Mobile → Интеграции → Chatway. Включи интеграцията и въведи Installation ID. За история на разговорите включи и Visitor Verification в Chatway и добави Security Key в настройките на PCWork. Запази настройките и опитай отново.',
-            action: 'Провери отново',
+            title: tr('Chatway още не е свързан', 'Chatway is not connected yet'),
+            message: tr('В WordPress отвори PCWork Mobile → Интеграции → Chatway. Включи интеграцията и въведи Installation ID. За история на разговорите включи и Visitor Verification в Chatway и добави Security Key в настройките на PCWork. Запази настройките и опитай отново.',
+              'In WordPress, open PCWork Mobile → Integrations → Chatway. Enable the integration and enter the Installation ID. To enable conversation history, turn on Visitor Verification in Chatway and add the Security Key in PCWork settings. Save and try again.'),
+            action: tr('Провери отново', 'Check again'),
           );
         }
         if (!_webViewStarted) {
@@ -153,9 +157,9 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
         if (_webError != null) {
           return _messageState(
             icon: Icons.wifi_off_rounded,
-            title: 'Проблем при зареждането на Chatway',
+            title: tr('Проблем при зареждането на Chatway', 'Problem loading Chatway'),
             message: _webError!,
-            action: 'Презареди',
+            action: tr('Презареди', 'Reload'),
           );
         }
         return Column(children: [
@@ -207,7 +211,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
               TextButton.icon(
                 onPressed: () => launchUrl(_lastUrl!, mode: LaunchMode.externalApplication),
                 icon: const Icon(Icons.open_in_browser_rounded),
-                label: const Text('Отвори чата в браузър'),
+                label: Text(tr('Отвори чата в браузър', 'Open chat in browser')),
               ),
             ],
           ]),

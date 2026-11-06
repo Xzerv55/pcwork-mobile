@@ -4,20 +4,22 @@ import 'chatway_screen.dart';
 import 'chaty_screen.dart';
 
 class ContactHubScreen extends StatelessWidget {
-  const ContactHubScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey});
+  const ContactHubScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final int sessionKey;
+  final bool english;
+  String tr(String bg, String en) => english ? en : bg;
 
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
-    const Text('Свържи се с PCWork', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+    Text(tr('Свържи се с PCWork', 'Contact PCWork'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
     const SizedBox(height: 6),
-    const Text('Избери удобен канал за връзка с нашия екип.', style: TextStyle(color: Colors.white70)),
+    Text(tr('Избери удобен канал за връзка с нашия екип.', 'Choose a convenient way to contact our team.'), style: const TextStyle(color: Colors.white70)),
     const SizedBox(height: 18),
-    _ContactCard(icon: Icons.forum_outlined, title: 'Chaty – бутони за контакт', subtitle: 'WhatsApp, Messenger, Viber, Telegram, телефон и другите активирани канали от сайта.', color: const Color(0xFF21D4D8), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text('Контактни бутони')) , body: ChatyScreen(api: api))))),
+    _ContactCard(icon: Icons.forum_outlined, title: 'Chaty – ${tr('бутони за контакт', 'contact buttons')}', subtitle: tr('WhatsApp, Messenger, Viber, Telegram, телефон и другите активирани канали от сайта.', 'WhatsApp, Messenger, Viber, Telegram, phone and other channels enabled on the website.'), color: const Color(0xFF21D4D8), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: Text(tr('Контактни бутони', 'Contact buttons'))), body: ChatyScreen(api: api, english: english))))),
     const SizedBox(height: 12),
-    _ContactCard(icon: Icons.support_agent, title: 'Chatway – онлайн поддръжка', subtitle: 'Разговор на живо с екипа на PCWork.', color: const Color(0xFF9B7BFF), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: const Text('Онлайн поддръжка')), body: ChatwayScreen(api: api, tokenProvider: tokenProvider, sessionKey: sessionKey))))),
+    _ContactCard(icon: Icons.support_agent, title: 'Chatway – ${tr('онлайн поддръжка', 'live support')}', subtitle: tr('Разговор на живо с екипа на PCWork.', 'Chat live with the PCWork team.'), color: const Color(0xFF9B7BFF), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(title: Text(tr('Онлайн поддръжка', 'Live support'))), body: ChatwayScreen(api: api, tokenProvider: tokenProvider, sessionKey: sessionKey, english: english))))),
   ]);
 }
 

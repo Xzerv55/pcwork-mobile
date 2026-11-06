@@ -28,7 +28,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   static const cyan = Color(0xFF21D4D8);
   static const defaultApi = 'https://pcwork-bg.com';
   final GlobalKey<ScaffoldMessengerState> _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   bool english = false;
+  bool isDarkTheme = true;
   bool staffPreview = false;
   int tab = 0;
   final Set<int> _visitedTabs = <int>{0};
@@ -79,6 +81,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     setState(() {
       apiUrl = prefs.getString('pcwork_api_url') ?? defaultApi;
       english = prefs.getBool('pcwork_english') ?? false;
+      isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty ? null : ServiceLocation(
@@ -206,7 +209,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       case 0: return _home();
       case 1: return _repairs();
       case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, english: english);
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
@@ -219,36 +222,42 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
+      navigatorKey: _navigatorKey,
       title: 'PCWork',
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'NotoSans',
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(seedColor: cyan, brightness: Brightness.dark).copyWith(
-          primary: cyan, secondary: const Color(0xFF9B7BFF), surface: const Color(0xFF151F2E),
+        brightness: isDarkTheme ? Brightness.dark : Brightness.light,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: cyan,
+          brightness: isDarkTheme ? Brightness.dark : Brightness.light,
+        ).copyWith(
+          primary: isDarkTheme ? cyan : const Color(0xFF087F83),
+          secondary: const Color(0xFF7952C7),
+          surface: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
         ),
-        scaffoldBackgroundColor: const Color(0xFF0A101A),
-        cardColor: const Color(0xFF151F2E),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0A101A), foregroundColor: Colors.white,
+        scaffoldBackgroundColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF3F6FA),
+        cardColor: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
+        appBarTheme: AppBarTheme(
+          backgroundColor: isDarkTheme ? const Color(0xFF0A101A) : Colors.white, foregroundColor: isDarkTheme ? Colors.white : const Color(0xFF172033),
           surfaceTintColor: Colors.transparent, elevation: 0, centerTitle: false,
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF151F2E), elevation: 0,
+          color: isDarkTheme ? const Color(0xFF151F2E) : Colors.white, elevation: 0,
           margin: const EdgeInsets.symmetric(vertical: 6),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: Color(0xFF26364A))),
         ),
         inputDecorationTheme: InputDecorationTheme(
-          filled: true, fillColor: const Color(0xFF111B29),
+          filled: true, fillColor: isDarkTheme ? const Color(0xFF111B29) : const Color(0xFFF7F9FC),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2A3A50))),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2A3A50))),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: cyan, width: 1.5)),
         ),
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: const Color(0xFF0E1724), indicatorColor: cyan.withValues(alpha: .16),
+          backgroundColor: isDarkTheme ? const Color(0xFF0E1724) : Colors.white, indicatorColor: cyan.withValues(alpha: .16),
           elevation: 0, labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
             fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
-            color: states.contains(WidgetState.selected) ? cyan : const Color(0xFF8796AA),
+            color: states.contains(WidgetState.selected) ? (isDarkTheme ? cyan : const Color(0xFF087F83)) : const Color(0xFF8796AA),
           )),
         ),
         filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
@@ -271,7 +280,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           ],
         ),
         body: DecoratedBox(
-          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])),
+          decoration: BoxDecoration(
+            gradient: isDarkTheme
+                ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
+                : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF7F9FC), Color(0xFFEEF2F7)]),
+          ),
           child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink())),
         ),
         bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: _selectTab, destinations: [
@@ -335,7 +348,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
-    _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms')),
+    _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms'), _showWarrantyTerms),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
   ]);
 
@@ -346,7 +359,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
-      const SizedBox(height: 16), FilledButton.icon(onPressed: () => _selectTab(5), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
+      const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
     ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
     return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
@@ -470,7 +483,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final token = await auth.token;
     if (token == null) {
       noteController.dispose();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Please sign in again.'))));
+      if (mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Please sign in again.'))));
       return;
     }
     try {
@@ -481,20 +494,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       setState(() => repairsFuture = _loadRepairsFuture());
       if (result.pendingSync) {
         _refreshPendingSyncCount(token);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Няма интернет. Промяната е запазена и чака синхронизация.', 'Offline. The change is saved and waiting to sync.'))));
+        _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Няма интернет. Промяната е запазена и чака синхронизация.', 'Offline. The change is saved and waiting to sync.'))));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Статусът на ремонта е обновен.', 'Repair status updated.'))));
+        _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Статусът на ремонта е обновен.', 'Repair status updated.'))));
       }
     } catch (e) {
       noteController.dispose();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешна промяна:', 'Update failed:')} $e')));
+      if (mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('${tr('Неуспешна промяна:', 'Update failed:')} $e')));
     }
   }
 
   void _showRepairDetails(Repair repair) async {
     final token = await auth.token;
     if (token == null || !mounted) return;
-    showModalBottomSheet(context: context, isScrollControlled: true, builder: (ctx) => FutureBuilder<Repair>(future: api.getRepair(token, repair.id), builder: (context, snap) {
+    showModalBottomSheet(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => FutureBuilder<Repair>(future: api.getRepair(token, repair.id), builder: (context, snap) {
       if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
       if (snap.hasError) return SizedBox(height: 220, child: Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('${snap.error}'))));
       final r = snap.data;
@@ -502,7 +515,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final currentUser = signedInUser;
       final roles = currentUser?.roles ?? const <String>[];
       final isStaff = roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role));
-      return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
+      return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
         OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: roles.any((role) => ['administrator','pcwork_staff','shop_manager'].contains(role))))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
     }));
   }
@@ -513,11 +526,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (status == 'cancelled') return Chip(avatar: const Icon(Icons.cancel_outlined), label: Text(_statusLabel(status)));
     return Column(children: steps.asMap().entries.map((entry) {
       final active = index >= entry.key;
-      return Row(children: [Icon(active ? Icons.check_circle : Icons.radio_button_unchecked, color: active ? cyan : Colors.white30, size: 19), const SizedBox(width: 10), Expanded(child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(_statusLabel(entry.value), style: TextStyle(color: active ? Colors.white : Colors.white54, fontWeight: entry.key == index ? FontWeight.bold : FontWeight.normal)))), if (entry.key == index) Chip(label: Text(tr('Текущ етап','Current')))]);
+      return Row(children: [Icon(active ? Icons.check_circle : Icons.radio_button_unchecked, color: active ? cyan : Colors.white30, size: 19), const SizedBox(width: 10), Expanded(child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Text(_statusLabel(entry.value), style: TextStyle(color: active ? (isDarkTheme ? Colors.white : Colors.black87) : (isDarkTheme ? Colors.white54 : Colors.black54), fontWeight: entry.key == index ? FontWeight.bold : FontWeight.normal)))), if (entry.key == index) Chip(label: Text(tr('Текущ етап','Current')))]);
     }).toList());
   }
 
-  Widget _detailRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 125, child: Text(label, style: const TextStyle(color: Colors.white60))), Expanded(child: Text(value.isEmpty ? '—' : value))]));
+  Widget _detailRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 125, child: Text(label, style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54))), Expanded(child: Text(value.isEmpty ? '—' : value))]));
 
   Widget _booking() => ListView(padding: const EdgeInsets.all(20), children: [
     Text(tr('Записване на час за сервиз', 'Book a service appointment'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
@@ -556,7 +569,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход с имейл', 'Sign in with email'))),
       OutlinedButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: true), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Създай профил', 'Create account'))),
       const SizedBox(height: 10),
-      Text(tr('Телефон/SMS входът ще бъде включен след избор и конфигуриране на SMS доставчик. Не въвеждайте SMS кодове в тази версия.', 'Phone/SMS sign-in will be enabled after selecting and configuring an SMS provider. Do not enter SMS codes in this version.'), style: const TextStyle(color: Colors.white60)),
+      Text(tr('Телефон/SMS входът ще бъде включен след избор и конфигуриране на SMS доставчик. Не въвеждайте SMS кодове в тази версия.', 'Phone/SMS sign-in will be enabled after selecting and configuring an SMS provider. Do not enter SMS codes in this version.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
     if (signedInUser != null && signedInUser!.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r))) ...[
       const SizedBox(height: 16),
@@ -564,7 +577,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(height: 8),
       FilledButton.icon(onPressed: _showIntakeForm, icon: const Icon(Icons.add_box_outlined), label: Text(tr('Приеми ново устройство', 'Register device intake'))),
       const SizedBox(height: 8),
-      Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+      Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 12)),
     ],
     const SizedBox(height: 18), OutlinedButton.icon(onPressed: _showSettings, icon: const Icon(Icons.settings), label: Text(tr('Настройки на приложението', 'App settings'))),
   ]);
@@ -572,7 +585,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _openStaffDashboard() async {
     final token = await auth.token;
     if (token == null || !mounted) { _message(tr('Влезте със служебен профил.','Sign in with a staff account.')); return; }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffDashboardScreen(api: api, token: token, english: english)));
+    _navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => StaffDashboardScreen(api: api, token: token, english: english)));
   }
 
   void _showIntakeForm() async {
@@ -594,11 +607,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final notes = TextEditingController();
     ServiceLocation? selected = options.isNotEmpty ? options.first : null;
     bool saving = false;
-    await showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+    await showModalBottomSheet<void>(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
       Widget field(TextEditingController c, String label, {int lines = 1, TextInputType? type}) => Padding(padding: const EdgeInsets.only(bottom: 11), child: TextField(controller: c, maxLines: lines, keyboardType: type, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
       return Padding(padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18), child: SizedBox(height: MediaQuery.of(ctx).size.height * .82, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Text(tr('Прием на устройство', 'Device intake'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
-        Text(tr('Създава се ремонт с уникален номер и начален статус „Приет“.', 'Creates a repair with a unique number and initial “Received” status.'), style: const TextStyle(color: Colors.white60)),
+        Text(tr('Създава се ремонт с уникален номер и начален статус „Приет“.', 'Creates a repair with a unique number and initial “Received” status.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
         const SizedBox(height: 12),
         Expanded(child: ListView(children: [
           DropdownButtonFormField<ServiceLocation>(initialValue: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект', 'Service location'), border: const OutlineInputBorder()), items: options.map((l) => DropdownMenuItem(value: l, child: Text(l.name))).toList(), onChanged: (v) => setSheet(() => selected = v)),
@@ -663,7 +676,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (authBusy || !mounted) return;
     setState(() => authBusy = true);
     try {
-      final user = await Navigator.of(context).push<AuthUser>(
+      final user = await _navigatorKey.currentState!.push<AuthUser>(
         MaterialPageRoute(
           fullscreenDialog: true,
           builder: (_) => AuthScreen(
@@ -722,7 +735,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                       const SizedBox(height: 3),
                       Text(
                         tr('Проследявай ремонтите и поръчките си.', 'Track your repairs and orders.'),
-                        style: const TextStyle(color: Colors.white60, fontSize: 12),
+                        style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54, fontSize: 12),
                       ),
                     ],
                   ),
@@ -822,10 +835,52 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } catch (e) { _message('$e'); }
   }
 
+  Future<void> _openWebsite(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) {
+      _message(tr('Невалиден адрес.', 'Invalid web address.'));
+      return;
+    }
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) _message(tr('Страницата не може да бъде отворена.', 'Could not open the page.'));
+    } catch (e) {
+      _message('$e');
+    }
+  }
+
+  void _showWarrantyTerms() {
+    showModalBottomSheet<void>(
+      context: _navigatorKey.currentState!.overlay!.context,
+      useSafeArea: true,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Гаранция и условия на сервиза', 'Warranty and service terms'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(tr('Прегледайте информацията за гаранцията, ремонта и условията за обслужване на официалния сайт.',
+              'Review warranty, repair and service information on the official website.')),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: () { Navigator.pop(sheetContext); _openWebsite('https://pcwork-bg.com/profesionalen-remont-na-kompyutri-i-laptopi/'); },
+            icon: const Icon(Icons.verified_user_outlined),
+            label: Text(tr('Гаранция и условия на ремонта', 'Repair warranty and terms')),
+          )),
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: () { Navigator.pop(sheetContext); _openWebsite('https://pcwork-bg.com/faq/'); },
+            icon: const Icon(Icons.help_outline),
+            label: Text(tr('Често задавани въпроси', 'Frequently asked questions')),
+          )),
+        ]),
+      ),
+    );
+  }
+
   void _showLocations() {
     final future = api.getLocations();
     showModalBottomSheet(
-      context: context,
+      context: _navigatorKey.currentState!.overlay!.context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) => SizedBox(
@@ -844,7 +899,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               ]),
               Text(tr('Показани са всички позиции от страницата Контакти. Обектите с предстоящо откриване са обозначени отделно.',
                   'All entries from the PCWork contact page are shown. Upcoming locations are marked separately.'),
-                  style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                  style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54, fontSize: 12)),
               const SizedBox(height: 12),
               Expanded(
                 child: FutureBuilder<List<ServiceLocation>>(
@@ -896,7 +951,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(item.imageCaption,
-                                      style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                                      style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 10)),
                                 ),
                               ),
                             ListTile(
@@ -916,7 +971,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                                   if (item.hours.isNotEmpty) item.hours,
                                 ].where((v) => v.isNotEmpty).join('\n')),
                               ),
-                              trailing: item.isUpcoming ? const Icon(Icons.schedule_outlined, color: Colors.orangeAccent) : Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? cyan : Colors.white54),
+                              trailing: item.isUpcoming ? const Icon(Icons.schedule_outlined, color: Colors.orangeAccent) : Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? cyan : (isDarkTheme ? Colors.white54 : Colors.black45)),
                             ),
                             if (item.canSelect)
                               Padding(
@@ -967,7 +1022,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   void _showSettings() {
     final controller = TextEditingController(text: apiUrl);
     showModalBottomSheet(
-      context: context,
+      context: _navigatorKey.currentState!.overlay!.context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) => Padding(
@@ -1006,6 +1061,17 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 onChanged: (v) {
                   setState(() => staffPreview = v);
                   _savePreference('pcwork_staff_preview', v);
+                },
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: Icon(isDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+                title: Text(tr('Тъмна тема', 'Dark theme')),
+                subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')),
+                value: isDarkTheme,
+                onChanged: (v) {
+                  setState(() => isDarkTheme = v);
+                  _savePreference('pcwork_dark_theme', v);
                 },
               ),
               SwitchListTile(
