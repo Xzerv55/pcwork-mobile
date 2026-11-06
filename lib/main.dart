@@ -336,7 +336,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: selected,
+                initialValue: selected,
                 decoration: InputDecoration(labelText: tr('Нов статус', 'New status')),
                 items: statuses.map((status) => DropdownMenuItem(
                   value: status,
@@ -377,7 +377,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
     try {
       await api.updateRepairStatus(token, repair.id, selected, note: noteController.text.trim());
       noteController.dispose();
-      if (!mounted) return;
+      if (!mounted || !sheetContext.mounted) return;
       Navigator.of(sheetContext).pop();
       setState(() => repairsFuture = _loadRepairsFuture());
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Статусът на ремонта е обновен.', 'Repair status updated.'))));

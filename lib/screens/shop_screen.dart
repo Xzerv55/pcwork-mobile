@@ -376,7 +376,7 @@ class _ShopScreenState extends State<ShopScreen> {
         builder: (_) => SafeArea(child: Padding(
           padding: const EdgeInsets.all(18),
           child: ListView(shrinkWrap: true, children: [
-            Text(tr('Поръчка', 'Order') + ' #${detail['number'] ?? id}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+            Text('${tr('Поръчка', 'Order')} #${detail['number'] ?? id}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text('${detail['date'] ?? ''} · ${detail['status'] ?? ''}'),
             const SizedBox(height: 8),
@@ -475,6 +475,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _checkout() async {
     final token = await widget.tokenProvider();
+    if (!mounted) return;
     if (token == null) {
       _message(tr('За поръчка е необходимо да влезете в профила си.', 'Please sign in to place an order.'));
       return;
