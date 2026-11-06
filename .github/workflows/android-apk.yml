@@ -77,6 +77,9 @@ jobs:
       - name: Remove generated placeholder test
         run: rm -f test/widget_test.dart
 
+      - name: Remove obsolete chat integration files
+        run: bash ./scripts/cleanup_legacy_chat.sh
+
       - name: Install Flutter dependencies
         run: flutter pub get
 
@@ -98,7 +101,7 @@ jobs:
 
       - name: Build release APK for device testing
         run: >-
-          flutter build apk --release
+          flutter build apk --release --split-per-abi
           --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
           --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
           --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
@@ -107,9 +110,9 @@ jobs:
       - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: pcwork-android-v49-apks
+          name: pcwork-android-v51-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
-            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
           retention-days: 14
