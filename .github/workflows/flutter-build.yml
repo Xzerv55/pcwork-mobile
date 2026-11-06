@@ -22,6 +22,10 @@ jobs:
         run: rm -f test/widget_test.dart
       - name: Get dependencies
         run: flutter pub get
+      - name: Generate PCWork launcher icons and native splash
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
       - name: Analyze Dart code
         run: flutter analyze
       - name: Build unsigned iOS app
@@ -40,5 +44,5 @@ jobs:
           --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
       - uses: actions/upload-artifact@v4
         with:
-          name: pcwork-ios-v26-app-unsigned
+          name: pcwork-ios-v30-app-unsigned
           path: build/ios/iphoneos/Runner.app
