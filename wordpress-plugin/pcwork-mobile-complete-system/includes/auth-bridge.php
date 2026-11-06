@@ -35,8 +35,18 @@ final class PCWork_Mobile_Auth_Bridge {
     }
 
     public static function authorize($request) {
-        $header=$request->get_header('authorization');
-        if (!$header || !preg_match('/Bearer\s+(.+)/i',$header,$m)) return new WP_Error('pcwork_auth_required','Моля, влезте в профила си.',['status'=>401]);
+        $header = $request->get_header('authorization');
+        if (!$header && !empty($_SERVER['HTTP_AUTHORIZATION'])) $header = wp_unslash($_SERVER['HTTP_AUTHORIZATION']);
+        if (!$header && !empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $header = wp_unslash($_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+        if (!$header && function_exists('getallheaders')) {
+            $headers = getallheaders();
+            if (is_array($headers)) {
+                foreach ($headers as $key => $value) {
+                    if (strtolower((string)$key) === 'authorization') { $header = $value; break; }
+                }
+            }
+        }
+        if (!$header || !preg_match('/Bearer\s+(.+)/i', $header, $m)) return new WP_Error('pcwork_auth_required','Моля, влезте в профила си.',['status'=>401]);
         $user_id=self::decode(trim($m[1]));
         if (!$user_id || !get_user_by('id',$user_id)) return new WP_Error('pcwork_token_invalid','Сесията е невалидна или изтекла.',['status'=>401]);
         wp_set_current_user($user_id);
@@ -77,10 +87,20 @@ final class PCWork_Mobile_Auth_Bridge {
      * while also supporting sites where email authentication is disabled.
      */
     private static function authenticate_identifier($identifier, $password) {
-        // Resolve first, so a wrong password is counted as only one failed
-        // authentication attempt by WordPress/security plugins.
+        // WordPress normally authenticates by user_login. Resolve email first,
+        // including mixed-case email addresses, while retaining wp_authenticate
+        // so site security/2FA authentication filters remain in effect.
         if (is_email($identifier)) {
-            $by_email = get_user_by('email', sanitize_email($identifier));
+            $email = strtolower(trim(sanitize_email($identifier)));
+            $by_email = get_user_by('email', $email);
+            if (!$by_email instanceof WP_User) {
+                global $wpdb;
+                $user_id = (int)$wpdb->get_var($wpdb->prepare(
+                    'SELECT ID FROM ' . $wpdb->users . ' WHERE LOWER(user_email) = %s LIMIT 1',
+                    $email
+                ));
+                if ($user_id > 0) $by_email = get_user_by('id', $user_id);
+            }
             if ($by_email instanceof WP_User) $identifier = $by_email->user_login;
         }
         return wp_authenticate($identifier, $password);
@@ -93,7 +113,12 @@ final class PCWork_Mobile_Auth_Bridge {
     }
 
     public static function login($request) {
-        $identifier = sanitize_text_field((string)($request->get_param('login') ?: $request->get_param('email')));
+        $identifier = sanitize_text_field((string)(
+            $request->get_param('login')
+            ?: $request->get_param('identifier')
+            ?: $request->get_param('email')
+            ?: $request->get_param('user_login')
+        ));
         $password = (string)$request->get_param('password');
         if ($identifier === '' || $password === '') return new WP_Error('pcwork_missing_credentials','Въведете имейл/потребителско име и парола.',['status'=>400]);
         $limit = self::rate_limit($identifier);
@@ -116,7 +141,15 @@ final class PCWork_Mobile_Auth_Bridge {
         $limit = self::rate_limit($email);
         if (is_wp_error($limit)) return $limit;
         if (email_exists($email)) { self::record_failed_attempt($email); return new WP_Error('pcwork_email_exists','Този имейл вече има регистрация.',['status'=>409]); }
-        $user_id=wp_insert_user(['user_login'=>$email,'user_email'=>$email,'user_pass'=>$password,'display_name'=>$name,'role'=>'subscriber']);
+        $base_login = sanitize_user(str_replace('@', '_', $email), true);
+        if ($base_login === '') $base_login = 'pcwork_user';
+        $login = $base_login;
+        $suffix = 1;
+        while (username_exists($login)) {
+            $login = $base_login . '_' . $suffix;
+            $suffix++;
+        }
+        $user_id=wp_insert_user(['user_login'=>$login,'user_email'=>$email,'user_pass'=>$password,'display_name'=>$name,'role'=>'subscriber']);
         if (is_wp_error($user_id)) { self::record_failed_attempt($email); return $user_id; }
         self::clear_failed_attempts($email);
         return self::response($user_id);

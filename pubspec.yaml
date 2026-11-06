@@ -1,7 +1,7 @@
 name: pcwork_mobile
 description: PCWork cross-platform mobile application for Android and iOS.
 publish_to: none
-version: 0.35.0+35
+version: 0.37.0+37
 environment:
   sdk: '>=3.3.0 <4.0.0'
 dependencies:
@@ -9,6 +9,7 @@ dependencies:
     sdk: flutter
   http: ^1.2.2
   shared_preferences: ^2.3.2
+  crypto: ^3.0.6
   flutter_secure_storage: ^9.2.2
   url_launcher: ^6.3.1
   signature: ^5.5.0
@@ -20,7 +21,6 @@ dependencies:
   firebase_core: ^3.8.1
   firebase_messaging: ^15.1.5
   webview_flutter: ^4.10.0
-  cupertino_icons: ^1.0.8
 dev_dependencies:
   flutter_test:
     sdk: flutter

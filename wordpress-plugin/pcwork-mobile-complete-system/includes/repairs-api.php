@@ -17,6 +17,7 @@ final class PCWork_Mobile_Repairs_API {
         dbDelta("CREATE TABLE $repairs (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             repair_number varchar(64) NOT NULL,
+            client_request_id varchar(64) NULL DEFAULT NULL,
             customer_user_id bigint(20) unsigned NOT NULL,
             customer_name varchar(190) NOT NULL DEFAULT '',
             customer_email varchar(190) NOT NULL DEFAULT '',
@@ -39,6 +40,7 @@ final class PCWork_Mobile_Repairs_API {
             updated_at datetime NOT NULL,
             PRIMARY KEY  (id),
             UNIQUE KEY repair_number (repair_number),
+            UNIQUE KEY client_request_id (client_request_id),
             KEY customer_user_id (customer_user_id),
             KEY location_code (location_code),
             KEY status (status)
@@ -48,9 +50,11 @@ final class PCWork_Mobile_Repairs_API {
             repair_id bigint(20) unsigned NOT NULL,
             status varchar(40) NOT NULL DEFAULT '',
             note text NULL,
+            client_request_id varchar(64) NULL DEFAULT NULL,
             created_at datetime NOT NULL,
             PRIMARY KEY  (id),
-            KEY repair_id (repair_id)
+            KEY repair_id (repair_id),
+            UNIQUE KEY client_request_id (client_request_id)
         ) $charset;");
         $locations = self::locations_table();
         dbDelta("CREATE TABLE $locations (
@@ -64,9 +68,11 @@ final class PCWork_Mobile_Repairs_API {
             UNIQUE KEY code (code)
         ) $charset;");
         $seed_locations = [
-            ['sofia-lyulin','София – Люлин'], ['sofia-industrialna-11','София – Индустриална 11'],
-            ['sofia-simeonovsko','София – Симеоновско шосе'], ['varna','Варна'], ['plovdiv','Пловдив'],
-            ['burgas','Бургас'], ['veliko-tarnovo','Велико Търново'], ['shumen','Шумен']
+            ['sofia-lyulin','София – Люлин'], ['sofia-lyulin-2','София, Люлин - 2'],
+            ['sofia-industrialna-11','София – Индустриална 11'], ['sofia-simeonovsko','София – Симеоновско шосе'],
+            ['varna','Варна'], ['varna-center','Варна, Център'], ['plovdiv','Пловдив'], ['plovdiv-center','Пловдив, Център'],
+            ['plovdiv-veliko-tarnovo','Пловдив, Велико Търново'], ['burgas','Бургас'], ['burgas-center','Бургас, Център'],
+            ['veliko-tarnovo','Велико Търново'], ['shumen','Шумен'], ['shumen-center','Шумен, Център']
         ];
         foreach ($seed_locations as $loc) {
             $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $locations WHERE code=%s", $loc[0]));
@@ -114,17 +120,17 @@ final class PCWork_Mobile_Repairs_API {
             KEY repair_id (repair_id),
             KEY kind (kind)
         ) $charset;");
-        update_option('pcwork_repairs_api_db_version', '1.7.0', false);
+        update_option('pcwork_repairs_api_db_version', '1.8.0', false);
     }
 
     public static function maybe_upgrade() {
-        if (get_option('pcwork_repairs_api_db_version') !== '1.7.0') self::activate();
+        if (get_option('pcwork_repairs_api_db_version') !== '1.8.0') self::activate();
     }
 
     public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); }
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.5.0']); },'permission_callback'=>'__return_true']);
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'2.7.0']); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$auth]);
@@ -146,9 +152,43 @@ final class PCWork_Mobile_Repairs_API {
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/documents/(?P<document_id>\d+)/download', ['methods'=>'GET','callback'=>[__CLASS__,'download_document'],'permission_callback'=>$auth]);
     }
     public static function list_locations($request) {
-        global $wpdb;
-        $rows=$wpdb->get_results('SELECT code,name,address,phone FROM '.self::locations_table().' WHERE active=1 ORDER BY name ASC', ARRAY_A);
-        return rest_ensure_response(['data'=>$rows ?: []]);
+        // Mirrors every card currently published on pcwork-bg.com/kontakti/.
+        // Only the first four cards are not marked as upcoming on the source page.
+        $hours = 'Понеделник – Неделя · 09:00–21:00';
+        $website = home_url('/kontakti/');
+        $entries = [
+            ['sofia-lyulin', 'София, Люлин - 5', 'PS4 и PS5', false, 'гр. София, Люлин - 5', 'Lulin.webp'],
+            ['sofia-lyulin-2', 'София, Люлин - 2', 'Изграждане AI системи', false, 'гр. София, Люлин - 2', 'Lulin.webp'],
+            ['sofia-simeonovsko', 'София, Симеоновско шосе', 'Изграждане AI системи', false, 'гр. София, Симеоновско шосе', 'Simeonovsko.webp'],
+            ['sofia-industrialna-11', 'София, Индустриална 11', 'Изграждане AI системи', false, 'гр. София, Индустриална 11', 'Sofia11.webp'],
+            ['varna-center', 'Варна, Център', 'Предстоящо откриване', true, 'гр. Варна, Център', 'Varna.webp'],
+            ['burgas-center', 'Бургас, Център', 'Предстоящо откриване', true, 'гр. Бургас, Център', 'Burgas.webp'],
+            ['plovdiv-veliko-tarnovo', 'Пловдив, Велико Търново', 'Предстоящо откриване', true, 'Пловдив, Велико Търново', 'VelikoTurnovo.webp'],
+            ['plovdiv-center', 'Пловдив, Център', 'Предстоящо откриване', true, 'гр. Пловдив, Център', 'Plovdiv.webp'],
+            ['shumen-center', 'Шумен, Център', 'Предстоящо откриване', true, 'гр. Шумен, Център', 'Shumen.webp'],
+        ];
+        $rows = [];
+        foreach ($entries as $entry) {
+            [$code, $name, $description, $upcoming, $map_query, $image] = $entry;
+            $image_url = $image ? 'https://pcwork-bg.com/wp-content/uploads/2026/11/' . $image : '';
+            $rows[] = [
+                'code' => $code,
+                'name' => $name,
+                'address' => $map_query,
+                'phone' => '',
+                'description' => $description,
+                'availability' => $upcoming ? 'upcoming' : 'listed',
+                'availability_label' => $description,
+                'is_upcoming' => $upcoming,
+                'can_select' => !$upcoming,
+                'hours' => $hours,
+                'image_url' => $image_url,
+                'image_caption' => $image_url ? 'Визуализация от страницата Контакти, не е снимка на фасадата.' : '',
+                'maps_url' => 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($map_query),
+                'website_url' => $website,
+            ];
+        }
+        return rest_ensure_response(['data' => $rows]);
     }
     public static function authorize($request) {
         if (!class_exists('PCWork_Mobile_Auth_Bridge')) return new WP_Error('pcwork_auth_bridge_missing','Модулът за вход PCWork Mobile Auth Bridge не е активен.',['status'=>503]);
@@ -201,6 +241,14 @@ final class PCWork_Mobile_Repairs_API {
         $staff_id = get_current_user_id();
         if (!self::is_staff($staff_id)) return new WP_Error('pcwork_staff_required','Само оторизиран служител може да регистрира прием.',['status'=>403]);
         $p = $request->get_json_params(); if (!is_array($p)) $p = [];
+        $client_request_id = sanitize_text_field($p['client_request_id'] ?? '');
+        if ($client_request_id !== '') {
+            $existing = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE client_request_id=%s', $client_request_id));
+            if ($existing) {
+                if (!self::can_access($existing, $staff_id)) return new WP_Error('pcwork_repair_forbidden','Нямате права за този ремонт.',['status'=>403]);
+                return new WP_REST_Response(['data'=>self::present($existing, true),'message'=>'Заявката вече е обработена.'], 200);
+            }
+        }
         $email = sanitize_email($p['customer_email'] ?? '');
         $customer = $email ? get_user_by('email', $email) : false;
         if (!$customer) return new WP_Error('pcwork_customer_not_found','Не е намерен клиент с този имейл. Първо създайте клиентски профил.',['status'=>400]);
@@ -215,7 +263,7 @@ final class PCWork_Mobile_Repairs_API {
         $location_name = sanitize_text_field($p['location_name'] ?? $location_code);
         $now = current_time('mysql'); $number = 'PCW-' . wp_date('ymd') . '-' . strtoupper(wp_generate_password(6, false, false));
         $ok = $wpdb->insert(self::repairs_table(), [
-            'repair_number'=>$number, 'customer_user_id'=>(int)$customer->ID,
+            'repair_number'=>$number, 'client_request_id'=>$client_request_id !== '' ? $client_request_id : null, 'customer_user_id'=>(int)$customer->ID,
             'customer_name'=>sanitize_text_field($p['customer_name'] ?? $customer->display_name),
             'customer_email'=>$email, 'customer_phone'=>sanitize_text_field($p['customer_phone'] ?? ''),
             'location_code'=>$location_code, 'location_name'=>$location_name,
@@ -226,7 +274,16 @@ final class PCWork_Mobile_Repairs_API {
             'accessories'=>sanitize_textarea_field($p['accessories'] ?? ''), 'intake_notes'=>sanitize_textarea_field($p['intake_notes'] ?? ''),
             'status'=>'received', 'created_by'=>$staff_id, 'created_at'=>$now, 'updated_at'=>$now,
         ]);
-        if (!$ok) return new WP_Error('pcwork_repair_insert_failed','Ремонтът не беше записан. Опитайте отново.',['status'=>500]);
+        if (!$ok) {
+            if ($client_request_id !== '') {
+                $existing = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE client_request_id=%s', $client_request_id));
+                if ($existing) {
+                    if (!self::can_access($existing, $staff_id)) return new WP_Error('pcwork_repair_forbidden','Нямате права за този ремонт.',['status'=>403]);
+                    return new WP_REST_Response(['data'=>self::present($existing, true),'message'=>'Заявката вече е обработена.'], 200);
+                }
+            }
+            return new WP_Error('pcwork_repair_insert_failed','Ремонтът не беше записан. Опитайте отново.',['status'=>500]);
+        }
         $id = (int)$wpdb->insert_id;
         $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>'received','note'=>'Устройството е прието в сервиза.','created_at'=>$now]);
         do_action('pcwork_repair_status_changed', $id, (int)$customer->ID, 'received', $number);
@@ -409,6 +466,15 @@ final class PCWork_Mobile_Repairs_API {
         if (!$row) return new WP_Error('pcwork_repair_not_found','Ремонтът не е намерен.',['status'=>404]);
         if (!self::can_access($row, $user_id) || (int)$row->customer_user_id === $user_id) return new WP_Error('pcwork_repair_forbidden','Нямате права за промяна на този ремонт.',['status'=>403]);
         $payload = $request->get_json_params(); if (!is_array($payload)) $payload = [];
+        $client_request_id = sanitize_text_field($payload['client_request_id'] ?? '');
+        if ($client_request_id !== '') {
+            $already = $wpdb->get_var($wpdb->prepare('SELECT repair_id FROM ' . self::history_table() . ' WHERE client_request_id=%s LIMIT 1', $client_request_id));
+            if ($already && (int)$already !== $id) return new WP_Error('pcwork_request_id_conflict','Идентификаторът на заявката вече е използван.',['status'=>409]);
+            if ($already) {
+                $fresh = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
+                return new WP_REST_Response(['data'=>self::present($fresh, true),'message'=>'Заявката вече е обработена.'], 200);
+            }
+        }
         $allowed = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
         $status = sanitize_key($payload['status'] ?? '');
         if (!in_array($status, $allowed, true)) return new WP_Error('pcwork_invalid_status','Невалиден статус на ремонта.',['status'=>400]);
@@ -416,7 +482,13 @@ final class PCWork_Mobile_Repairs_API {
         $now = current_time('mysql');
         $updated = $wpdb->update(self::repairs_table(), ['status'=>$status,'updated_at'=>$now], ['id'=>$id], ['%s','%s'], ['%d']);
         if ($updated === false) return new WP_Error('pcwork_status_update_failed','Статусът не беше записан.',['status'=>500]);
-        $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>$status,'note'=>$note,'created_at'=>$now], ['%d','%s','%s','%s']);
+        $history_data = ['repair_id'=>$id,'status'=>$status,'note'=>$note,'created_at'=>$now];
+        if ($client_request_id !== '') $history_data['client_request_id'] = $client_request_id;
+        $history_inserted = $wpdb->insert(self::history_table(), $history_data);
+        if ($client_request_id !== '' && $history_inserted === false) {
+            $fresh = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
+            return new WP_REST_Response(['data'=>self::present($fresh, true),'message'=>'Заявката вече е обработена.'], 200);
+        }
         do_action('pcwork_repair_status_changed', $id, (int)$row->customer_user_id, $status, (string)$row->repair_number);
         $fresh = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::repairs_table() . ' WHERE id=%d', $id));
         return new WP_REST_Response(['data'=>self::present($fresh, true)], 200);

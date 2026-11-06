@@ -59,7 +59,7 @@ class _AuthScreenState extends State<AuthScreen> {
       final user = _register
           ? await service.register(
               _name.text,
-              _identifier.text,
+              _identifier.text.trim(),
               _password.text,
             )
           : await service.login(_identifier.text, _password.text);
@@ -129,7 +129,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 borderRadius: BorderRadius.circular(26),
                                 border: Border.all(color: cyan.withValues(alpha: .35)),
                               ),
-                              child: Image.asset('assets/images/LogoPCwork.png', fit: BoxFit.contain),
+                              child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain),
                             ),
                           ),
                           const SizedBox(height: 18),

@@ -41,6 +41,7 @@ class AuthService {
   final String baseUrl;
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static const String _tokenKey = 'pcwork_access_token';
+  static const String _cachedUserKey = 'pcwork_cached_user_profile';
 
   Uri _uri(String path) {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
@@ -55,12 +56,16 @@ class AuthService {
 
   Future<String?> get token => _storage.read(key: _tokenKey);
 
-  Future<void> logout() => _storage.delete(key: _tokenKey);
+  Future<void> logout() async {
+    await _storage.delete(key: _tokenKey);
+    await _storage.delete(key: _cachedUserKey);
+  }
 
   Future<AuthUser> login(String identifier, String password) => _send(
         'auth/login',
         {
           'login': identifier.trim(),
+          'identifier': identifier.trim(),
           // Kept for compatibility with older PCWork plugin versions.
           'email': identifier.trim(),
           'password': password,
@@ -121,6 +126,7 @@ class AuthService {
             headers: const {
               'Content-Type': 'application/json; charset=utf-8',
               'Accept': 'application/json',
+              'Cache-Control': 'no-cache',
             },
             body: jsonEncode(body),
           )
@@ -147,6 +153,7 @@ class AuthService {
 
     final user = AuthUser.fromJson(Map<String, dynamic>.from(userData));
     await _storage.write(key: _tokenKey, value: accessToken);
+    await _storage.write(key: _cachedUserKey, value: jsonEncode(userData));
     return user;
   }
 
@@ -156,22 +163,34 @@ class AuthService {
       throw const FormatException('Няма активна сесия. Влез отново.');
     }
 
-    final response = await http
-        .get(
-          _uri('auth/me'),
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-            'Accept': 'application/json',
-          },
-        )
-        .timeout(const Duration(seconds: 20));
-    final decoded = _decode(response);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        await logout();
+    try {
+      final response = await http.get(
+        _uri('auth/me'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 20));
+      final decoded = _decode(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await logout();
+        }
+        throw Exception(_message(decoded, response.statusCode));
       }
-      throw Exception(_message(decoded, response.statusCode));
+      final user = AuthUser.fromJson(_payload(decoded));
+      await _storage.write(key: _cachedUserKey, value: jsonEncode(_payload(decoded)));
+      return user;
+    } on Exception catch (error) {
+      final message = error.toString();
+      final networkFailure = message.contains('SocketException') ||
+          message.contains('TimeoutException') || message.contains('Failed host lookup') ||
+          message.contains('ClientException') || message.contains('HandshakeException') ||
+          message.contains('Connection reset') || message.contains('Network is unreachable');
+      if (!networkFailure) rethrow;
+      final cached = await _storage.read(key: _cachedUserKey);
+      if (cached == null || cached.isEmpty) rethrow;
+      return AuthUser.fromJson(Map<String, dynamic>.from(jsonDecode(cached) as Map));
     }
-    return AuthUser.fromJson(_payload(decoded));
   }
 }

@@ -530,7 +530,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final ok = await showDialog<bool>(context: context, builder: (ctx)=>AlertDialog(title: Text('${tr('Ремонт','Repair')} ${r.number}'), content: Column(mainAxisSize:MainAxisSize.min, children: [DropdownButtonFormField<String>(initialValue: selected, items: statuses.map((s)=>DropdownMenuItem(value:s, child:Text(label(s)))).toList(), onChanged:(v){ if(v!=null) selected=v; }), const SizedBox(height:12), TextField(controller:note, maxLines:3, decoration:InputDecoration(labelText:tr('Бележка към историята (по избор)','History note (optional)')))]), actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false), child:Text(tr('Отказ','Cancel'))), FilledButton(onPressed:()=>Navigator.pop(ctx,true), child:Text(tr('Запази','Save')))]));
     if (ok != true) { note.dispose(); return; }
     setState(()=>busy=true);
-    try { await widget.api.updateRepairStatus(widget.token, r.id, selected, note: note.text.trim()); if(mounted) { reload(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(tr('Статусът е обновен.','Status updated.')))); } }
+    try { final result = await widget.api.updateRepairStatus(widget.token, r.id, selected, note: note.text.trim()); if(mounted) { reload(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text(result.pendingSync ? tr('Промяната е запазена и чака синхронизация.','Change saved and waiting to sync.') : tr('Статусът е обновен.','Status updated.')))); } }
     catch(e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e'))); }
     finally { note.dispose(); if(mounted) setState(()=>busy=false); }
   }
