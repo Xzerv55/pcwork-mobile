@@ -212,6 +212,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     });
   }
 
+  // Lift the existing navigation glyphs slightly to remove excess top padding.
+  // Icon size remains the Material default; only vertical positioning changes.
+  Widget _navIcon(IconData icon) => Transform.translate(
+        offset: const Offset(0, -4),
+        child: Icon(icon),
+      );
+
   Widget _tabContent(int index) {
     switch (index) {
       case 0: return _home();
@@ -247,12 +254,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             selectedIndex: tab,
             onDestinationSelected: _selectTab,
             destinations: [
-              NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
-              NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
-              NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront_rounded), label: labels[2]),
-              NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[3]),
-              NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[4]),
-              NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[5]),
+              NavigationDestination(icon: _navIcon(Icons.grid_view_rounded), selectedIcon: _navIcon(Icons.grid_view_rounded), label: labels[0]),
+              NavigationDestination(icon: _navIcon(Icons.handyman_outlined), selectedIcon: _navIcon(Icons.handyman_rounded), label: labels[1]),
+              NavigationDestination(icon: _navIcon(Icons.storefront_outlined), selectedIcon: _navIcon(Icons.storefront_rounded), label: labels[2]),
+              NavigationDestination(icon: _navIcon(Icons.forum_outlined), selectedIcon: _navIcon(Icons.forum_rounded), label: labels[3]),
+              NavigationDestination(icon: _navIcon(Icons.calendar_month_outlined), selectedIcon: _navIcon(Icons.calendar_month_rounded), label: labels[4]),
+              NavigationDestination(icon: _navIcon(Icons.person_outline_rounded), selectedIcon: _navIcon(Icons.person_rounded), label: labels[5]),
             ],
           ),
           ),
@@ -364,14 +371,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 8),
     Row(children: [
-      Expanded(child: _contactCard(Icons.call_rounded, tr('Обади се', 'Call us'), '', const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
+      Expanded(child: _contactCard(Icons.call_rounded, tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
       const SizedBox(width: 10),
       Expanded(child: _contactCard(Icons.chat_rounded, 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
     ]),
     Row(children: [
       Expanded(child: _contactCard(Icons.facebook, 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(Icons.music_note_rounded, 'TikTok', '', const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      Expanded(child: _contactCard(Icons.music_note_rounded, 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     const SizedBox(height: 21),
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -400,7 +407,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
-  Widget _contactCard(IconData icon, String title, String subtitle, Color accent, VoidCallback onTap) =>
+  Widget _contactCard(IconData icon, String title, String? subtitle, Color accent, VoidCallback onTap) =>
       Card(child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
@@ -411,7 +418,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             const SizedBox(width: 9),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-              if (subtitle.isNotEmpty) ...[
+              if (subtitle != null && subtitle.isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8))),
               ],

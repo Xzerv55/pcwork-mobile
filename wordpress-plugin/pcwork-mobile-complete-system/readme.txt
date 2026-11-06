@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 3.6.0
+Stable tag: 3.6.1
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -46,4 +46,8 @@ License: GPLv2 or later
 = 3.6.0 =
 * Remove obsolete third-party chat widget integration code and related endpoints.
 * Keep direct contact channels in the mobile app and retain the supported live-chat module.
-* Clean up plugin release notes and align the package version with mobile app v51.
+* Clean up plugin release notes and align the package version with the mobile app release at that time.
+
+= 3.6.1 =
+* Improve Firebase service-account PEM parsing and RSA-SHA256 JWT signing diagnostics.
+* Normalize escaped PEM line breaks and clear cached OAuth tokens after integration settings are saved.

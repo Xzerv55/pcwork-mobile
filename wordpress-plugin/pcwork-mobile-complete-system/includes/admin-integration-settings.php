@@ -95,6 +95,7 @@ final class PCWork_Admin_Integration_Settings {
     }
 
     public static function sanitize($input) {
+        delete_transient('pcwork_fcm_access_token');
         $old = self::get_settings();
         $out = self::defaults();
         $checkboxes = ['woocommerce_enabled','bookly_enabled','chatway_enabled','chatway_verification_enabled','shoplentor_enabled','sheets_enabled','push_enabled'];
@@ -112,8 +113,6 @@ final class PCWork_Admin_Integration_Settings {
         }
         // Only the Google Sheets HMAC secret is encrypted at rest.
         $out['sheets_webhook_secret'] = self::encrypt_sheets_secret($out['sheets_webhook_secret']);
-        // A saved Firebase project or service-account change must not reuse an old OAuth token.
-        delete_transient('pcwork_fcm_access_token');
         $identifier = $input['chatway_verification_identifier'] ?? ($old['chatway_verification_identifier'] ?? 'id');
         $out['chatway_verification_identifier'] = in_array($identifier, ['id','email'], true) ? $identifier : 'id';
         $provider = $input['push_provider'] ?? ($old['push_provider'] ?? 'firebase');
@@ -373,44 +372,27 @@ final class PCWork_Admin_Integration_Settings {
         if(!is_array($account) || empty($account['client_email']) || empty($account['private_key']) || empty($account['token_uri'])) return new WP_Error('pcwork_firebase_config','Service Account JSON е невалиден или липсват client_email/private_key/token_uri.');
         if(!empty($account['project_id']) && !hash_equals((string)$settings['firebase_project_id'], (string)$account['project_id'])) return new WP_Error('pcwork_firebase_project','Project ID не съвпада с project_id в Service Account JSON.');
         if (!function_exists('openssl_pkey_get_private') || !function_exists('openssl_sign')) {
-            return new WP_Error('pcwork_firebase_openssl', 'PHP OpenSSL разширението не е активно на хостинга.');
+            return new WP_Error('pcwork_firebase_openssl', 'PHP OpenSSL не е активен на хостинга. Активирай OpenSSL extension и опитай отново.');
         }
-        // JSON normally decodes escaped newlines, but some admin forms/store layers
-        // preserve them as literal backslash-n sequences. Normalize both forms.
-        $private_key = (string) $account['private_key'];
-        $private_key = str_replace(["\\r\\n", "\\n", "\\r"], ["\n", "\n", "\n"], $private_key);
-        $private_key = str_replace("\r\n", "\n", $private_key);
-        $private_key = trim($private_key);
-        $key = openssl_pkey_get_private($private_key);
-        if ($key === false) {
-            $openssl_error = '';
-            while ($message = openssl_error_string()) {
-                $openssl_error = $message;
-            }
-            return new WP_Error(
-                'pcwork_firebase_key',
-                'OpenSSL не може да зареди private_key от Service Account JSON. Провери дали е поставен целият оригинален JSON, без редактиране на private_key.' .
-                ($openssl_error !== '' ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : '')
-            );
-        }
-        $key_details = openssl_pkey_get_details($key);
-        if (!is_array($key_details) || ($key_details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA) {
-            return new WP_Error('pcwork_firebase_key_type', 'Firebase Service Account ключът трябва да е валиден RSA private key.');
+        // Some hosting panels / copied JSON values store PEM line breaks as literal \n        // sequences. Normalize these before asking OpenSSL to parse the private key.
+        $private_key = trim((string)$account['private_key']);
+        $private_key = str_replace(["\\r\\n", "\\n", "\\r"], "\n", $private_key);
+        $private_key = str_replace(["\r\n", "\r"], "\n", $private_key);
+        $private_key = preg_replace('/[ \t]+(?=-----END)/', '', $private_key);
+        $key_resource = openssl_pkey_get_private($private_key);
+        if ($key_resource === false) {
+            $openssl_error = openssl_error_string();
+            return new WP_Error('pcwork_firebase_key_parse', 'OpenSSL не може да прочете private_key от Service Account JSON. Провери дали е цял PEM ключът (BEGIN/END PRIVATE KEY) и дали JSON не е повреден.' . ($openssl_error ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : ''));
         }
         $now=time(); $b64=function($v){ return rtrim(strtr(base64_encode($v),'+/','-_'),'='); };
         $header=$b64(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));
         $claims=$b64(wp_json_encode(['iss'=>$account['client_email'],'scope'=>'https://www.googleapis.com/auth/firebase.messaging','aud'=>$account['token_uri'],'iat'=>$now,'exp'=>$now+3600]));
         $unsigned=$header.'.'.$claims; $signature='';
-        if(!openssl_sign($unsigned,$signature,$key,OPENSSL_ALGO_SHA256)) {
-            $openssl_error = '';
-            while ($message = openssl_error_string()) {
-                $openssl_error = $message;
-            }
-            return new WP_Error(
-                'pcwork_firebase_sign',
-                'OpenSSL не успя да подпише Firebase JWT с RSA-SHA256.' .
-                ($openssl_error !== '' ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : '')
-            );
+        $signed = openssl_sign($unsigned, $signature, $key_resource, OPENSSL_ALGO_SHA256);
+        if (function_exists('openssl_pkey_free')) openssl_pkey_free($key_resource);
+        if (!$signed || $signature === '') {
+            $openssl_error = openssl_error_string();
+            return new WP_Error('pcwork_firebase_sign', 'OpenSSL не успя да подпише Firebase JWT с RSA-SHA256.' . ($openssl_error ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : ' Провери валидността и типа на private_key.'));
         }
         $jwt=$unsigned.'.'.$b64($signature);
         $response=wp_remote_post($account['token_uri'],['timeout'=>20,'headers'=>['Content-Type'=>'application/x-www-form-urlencoded'],'body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt]]);

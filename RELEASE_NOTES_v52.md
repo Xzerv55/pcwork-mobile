@@ -1,14 +1,17 @@
-# PCWork Mobile v52 – корекции
+# PCWork Mobile v52 / WordPress plugin 3.6.1
 
-## Промени
-- Контактната карта за телефон вече показва само услугата „Обади се“, без телефонния номер.
-- Контактната карта за TikTok вече показва само „TikTok“, без потребителското име.
-- Долното навигационно меню е леко уплътнено (64 px); самите икони и техните Icon widgets не са променяни.
-- WordPress Firebase OAuth/JWT кодът вече нормализира escaped newlines в Service Account private_key, зарежда ключа чрез OpenSSL преди подписване и връща по-конкретна диагностична грешка, без да показва ключа.
-- При запис на настройките се изчиства кешираният Firebase OAuth access token, за да се приложат новите настройки.
+## Mobile app
+- Phone and TikTok home contact cards now display only their service names and icons. Phone number and TikTok profile remain configured as tap destinations.
+- Bottom navigation bar height and icon vertical placement adjusted; existing icon glyphs and their size are retained.
+- Main-tab switching continues to dismiss transient routes and discard unsaved overlay state.
 
-## Важно за Firebase
-В WordPress → PCWork Mobile → Интеграции → Push известия постави целия оригинален Service Account JSON. Не редактирай `private_key` и не изпращай JSON/частния ключ в чат или GitHub. Хостингът трябва да има активен PHP OpenSSL.
+## WordPress plugin
+- Firebase JWT signing now explicitly parses the PEM private key with OpenSSL before signing.
+- Handles escaped PEM line breaks as well as standard CRLF/LF line endings.
+- Returns safe, actionable diagnostics for missing OpenSSL, malformed PEM keys and RSA-SHA256 signing failures; private key material is never included in diagnostics.
+- Clears cached OAuth access tokens when integration settings are saved.
 
-## Проверки
-Flutter/Dart компилация не е изпълнявана в тази среда. Извършена е структурна проверка на архива; преди публикуване стартирай GitHub Actions и провери резултатите.
+## Version alignment
+- Flutter: `0.52.0+52`
+- WordPress plugin: `3.6.1`
+- Android and iOS workflow artifact labels: `v52`
