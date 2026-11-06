@@ -209,6 +209,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final choice = prefs.getString('pcwork_push_consent_choice');
     if (choice != 'yes') {
+      if (!mounted) return;
       _pushConsentDialogOpen = true;
       final allow = await showDialog<bool>(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
         title: Text(tr('Известия от PCWork', 'PCWork notifications')),
