@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../services/auth_service.dart';
 
@@ -23,12 +24,17 @@ class _AuthScreenState extends State<AuthScreen> {
   static const Color cyan = Color(0xFF21D4D8);
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _identifier = TextEditingController();
-  final _password = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  final _code = TextEditingController();
   late bool _register;
-  bool _obscurePassword = true;
+  bool _codeSent = false;
+  bool _acceptedTerms = false;
   bool _busy = false;
   String? _error;
+  String? _info;
+  int _resendSeconds = 0;
+  Timer? _timer;
 
   bool get _en => widget.english;
   String tr(String bg, String en) => _en ? en : bg;
@@ -41,63 +47,109 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     _name.dispose();
-    _identifier.dispose();
-    _password.dispose();
+    _phone.dispose();
+    _email.dispose();
+    _code.dispose();
     super.dispose();
+  }
+
+  void _startCooldown() {
+    _timer?.cancel();
+    setState(() => _resendSeconds = 60);
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_resendSeconds <= 1) {
+        timer.cancel();
+        setState(() => _resendSeconds = 0);
+      } else {
+        setState(() => _resendSeconds--);
+      }
+    });
   }
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
+    if (_register && !_codeSent && !_acceptedTerms) {
+      setState(() => _error = tr('Необходимо е съгласие с общите условия и политиката за поверителност.', 'You must accept the Terms and Privacy Policy.'));
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
+      _info = null;
     });
     try {
       final service = AuthService(baseUrl: widget.baseUrl);
-      final user = _register
-          ? await service.register(
-              _name.text,
-              _identifier.text.trim(),
-              _password.text,
-            )
-          : await service.login(_identifier.text, _password.text);
-      if (mounted) Navigator.of(context).pop(user);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      if (!_codeSent) {
+        final message = await service.requestCode(
+          register: _register,
+          email: _email.text.trim(),
+          name: _name.text,
+          phone: _phone.text,
+        );
+        if (!mounted) return;
+        setState(() {
+          _codeSent = true;
+          _info = message;
+        });
+        _startCooldown();
+      } else {
+        final user = await service.verifyCode(
+          register: _register,
+          email: _email.text.trim(),
+          code: _code.text.trim(),
+        );
+        if (mounted) Navigator.of(context).pop(user);
       }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _forgotPassword() async {
-    final base = widget.baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    final uri = Uri.tryParse('$base/wp-login.php?action=lostpassword');
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
-      setState(() => _error = tr(
-            'Адресът за възстановяване на парола е невалиден.',
-            'The password recovery address is invalid.',
-          ));
-      return;
+  Future<void> _resend() async {
+    if (_busy || _resendSeconds > 0) return;
+    setState(() { _busy = true; _error = null; _info = null; });
+    try {
+      final message = await AuthService(baseUrl: widget.baseUrl).requestCode(
+        register: _register,
+        email: _email.text.trim(),
+        name: _name.text,
+        phone: _phone.text,
+      );
+      if (mounted) {
+        setState(() => _info = message);
+        _startCooldown();
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      setState(() => _error = tr(
-            'Не успяхме да отворим страницата за възстановяване.',
-            'Could not open the password recovery page.',
-          ));
-    }
+  }
+
+  void _switchMode() {
+    _timer?.cancel();
+    setState(() {
+      _register = !_register;
+      _codeSent = false;
+      _acceptedTerms = false;
+      _resendSeconds = 0;
+      _code.clear();
+      _error = null;
+      _info = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(tr('PCWork профил', 'PCWork account')),
-      ),
+      appBar: AppBar(title: Text(tr('PCWork профил', 'PCWork account'))),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -135,107 +187,88 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            _register
-                                ? tr('Създай PCWork профил', 'Create your PCWork account')
-                                : tr('Добре дошъл обратно', 'Welcome back'),
+                            _codeSent
+                                ? tr('Потвърди имейла си', 'Verify your email')
+                                : _register
+                                    ? tr('Създай PCWork профил', 'Create your PCWork account')
+                                    : tr('Добре дошъл обратно', 'Welcome back'),
                             textAlign: TextAlign.center,
                             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 7),
                           Text(
-                            _register
-                                ? tr('Регистрация с имейл и парола.', 'Register with your email and password.')
-                                : tr('Влез с данните на своя PCWork профил.', 'Sign in with your PCWork account details.'),
+                            _codeSent
+                                ? tr('Изпратихме шестцифрен код на ', 'We sent a six-digit code to ') + _email.text.trim()
+                                : _register
+                                    ? tr('Регистрация с име, телефон и имейл. Кодът за потвърждение се изпраща само по имейл.', 'Register with your name, phone and email. Verification is by email only.')
+                                    : tr('Въведи имейла си и ще ти изпратим еднократен код за вход.', 'Enter your email and we will send you a one-time sign-in code.'),
                             textAlign: TextAlign.center,
                             style: const TextStyle(color: Colors.white60, fontSize: 13),
                           ),
                           const SizedBox(height: 22),
-                          if (_register) ...[
+                          if (!_codeSent && _register) ...[
                             TextFormField(
                               controller: _name,
                               textCapitalization: TextCapitalization.words,
                               textInputAction: TextInputAction.next,
-                              decoration: InputDecoration(
-                                labelText: tr('Име и фамилия', 'Full name'),
-                                prefixIcon: const Icon(Icons.person_outline),
-                              ),
-                              validator: (value) => (value ?? '').trim().length < 2
-                                  ? tr('Въведи име.', 'Enter your name.')
-                                  : null,
+                              decoration: InputDecoration(labelText: tr('Име и фамилия', 'Full name'), prefixIcon: const Icon(Icons.person_outline)),
+                              validator: (value) => (value ?? '').trim().length < 2 ? tr('Въведи име.', 'Enter your name.') : null,
+                            ),
+                            const SizedBox(height: 13),
+                            TextFormField(
+                              controller: _phone,
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.next,
+                              decoration: InputDecoration(labelText: tr('Телефон', 'Phone'), prefixIcon: const Icon(Icons.phone_outlined)),
+                              validator: (value) => (value ?? '').trim().replaceAll(RegExp(r'[^0-9+]'), '').length < 6 ? tr('Въведи валиден телефон.', 'Enter a valid phone number.') : null,
                             ),
                             const SizedBox(height: 13),
                           ],
-                          TextFormField(
-                            controller: _identifier,
-                            keyboardType: _register ? TextInputType.emailAddress : TextInputType.emailAddress,
-                            textInputAction: TextInputAction.next,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            textCapitalization: TextCapitalization.none,
-                            autofillHints: _register ? const [AutofillHints.email] : const [AutofillHints.username, AutofillHints.email],
-                            decoration: InputDecoration(
-                              labelText: _register
-                                  ? 'Email'
-                                  : tr('Имейл или потребителско име', 'Email or username'),
-                              prefixIcon: const Icon(Icons.alternate_email),
+                          if (!_codeSent)
+                            TextFormField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.done,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              textCapitalization: TextCapitalization.none,
+                              autofillHints: const [AutofillHints.email],
+                              decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.alternate_email)),
+                              validator: (value) {
+                                final text = (value ?? '').trim();
+                                if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) return tr('Въведи валиден имейл.', 'Enter a valid email address.');
+                                return null;
+                              },
                             ),
-                            validator: (value) {
-                              final text = (value ?? '').trim();
-                              if (text.isEmpty) return tr('Полето е задължително.', 'This field is required.');
-                              if (_register && !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) {
-                                return tr('Въведи валиден имейл.', 'Enter a valid email address.');
-                              }
-                              return null;
-                            },
-                          ),
-                          const SizedBox(height: 13),
-                          TextFormField(
-                            controller: _password,
-                            obscureText: _obscurePassword,
-                            autofillHints: _register ? const [AutofillHints.newPassword] : const [AutofillHints.password],
-                            textInputAction: TextInputAction.done,
-                            onFieldSubmitted: (_) { if (!_busy) _submit(); },
-                            decoration: InputDecoration(
-                              labelText: tr('Парола', 'Password'),
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                tooltip: _obscurePassword ? tr('Покажи паролата', 'Show password') : tr('Скрий паролата', 'Hide password'),
-                                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                              ),
+                          if (_register && !_codeSent)
+                            CheckboxListTile(
+                              value: _acceptedTerms,
+                              onChanged: _busy ? null : (value) => setState(() => _acceptedTerms = value == true),
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: Text(tr('Съгласен/на съм с общите условия и политиката за поверителност.', 'I agree to the Terms and Privacy Policy.'), style: const TextStyle(fontSize: 12)),
                             ),
-                            validator: (value) {
-                              final text = value ?? '';
-                              if (text.isEmpty) return tr('Въведи парола.', 'Enter your password.');
-                              if (_register && text.length < 10) return tr('Минимум 10 символа.', 'At least 10 characters.');
-                              return null;
-                            },
-                          ),
-                          if (!_register)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: _busy ? null : _forgotPassword,
-                                child: Text(tr('Забравена парола?', 'Forgot password?')),
-                              ),
+                          if (_codeSent)
+                            TextFormField(
+                              controller: _code,
+                              keyboardType: TextInputType.number,
+                              textInputAction: TextInputAction.done,
+                              maxLength: 6,
+                              autofocus: true,
+                              decoration: InputDecoration(labelText: tr('Шестцифрен код', 'Six-digit code'), prefixIcon: const Icon(Icons.mark_email_read_outlined), counterText: ''),
+                              validator: (value) => RegExp(r'^\d{6}$').hasMatch((value ?? '').trim()) ? null : tr('Въведи шестцифрения код.', 'Enter the six-digit code.'),
+                              onFieldSubmitted: (_) { if (!_busy) _submit(); },
                             ),
+                          if (_info != null) ...[
+                            const SizedBox(height: 12),
+                            Text(_info!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7DE3C2), fontSize: 12)),
+                          ],
                           if (_error != null) ...[
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B6B).withValues(alpha: .10),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: .35)),
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(Icons.error_outline, color: Color(0xFFFF8585), size: 20),
-                                  const SizedBox(width: 9),
-                                  Expanded(child: Text(_error ?? tr('Възникна неочаквана грешка.', 'An unexpected error occurred.'), style: const TextStyle(color: Color(0xFFFFB0B0), fontSize: 12))),
-                                ],
-                              ),
+                              decoration: BoxDecoration(color: const Color(0xFFFF6B6B).withValues(alpha: .10), borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: .35))),
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.error_outline, color: Color(0xFFFF8585), size: 20), const SizedBox(width: 9), Expanded(child: Text(_error!, style: const TextStyle(color: Color(0xFFFFB0B0), fontSize: 12)))]),
                             ),
                           ],
                           const SizedBox(height: 17),
@@ -243,32 +276,20 @@ class _AuthScreenState extends State<AuthScreen> {
                             height: 52,
                             child: FilledButton.icon(
                               onPressed: _busy ? null : _submit,
-                              icon: _busy
-                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : Icon(_register ? Icons.person_add_alt_1 : Icons.login),
-                              label: Text(_busy
-                                  ? tr('Моля, изчакай…', 'Please wait…')
-                                  : _register ? tr('Създай профил', 'Create account') : tr('Вход в приложението', 'Sign in to the app')),
+                              icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(_codeSent ? Icons.verified_outlined : _register ? Icons.person_add_alt_1 : Icons.login),
+                              label: Text(_busy ? tr('Моля, изчакай…', 'Please wait…') : _codeSent ? tr('Потвърди кода', 'Verify code') : _register ? tr('Изпрати код за регистрация', 'Send registration code') : tr('Изпрати код за вход', 'Send sign-in code')),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() {
-                                      _register = !_register;
-                                      _error = null;
-                                    }),
-                            child: Text(_register
-                                ? tr('Вече имаш профил? Влез', 'Already have an account? Sign in')
-                                : tr('Нямаш профил? Регистрирай се', 'No account yet? Register')),
-                          ),
+                          if (_codeSent) ...[
+                            const SizedBox(height: 8),
+                            TextButton(onPressed: _busy || _resendSeconds > 0 ? null : _resend, child: Text(_resendSeconds > 0 ? tr('Повторно изпращане след ', 'Resend in ') + '$_resendSeconds сек.' : tr('Изпрати нов код', 'Send a new code'))),
+                            TextButton(onPressed: _busy ? null : () { _timer?.cancel(); setState(() { _codeSent = false; _code.clear(); _resendSeconds = 0; _error = null; _info = null; }); }, child: Text(tr('Промени имейла', 'Change email'))),
+                          ] else ...[
+                            const SizedBox(height: 10),
+                            TextButton(onPressed: _busy ? null : _switchMode, child: Text(_register ? tr('Вече имаш профил? Вход', 'Already registered? Sign in') : tr('Нямаш профил? Регистрация', 'No account? Register'))),
+                          ],
                           const SizedBox(height: 5),
-                          Text(
-                            tr('Входът използва твоя WordPress профил в pcwork-bg.com. Паролата не се записва в приложението.', 'Sign-in uses your WordPress account on pcwork-bg.com. Your password is not stored in the app.'),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white38, fontSize: 11),
-                          ),
+                          Text(tr('Кодът е валиден 5 минути. Не споделяй кода с никого. Не изпращаме SMS или Viber кодове.', 'The code is valid for 5 minutes. Never share it. We do not send SMS or Viber codes.'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white38, fontSize: 11)),
                         ],
                       ),
                     ),

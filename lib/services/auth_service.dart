@@ -8,12 +8,14 @@ class AuthUser {
     required this.id,
     required this.name,
     required this.email,
+    this.phone = '',
     this.roles = const [],
   });
 
   final int id;
   final String name;
   final String email;
+  final String phone;
   final List<String> roles;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,7 @@ class AuthUser {
       id: id,
       name: (json['name'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
+      phone: (json['phone'] ?? '').toString(),
       roles: roles,
     );
   }
@@ -61,22 +64,44 @@ class AuthService {
     await _storage.delete(key: _cachedUserKey);
   }
 
-  Future<AuthUser> login(String identifier, String password) => _send(
-        'auth/login',
-        {
-          'login': identifier.trim(),
-          'identifier': identifier.trim(),
-          // Kept for compatibility with older PCWork plugin versions.
-          'email': identifier.trim(),
-          'password': password,
+  Future<String> requestCode({
+    required bool register,
+    required String email,
+    String name = '',
+    String phone = '',
+  }) async {
+    final path = register ? 'auth/register/request' : 'auth/login/request';
+    final body = <String, dynamic>{'email': email.trim()};
+    if (register) {
+      body['name'] = name.trim();
+      body['phone'] = phone.trim();
+      body['terms_accepted'] = true;
+    }
+    late final http.Response response;
+    try {
+      response = await http.post(
+        _uri(path),
+        headers: const {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
         },
-      );
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 25));
+    } on Exception catch (error) {
+      throw Exception('Неуспешна връзка с PCWork. Провери интернет връзката. ($error)');
+    }
+    final decoded = _decode(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_message(decoded, response.statusCode));
+    }
+    return (decoded['message'] ?? 'Изпратихме код на имейла ти.').toString();
+  }
 
-  Future<AuthUser> register(String name, String email, String password) =>
-      _send('auth/register', {
-        'name': name.trim(),
+  Future<AuthUser> verifyCode({required bool register, required String email, required String code}) =>
+      _sendOtp(register ? 'auth/register/verify' : 'auth/login/verify', {
         'email': email.trim(),
-        'password': password,
+        'code': code.trim(),
       });
 
   Map<String, dynamic> _decode(http.Response response) {
@@ -105,7 +130,7 @@ class AuthService {
     }
     switch (statusCode) {
       case 401:
-        return 'Невалиден имейл/потребителско име или парола.';
+        return 'Невалиден код или имейл.';
       case 403:
         return 'Достъпът е отказан от WordPress.';
       case 404:
@@ -113,47 +138,53 @@ class AuthService {
       case 429:
         return 'Твърде много опити за вход. Изчакай и опитай отново.';
       default:
-        return 'Грешка при вход (HTTP $statusCode).';
+        return 'Грешка при удостоверяване (HTTP $statusCode).';
     }
   }
 
-  Future<AuthUser> _send(String path, Map<String, dynamic> body) async {
+  Future<AuthUser> _sendOtp(String path, Map<String, dynamic> body) async {
     late final http.Response response;
     try {
-      response = await http
-          .post(
-            _uri(path),
-            headers: const {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Accept': 'application/json',
-              'Cache-Control': 'no-cache',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 25));
+      response = await http.post(
+        _uri(path),
+        headers: const {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 25));
     } on Exception catch (error) {
-      throw Exception(
-        'Неуспешна връзка с PCWork. Провери интернет връзката и адреса на сайта. ($error)',
-      );
+      throw Exception('Неуспешна връзка с PCWork. Провери интернет връзката. ($error)');
     }
-
     final decoded = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(decoded, response.statusCode));
     }
-
     final payload = _payload(decoded);
     final accessToken = payload['token'];
     final userData = payload['user'];
     if (accessToken is! String || accessToken.isEmpty || userData is! Map) {
-      throw const FormatException(
-        'WordPress не върна валиден токен и потребителски профил. Провери Auth Bridge плъгина.',
-      );
+      throw const FormatException('WordPress не върна валиден токен и потребителски профил.');
     }
-
     final user = AuthUser.fromJson(Map<String, dynamic>.from(userData));
     await _storage.write(key: _tokenKey, value: accessToken);
     await _storage.write(key: _cachedUserKey, value: jsonEncode(userData));
+    return user;
+  }
+
+  Future<AuthUser> updateProfile({required String name, required String phone}) async {
+    final accessToken = await token;
+    if (accessToken == null || accessToken.isEmpty) throw const FormatException('Няма активна сесия. Влез отново.');
+    final response = await http.patch(
+      _uri('auth/profile'),
+      headers: {'Authorization': 'Bearer $accessToken', 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json'},
+      body: jsonEncode({'name': name.trim(), 'phone': phone.trim()}),
+    ).timeout(const Duration(seconds: 20));
+    final decoded = _decode(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(_message(decoded, response.statusCode));
+    final user = AuthUser.fromJson(_payload(decoded));
+    await _storage.write(key: _cachedUserKey, value: jsonEncode(_payload(decoded)));
     return user;
   }
 

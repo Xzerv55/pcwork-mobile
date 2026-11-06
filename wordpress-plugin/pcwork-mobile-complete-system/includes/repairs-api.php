@@ -173,6 +173,9 @@ final class PCWork_Mobile_Repairs_API {
         if ($technician !== (int)$row->assigned_technician_id || $priority !== (string)$row->priority || $due !== $row->due_at) {
             $wpdb->insert(self::history_table(), ['repair_id'=>$id,'status'=>$status,'note'=>sprintf('Разпределение: техник #%d; приоритет: %s; срок: %s', $technician, $priority, $due ?: 'няма'), 'created_at'=>$now]);
         }
+        if ($technician > 0 && $technician !== (int)$row->assigned_technician_id) {
+            do_action('pcwork_repair_assigned', $id, $technician, (string)$row->repair_number, $priority, $due ?: '');
+        }
         wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','repair_id'=>$id,'updated'=>'1'], admin_url('admin.php')));
         exit;
     }
@@ -252,7 +255,7 @@ final class PCWork_Mobile_Repairs_API {
             $sql = "SELECT * FROM $table WHERE $where ORDER BY updated_at DESC LIMIT 100";
             $rows = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
             echo '<form method="get" style="display:flex;gap:8px;align-items:center;margin:16px 0"><input type="hidden" name="page" value="pcwork-repairs"><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Номер, клиент, имейл или модел"><select name="status"><option value="">Всички статуси</option>';
-            foreach (['received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($status,$key,false).'>'.esc_html($label).'</option>';
+            foreach (['requested'=>'Нова заявка','received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($status,$key,false).'>'.esc_html($label).'</option>';
             echo '</select><button class="button">Филтрирай</button></form><table class="widefat striped"><thead><tr><th>Ремонт</th><th>Клиент</th><th>Устройство</th><th>Обект</th><th>Статус</th><th>Техник</th><th>Последна промяна</th></tr></thead><tbody>';
             if (!$rows) echo '<tr><td colspan="7">Няма намерени ремонти.</td></tr>';
             foreach ($rows as $row) { $tech = $row->assigned_technician_id ? get_user_by('id',(int)$row->assigned_technician_id) : false; $url = add_query_arg(['page'=>'pcwork-repairs','repair_id'=>(int)$row->id],admin_url('admin.php')); echo '<tr><td><a href="'.esc_url($url).'"><b>'.esc_html($row->repair_number).'</b></a></td><td>'.esc_html($row->customer_name).'<br><small>'.esc_html($row->customer_email).'</small></td><td>'.esc_html(trim($row->device_type.' '.$row->device_model)).'</td><td>'.esc_html($row->location_name).'</td><td><strong>'.esc_html($row->status).'</strong></td><td>'.esc_html($tech ? $tech->display_name : '—').'</td><td>'.esc_html($row->updated_at).'</td></tr>'; }
@@ -263,24 +266,26 @@ final class PCWork_Mobile_Repairs_API {
 
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'3.1.0']); },'permission_callback'=>'__return_true']);
+        $staff_auth = [__CLASS__, 'staff_authorize'];
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'3.3.0']); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/repairs/request', ['methods'=>'POST','callback'=>[__CLASS__,'create_customer_request'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/repairs', ['methods'=>'POST','callback'=>[__CLASS__,'create_repair'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)', ['methods'=>'GET','callback'=>[__CLASS__,'get_repair'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/status', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_status'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/assignment', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_assignment'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/technicians', ['methods'=>'GET','callback'=>[__CLASS__,'list_technicians'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/schedule', ['methods'=>'GET','callback'=>[__CLASS__,'get_staff_schedules'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/schedule', ['methods'=>'POST','callback'=>[__CLASS__,'save_staff_schedule'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/overview', ['methods'=>'GET','callback'=>[__CLASS__,'staff_overview'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'GET','callback'=>[__CLASS__,'get_attendance'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'POST','callback'=>[__CLASS__,'record_attendance'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/leave', ['methods'=>'GET','callback'=>[__CLASS__,'list_leave_requests'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/leave', ['methods'=>'POST','callback'=>[__CLASS__,'create_leave_request'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/staff/leave/(?P<id>\d+)', ['methods'=>'PATCH','callback'=>[__CLASS__,'review_leave_request'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/status', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_status'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/assignment', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_assignment'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/technicians', ['methods'=>'GET','callback'=>[__CLASS__,'list_technicians'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/schedule', ['methods'=>'GET','callback'=>[__CLASS__,'get_staff_schedules'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/schedule', ['methods'=>'POST','callback'=>[__CLASS__,'save_staff_schedule'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/overview', ['methods'=>'GET','callback'=>[__CLASS__,'staff_overview'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'GET','callback'=>[__CLASS__,'get_attendance'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/attendance', ['methods'=>'POST','callback'=>[__CLASS__,'record_attendance'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/leave', ['methods'=>'GET','callback'=>[__CLASS__,'list_leave_requests'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/leave', ['methods'=>'POST','callback'=>[__CLASS__,'create_leave_request'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/staff/leave/(?P<id>\d+)', ['methods'=>'PATCH','callback'=>[__CLASS__,'review_leave_request'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/evidence', ['methods'=>'POST','callback'=>[__CLASS__,'upload_evidence'],'permission_callback'=>$auth]);
-        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/protocol', ['methods'=>'POST','callback'=>[__CLASS__,'upload_protocol_pdf'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/protocol', ['methods'=>'POST','callback'=>[__CLASS__,'upload_protocol_pdf'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/documents', ['methods'=>'GET','callback'=>[__CLASS__,'list_documents'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/documents/(?P<document_id>\d+)/download', ['methods'=>'GET','callback'=>[__CLASS__,'download_document'],'permission_callback'=>$auth]);
     }
@@ -327,6 +332,12 @@ final class PCWork_Mobile_Repairs_API {
         if (!class_exists('PCWork_Mobile_Auth_Bridge')) return new WP_Error('pcwork_auth_bridge_missing','Модулът за вход PCWork Mobile Auth Bridge не е активен.',['status'=>503]);
         return PCWork_Mobile_Auth_Bridge::authorize($request);
     }
+    public static function staff_authorize($request) {
+        $auth = self::authorize($request);
+        if (is_wp_error($auth)) return $auth;
+        if (!self::is_staff(get_current_user_id())) return new WP_Error('pcwork_staff_required','Тази функция е достъпна само за оторизиран служител.',['status'=>403]);
+        return true;
+    }
     private static function is_staff($user_id) { return user_can($user_id, 'manage_options') || user_can($user_id, 'pcwork_manage_repairs'); }
     private static function can_access($row, $user_id) {
         if ((int)$row->customer_user_id === (int)$user_id) return true;
@@ -342,18 +353,28 @@ final class PCWork_Mobile_Repairs_API {
         return is_array($rows) ? $rows : [];
     }
     private static function present($row, $include_history = false) {
+        $user_id = get_current_user_id();
+        $staff = self::is_staff($user_id);
         $data = [
             'id'=>(int)$row->id, 'repair_number'=>$row->repair_number,
             'customer_name'=>$row->customer_name, 'customer_email'=>$row->customer_email,
             'customer_phone'=>$row->customer_phone, 'location_code'=>$row->location_code, 'location_name'=>$row->location_name,
-            'device_type'=>$row->device_type, 'device_model'=>$row->device_model, 'serial_number'=>$row->serial_number,
-            'problem_description'=>$row->problem_description, 'external_condition'=>$row->external_condition,
-            'accessories'=>$row->accessories, 'intake_notes'=>$row->intake_notes, 'status'=>$row->status,
-            'assigned_technician_id'=>(int)($row->assigned_technician_id ?? 0), 'priority'=>$row->priority ?? 'normal', 'due_at'=>$row->due_at ?? null,
+            'device_type'=>$row->device_type, 'device_model'=>$row->device_model,
+            'serial_number'=>$staff ? $row->serial_number : '',
+            'problem_description'=>$row->problem_description, 'external_condition'=>$staff ? $row->external_condition : '',
+            'accessories'=>$staff ? $row->accessories : '', 'intake_notes'=>$staff ? $row->intake_notes : '', 'status'=>$row->status,
+            'assigned_technician_id'=>$staff ? (int)($row->assigned_technician_id ?? 0) : 0,
+            'priority'=>$staff ? ($row->priority ?? 'normal') : '', 'due_at'=>$staff ? ($row->due_at ?? null) : null,
             'created_at'=>mysql2date('c', $row->created_at, false), 'updated_at'=>mysql2date('c', $row->updated_at, false),
         ];
-        if (!empty($row->assigned_technician_id)) { $tech = get_user_by('id', (int)$row->assigned_technician_id); $data['assigned_technician_name'] = $tech ? $tech->display_name : ''; } else { $data['assigned_technician_name'] = ''; }
-        if ($include_history) { $data['history'] = self::history($row->id); $data['documents'] = self::documents($row->id); }
+        if ($staff && !empty($row->assigned_technician_id)) { $tech = get_user_by('id', (int)$row->assigned_technician_id); $data['assigned_technician_name'] = $tech ? $tech->display_name : ''; }
+        else { $data['assigned_technician_name'] = ''; }
+        if ($include_history) {
+            $history = self::history($row->id);
+            if (!$staff) $history = array_map(static function($entry) { return ['status'=>$entry['status'] ?? '', 'created_at'=>$entry['created_at'] ?? '']; }, $history);
+            $data['history'] = $history;
+            $data['documents'] = self::documents($row->id, !$staff);
+        }
         return $data;
     }
     public static function list_repairs($request) {
@@ -369,6 +390,48 @@ final class PCWork_Mobile_Repairs_API {
         } else $rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE customer_user_id=%d ORDER BY updated_at DESC LIMIT 100", $user_id));
         return rest_ensure_response(['data'=>array_map(function($row){ return self::present($row); }, $rows ?: [])]);
     }
+    public static function create_customer_request($request) {
+        global $wpdb;
+        $user_id=get_current_user_id();
+        if (self::is_staff($user_id)) return new WP_Error('pcwork_customer_route_only','Служителите използват формата за прием на устройство.',['status'=>403]);
+        $user=get_user_by('id',$user_id);
+        if (!$user || (!in_array('pcwork_customer',(array)$user->roles,true) && !in_array('subscriber',(array)$user->roles,true))) return new WP_Error('pcwork_customer_required','Необходим е клиентски профил.',['status'=>403]);
+        $p=$request->get_json_params(); if (!is_array($p)) $p=[];
+        $client_request_id=sanitize_text_field($p['client_request_id']??'');
+        if ($client_request_id !== '') {
+            $existing=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE client_request_id=%s',$client_request_id));
+            if ($existing) {
+                if ((int)$existing->customer_user_id !== $user_id) return new WP_Error('pcwork_request_id_conflict','Идентификаторът на заявката вече е използван.',['status'=>409]);
+                return new WP_REST_Response(['data'=>self::present($existing,true),'message'=>'Заявката вече е приета.'],200);
+            }
+        }
+        $ip=defined('PCWORK_TRUSTED_PROXY_IPS') && is_array(PCWORK_TRUSTED_PROXY_IPS) && in_array(sanitize_text_field($_SERVER['REMOTE_ADDR']??'unknown'),PCWORK_TRUSTED_PROXY_IPS,true) ? sanitize_text_field($_SERVER['HTTP_CF_CONNECTING_IP']??$_SERVER['HTTP_X_REAL_IP']??'unknown') : sanitize_text_field($_SERVER['REMOTE_ADDR']??'unknown');
+        $ip_key='pcw_customer_req_ip_'.md5($ip); $user_key='pcw_customer_req_user_'.(int)$user_id;
+        if ((int)get_transient($user_key)>=3 || (int)get_transient($ip_key)>=10) return new WP_Error('pcwork_customer_request_limit','Достигнат е дневният лимит за заявки за ремонт.',['status'=>429]);
+        $location=sanitize_key($p['location_code']??'');
+        $active_locations=['sofia-lyulin','sofia-lyulin-2','sofia-simeonovsko','sofia-industrialna-11'];
+        if (!in_array($location,$active_locations,true)) return new WP_Error('pcwork_location_unavailable','Избраният сервизен обект не приема заявки онлайн.',['status'=>400]);
+        $type=sanitize_text_field($p['device_type']??''); $model=sanitize_text_field($p['device_model']??''); $problem=sanitize_textarea_field($p['problem_description']??'');
+        if ($type==='' || $model==='' || strlen($problem)<8) return new WP_Error('pcwork_request_fields','Попълнете тип устройство, модел и описание на проблема (поне 8 символа).',['status'=>400]);
+        $locations=['sofia-lyulin'=>'София, Люлин - 5','sofia-lyulin-2'=>'София, Люлин - 2','sofia-simeonovsko'=>'София, Симеоновско шосе','sofia-industrialna-11'=>'София, Индустриална 11'];
+        $now=current_time('mysql'); $number='PCW-'.wp_date('ymd').'-'.strtoupper(wp_generate_password(6,false,false));
+        $ok=$wpdb->insert(self::repairs_table(),[
+            'repair_number'=>$number,'client_request_id'=>$client_request_id!==''?$client_request_id:null,'customer_user_id'=>$user_id,'customer_name'=>$user->display_name,'customer_email'=>$user->user_email,
+            'customer_phone'=>(string)get_user_meta($user_id,'pcwork_phone',true),'location_code'=>$location,'location_name'=>$locations[$location],
+            'device_type'=>$type,'device_model'=>$model,'serial_number'=>'','problem_description'=>$problem,
+            'external_condition'=>'','accessories'=>'','intake_notes'=>'','status'=>'requested','assigned_technician_id'=>0,
+            'priority'=>'normal','created_by'=>$user_id,'created_at'=>$now,'updated_at'=>$now
+        ]);
+        if (!$ok) return new WP_Error('pcwork_customer_request_failed','Заявката не беше записана. Опитайте отново.',['status'=>500]);
+        $id=(int)$wpdb->insert_id;
+        $wpdb->insert(self::history_table(),['repair_id'=>$id,'status'=>'requested','note'=>'Клиентът изпрати онлайн заявка.','created_at'=>$now]);
+        set_transient($user_key,(int)get_transient($user_key)+1,DAY_IN_SECONDS);
+        set_transient($ip_key,(int)get_transient($ip_key)+1,DAY_IN_SECONDS);
+        do_action('pcwork_customer_repair_requested',$id,$user_id,$number,$location);
+        $row=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
+        return new WP_REST_Response(['data'=>self::present($row,true),'message'=>'Заявката е изпратена. Екипът на PCWork ще се свърже с вас.'],201);
+    }
+
     public static function create_repair($request) {
         global $wpdb;
         $staff_id = get_current_user_id();
@@ -446,9 +509,10 @@ final class PCWork_Mobile_Repairs_API {
         if (!is_dir($real) || !is_writable($real)) return new WP_Error('pcwork_private_storage_unwritable', 'Защитената директория не е достъпна за запис.', ['status'=>500]);
         return $real;
     }
-    private static function documents($repair_id) {
+    private static function documents($repair_id, $customer_view = false) {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare('SELECT id,kind,actor_user_id,created_at,mime_type,original_name,file_size,storage_key FROM ' . self::documents_table() . ' WHERE repair_id=%d ORDER BY id ASC', $repair_id), ARRAY_A);
+        if ($customer_view) $rows = array_values(array_filter($rows ?: [], static function($row) { return in_array((string)($row['kind'] ?? ''), ['protocol_pdf','customer_signature'], true); }));
         foreach ($rows ?: [] as &$row) {
             $row['id']=(int)$row['id']; $row['actor_user_id']=(int)$row['actor_user_id']; $row['file_size']=(int)$row['file_size'];
             // Legacy v1.2 attachments are intentionally not exposed as public URLs.
@@ -572,7 +636,7 @@ final class PCWork_Mobile_Repairs_API {
     }
     public static function list_documents($request) {
         $repair = self::accessible_repair(absint($request['id']), get_current_user_id()); if (is_wp_error($repair)) return $repair;
-        return rest_ensure_response(['data'=>self::documents($repair->id)]);
+        return rest_ensure_response(['data'=>self::documents($repair->id, !self::is_staff(get_current_user_id()))]);
     }
     public static function download_document($request) {
         global $wpdb;
@@ -580,6 +644,7 @@ final class PCWork_Mobile_Repairs_API {
         $repair = self::accessible_repair($repair_id, get_current_user_id()); if (is_wp_error($repair)) return $repair;
         $doc = $wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::documents_table().' WHERE id=%d AND repair_id=%d', $doc_id, $repair_id));
         if (!$doc) return new WP_Error('pcwork_document_not_found','Документът не е намерен.',['status'=>404]);
+        if (!self::is_staff(get_current_user_id()) && !in_array((string)$doc->kind, ['protocol_pdf','customer_signature'], true)) return new WP_Error('pcwork_document_forbidden','Този документ не е достъпен за клиентски профил.',['status'=>403]);
         if (empty($doc->storage_key)) return new WP_Error('pcwork_document_legacy','Този стар файл не е преместен в защитеното хранилище.',['status'=>410]);
         $dir = self::private_dir(); if (is_wp_error($dir)) return $dir;
         $key = wp_basename($doc->storage_key); $path = trailingslashit($dir) . $key;
@@ -608,7 +673,7 @@ final class PCWork_Mobile_Repairs_API {
                 return new WP_REST_Response(['data'=>self::present($fresh, true),'message'=>'Заявката вече е обработена.'], 200);
             }
         }
-        $allowed = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
+        $allowed = ['requested','received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
         $status = sanitize_key($payload['status'] ?? '');
         if (!in_array($status, $allowed, true)) return new WP_Error('pcwork_invalid_status','Невалиден статус на ремонта.',['status'=>400]);
         $note = sanitize_textarea_field($payload['note'] ?? '');
@@ -781,6 +846,9 @@ final class PCWork_Mobile_Repairs_API {
         $ok=$wpdb->update(self::repairs_table(),['assigned_technician_id'=>$technician,'priority'=>$priority,'due_at'=>$due,'updated_at'=>current_time('mysql')],['id'=>$id],['%d','%s','%s','%s'],['%d']);
         if ($ok===false) return new WP_Error('pcwork_assignment_failed','Разпределението не беше записано.',['status'=>500]);
         $wpdb->insert(self::history_table(),['repair_id'=>$id,'status'=>(string)$row->status,'note'=>sprintf('Назначен техник ID %d; приоритет: %s; срок: %s',$technician,$priority,$due ?: 'няма'),'created_at'=>current_time('mysql')]);
+        if ($technician > 0 && $technician !== (int)$row->assigned_technician_id) {
+            do_action('pcwork_repair_assigned', $id, $technician, (string)$row->repair_number, $priority, $due ?: '');
+        }
         $fresh=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
         return rest_ensure_response(['data'=>self::present($fresh,true),'message'=>'Назначението и срокът са записани.']);
     }

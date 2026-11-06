@@ -397,6 +397,21 @@ class ApiService {
   }
 
 
+  Future<Map<String, dynamic>> createCustomerRepairRequest(String token, Map<String, dynamic> payload) async {
+    final response = await http.post(
+      _uri('repairs/request'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      body: jsonEncode({...payload, 'client_request_id': _newRequestId()}),
+    ).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    }
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Сървърът върна невалиден отговор за заявката.');
+    return Map<String, dynamic>.from(data);
+  }
+
   Future<Map<String, dynamic>> createRepair(String token, Map<String, dynamic> payload) async {
     final requestId = _newRequestId();
     final request = {...payload, 'client_request_id': requestId};

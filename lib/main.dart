@@ -224,6 +224,31 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       scaffoldMessengerKey: _messengerKey,
       navigatorKey: _navigatorKey,
       title: 'PCWork',
+      // Keep the six-item main navigation outside the route Navigator.
+      // Pushed pages, dialogs and bottom sheets are therefore constrained
+      // to the area above the navigation and can never cover it.
+      builder: (context, child) => Column(
+        children: [
+          // Clip the route overlay to the content viewport. Dialogs, pushed
+          // pages and modal sheets cannot paint over the persistent tab bar.
+          Expanded(child: ClipRect(child: child ?? const SizedBox.shrink())),
+          SafeArea(
+            top: false,
+            child: NavigationBar(
+            selectedIndex: tab,
+            onDestinationSelected: _selectTab,
+            destinations: [
+              NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
+              NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
+              NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront_rounded), label: labels[2]),
+              NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[3]),
+              NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[4]),
+              NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[5]),
+            ],
+          ),
+          ),
+        ],
+      ),
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'NotoSans',
@@ -287,14 +312,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           ),
           child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink())),
         ),
-        bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: _selectTab, destinations: [
-          NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
-          NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
-          NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront_rounded), label: labels[2]),
-          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[3]),
-          NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[4]),
-          NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[5]),
-        ]),
       ),
     );
   }
@@ -375,13 +392,17 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ListView(padding: const EdgeInsets.all(16), children: [
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
+          if (!signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role))) ...[
+            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showCustomerRepairRequest, icon: const Icon(Icons.add_circle_outline), label: Text(tr('Нова заявка за ремонт','New repair request')))),
+            const SizedBox(height: 10),
+          ],
           if (_pendingSyncCount > 0) Card(color: const Color(0xFF3A2B16), child: ListTile(leading: const Icon(Icons.cloud_upload_outlined, color: Colors.orangeAccent), title: Text(tr('Чакащи синхронизации: $_pendingSyncCount', 'Pending sync: $_pendingSyncCount')), subtitle: Text(tr('Ще бъдат изпратени автоматично при възстановяване на интернет.', 'They will sync automatically when internet is restored.')), trailing: IconButton(onPressed: _syncOfflineQueue, icon: const Icon(Icons.sync)))),
           if ((snapshot.data ?? []).any((r) => r.fromCache)) Card(color: const Color(0xFF17283D), child: ListTile(leading: const Icon(Icons.cloud_off, color: cyan), title: Text(tr('Офлайн копие', 'Offline copy')), subtitle: Text(tr('Показват се последно запазените ремонти. Данните може да не са актуални.', 'Showing the last saved repairs. Data may be out of date.')))),
           Row(children: [Expanded(child: _repairMetric(tr('Всички','Total'), rows.length)), Expanded(child: _repairMetric(tr('Активни','Active'), active)), Expanded(child: _repairMetric(tr('Готови','Ready'), ready))]),
           const SizedBox(height: 12),
           TextField(controller: repairSearch, onChanged: (_) => setState(() {}), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('Търси номер, устройство или модел','Search number, device or model'), border: const OutlineInputBorder(), suffixIcon: repairSearch.text.isEmpty ? null : IconButton(onPressed: () { repairSearch.clear(); setState(() {}); }, icon: const Icon(Icons.close)))),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(initialValue: repairStatusFilter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status'), border: const OutlineInputBorder()), items: [DropdownMenuItem(value:'all', child:Text(tr('Всички статуси','All statuses'))), ...['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'].map((v)=>DropdownMenuItem(value:v,child:Text(_statusLabel(v))))], onChanged:(v)=>setState(()=>repairStatusFilter=v ?? 'all')),
+          DropdownButtonFormField<String>(initialValue: repairStatusFilter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status'), border: const OutlineInputBorder()), items: [DropdownMenuItem(value:'all', child:Text(tr('Всички статуси','All statuses'))), ...['requested','received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'].map((v)=>DropdownMenuItem(value:v,child:Text(_statusLabel(v))))], onChanged:(v)=>setState(()=>repairStatusFilter=v ?? 'all')),
           const SizedBox(height: 12),
           if (filtered.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(rows.isEmpty ? tr('Все още няма ремонти, свързани с профила ви.','There are no repairs linked to your account yet.') : tr('Няма ремонти, отговарящи на търсенето.','No repairs match your search.'), textAlign: TextAlign.center)),
           ...filtered.map((r) => Card(child: ListTile(leading: CircleAvatar(child: Icon(r.status == 'ready' ? Icons.check_circle_outline : Icons.build, color: cyan)), title: Text(r.number.isEmpty ? 'Ремонт #${r.id}' : r.number), subtitle: Text([r.device, r.model, _statusLabel(r.status), if (r.pendingSync) tr('Чака синхронизация', 'Pending sync')].where((v) => v.isNotEmpty).join(' · ')), trailing: const Icon(Icons.chevron_right), onTap: () => _showRepairDetails(r))))
@@ -420,6 +441,52 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     await Share.share(text, subject: 'PCWork $number');
   }
 
+  Future<void> _showCustomerRepairRequest() async {
+    final token = await auth.token;
+    if (token == null) { _message(tr('Влезте в клиентския профил.','Sign in to your customer account.')); return; }
+    List<ServiceLocation> locations;
+    try { locations = (await api.getLocations()).where((location) => location.canSelect && !location.isUpcoming).toList(); }
+    catch (error) { _message('${tr('Неуспешно зареждане на сервизните обекти:','Could not load service locations:')} $error'); return; }
+    if (!mounted) return;
+    final type = TextEditingController(text: 'Лаптоп');
+    final model = TextEditingController();
+    final problem = TextEditingController();
+    ServiceLocation? selected = locations.isNotEmpty ? locations.first : null;
+    bool saving = false;
+    await showModalBottomSheet<void>(
+      context: _navigatorKey.currentState!.overlay!.context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18),
+        child: SizedBox(height: MediaQuery.of(ctx).size.height * .72, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Expanded(child: Text(tr('Нова заявка за ремонт','New repair request'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
+          Text(tr('Заявката ще бъде свързана с вашия профил. Екипът ни ще се свърже с вас за потвърждение.', 'The request will be linked to your account. Our team will contact you to confirm it.'), style: const TextStyle(color: Colors.white60, fontSize: 12)),
+          const SizedBox(height: 14),
+          Expanded(child: ListView(children: [
+            DropdownButtonFormField<ServiceLocation>(initialValue: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект','Service location'), border: const OutlineInputBorder()), items: locations.map((location) => DropdownMenuItem(value: location, child: Text(location.name))).toList(), onChanged: (value) => setSheet(() => selected = value)),
+            const SizedBox(height: 12),
+            TextField(controller: type, decoration: InputDecoration(labelText: tr('Тип устройство','Device type'), border: const OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: model, decoration: InputDecoration(labelText: tr('Марка и модел','Brand and model'), border: const OutlineInputBorder())),
+            const SizedBox(height: 12),
+            TextField(controller: problem, minLines: 3, maxLines: 5, decoration: InputDecoration(labelText: tr('Описание на проблема','Problem description'), border: const OutlineInputBorder())),
+          ])),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : () async {
+            if (selected == null || type.text.trim().isEmpty || model.text.trim().isEmpty || problem.text.trim().length < 8) { _message(tr('Попълнете всички полета и опишете проблема по-подробно.','Complete all fields and describe the problem in more detail.')); return; }
+            setSheet(() => saving = true);
+            try {
+              final created = await api.createCustomerRepairRequest(token, {'location_code': selected!.code, 'device_type': type.text.trim(), 'device_model': model.text.trim(), 'problem_description': problem.text.trim()});
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
+              _message('${tr('Заявката е изпратена. Номер:','Request sent. Number:')} ${created['repair_number'] ?? ''}');
+            } catch (error) { _message('${tr('Грешка при изпращане:','Request failed:')} $error'); if (ctx.mounted) setSheet(() => saving = false); }
+          }, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: Text(saving ? tr('Изпращане…','Sending…') : tr('Изпрати заявка','Submit request')))),
+        ])),
+      )),
+    );
+    type.dispose(); model.dispose(); problem.dispose();
+  }
+
   Widget _repairMetric(String title, int value) => Card(child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6), child: Column(children: [Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cyan)), Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))])));
 
   Future<List<Repair>> _loadRepairsFuture() async {
@@ -429,15 +496,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   String _statusLabel(String s) {
-    const bg = {'received':'Приет','diagnostics':'Диагностика','waiting_approval':'Очаква одобрение','in_repair':'В ремонт','ready':'Готов','completed':'Приключен','cancelled':'Отменен'};
-    const en = {'received':'Received','diagnostics':'Diagnostics','waiting_approval':'Awaiting approval','in_repair':'In repair','ready':'Ready','completed':'Completed','cancelled':'Cancelled'};
+    const bg = {'requested':'Заявка получена','received':'Приет','diagnostics':'Диагностика','waiting_approval':'Очаква одобрение','in_repair':'В ремонт','ready':'Готов','completed':'Приключен','cancelled':'Отменен'};
+    const en = {'requested':'Request received','received':'Received','diagnostics':'Diagnostics','waiting_approval':'Awaiting approval','in_repair':'In repair','ready':'Ready','completed':'Completed','cancelled':'Cancelled'};
     return (english ? en[s] : bg[s]) ?? s;
   }
 
 
   Future<void> _changeRepairStatus(Repair repair, BuildContext sheetContext) async {
     final noteController = TextEditingController();
-    const statuses = ['received', 'diagnostics', 'waiting_approval', 'in_repair', 'ready', 'completed', 'cancelled'];
+    const statuses = ['requested', 'received', 'diagnostics', 'waiting_approval', 'in_repair', 'ready', 'completed', 'cancelled'];
     var selected = repair.status;
     final confirmed = await showDialog<bool>(
       context: sheetContext,
@@ -521,7 +588,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Widget _repairProgress(String status) {
-    const steps = ['received','diagnostics','waiting_approval','in_repair','ready','completed'];
+    const steps = ['requested','received','diagnostics','waiting_approval','in_repair','ready','completed'];
     final index = steps.indexOf(status);
     if (status == 'cancelled') return Chip(avatar: const Icon(Icons.cancel_outlined), label: Text(_statusLabel(status)));
     return Column(children: steps.asMap().entries.map((entry) {
@@ -560,7 +627,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(signedInUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
     const SizedBox(height: 6),
     Text(signedInUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
+    if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: const TextStyle(color: Colors.white60))],
     if (signedInUser != null) ...[
+      const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
       const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.join(', ')))),
       const SizedBox(height: 12), FilledButton.icon(onPressed: _refreshProfile, icon: const Icon(Icons.refresh), label: Text(tr('Обнови профила', 'Refresh profile'))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
@@ -569,7 +638,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход с имейл', 'Sign in with email'))),
       OutlinedButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: true), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Създай профил', 'Create account'))),
       const SizedBox(height: 10),
-      Text(tr('Телефон/SMS входът ще бъде включен след избор и конфигуриране на SMS доставчик. Не въвеждайте SMS кодове в тази версия.', 'Phone/SMS sign-in will be enabled after selecting and configuring an SMS provider. Do not enter SMS codes in this version.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
+      Text(tr('Потвърждението и входът са само с еднократен код по имейл. Не използваме SMS или Viber.', 'Verification and sign-in use one-time email codes only. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
     if (signedInUser != null && signedInUser!.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r))) ...[
       const SizedBox(height: 16),
@@ -581,6 +650,30 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ],
     const SizedBox(height: 18), OutlinedButton.icon(onPressed: _showSettings, icon: const Icon(Icons.settings), label: Text(tr('Настройки на приложението', 'App settings'))),
   ]);
+
+  Future<void> _editCustomerProfile() async {
+    final user = signedInUser;
+    if (user == null) return;
+    final name = TextEditingController(text: user.name);
+    final phone = TextEditingController(text: user.phone);
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(tr('Редакция на профила','Edit profile')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: tr('Име и фамилия','Full name'))),
+        const SizedBox(height: 12),
+        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('Телефон','Phone'))),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx,false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: () => Navigator.pop(ctx,true), child: Text(tr('Запази','Save')))],
+    ));
+    if (ok == true) {
+      try {
+        final updated = await auth.updateProfile(name: name.text, phone: phone.text);
+        if (mounted) setState(() => signedInUser = updated);
+        _message(tr('Профилът е обновен.','Profile updated.'));
+      } catch (error) { _message('${tr('Неуспешно обновяване:','Update failed:')} $error'); }
+    }
+    name.dispose(); phone.dispose();
+  }
 
   Future<void> _openStaffDashboard() async {
     final token = await auth.token;
@@ -1019,6 +1112,41 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: const Icon(Icons.home_repair_service_rounded, size: 48, color: cyan),
   );
 
+  Future<void> _showFcmDeviceToken() async {
+    try {
+      final token = await push.getDeviceToken();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: _navigatorKey.currentState!.overlay!.context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(tr('FCM token на това устройство', 'This device FCM token')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SelectableText(token, style: const TextStyle(fontSize: 12)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(tr('Затвори', 'Close')),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: token));
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                _message(tr('FCM token е копиран. Постави го в WordPress → Маркетинг и Push → Тестов FCM device token.',
+                    'FCM token copied. Paste it into WordPress → Marketing & Push → Test FCM device token.'));
+              },
+              icon: const Icon(Icons.copy),
+              label: Text(tr('Копирай token', 'Copy token')),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) _message('${tr('Неуспешно получаване на FCM token:', 'Could not get FCM token:')} $e');
+    }
+  }
+
   void _showSettings() {
     final controller = TextEditingController(text: apiUrl);
     showModalBottomSheet(
@@ -1083,6 +1211,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                   setState(() => english = v);
                   _savePreference('pcwork_english', v);
                 },
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _showFcmDeviceToken,
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: Text(tr('Покажи / копирай FCM token', 'Show / copy FCM token')),
+                ),
               ),
               const SizedBox(height: 10),
               SizedBox(

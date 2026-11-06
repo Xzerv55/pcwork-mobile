@@ -2,13 +2,13 @@
 /**
  * Plugin Name: PCWork Mobile – Complete System
  * Description: Единен модул за мобилно приложение, вход, сервизни ремонти и административни интеграции на PCWork.
- * Version: 3.1.0
+ * Version: 3.3.0
  * Author: PCWork
  * Text Domain: pcwork-mobile
  */
 if (!defined('ABSPATH')) exit;
 
-define('PCWORK_MOBILE_COMPLETE_VERSION', '3.1.0');
+define('PCWORK_MOBILE_COMPLETE_VERSION', '3.3.0');
 define('PCWORK_MOBILE_COMPLETE_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/auth-bridge.php';
@@ -16,6 +16,7 @@ require_once __DIR__ . '/includes/repairs-api.php';
 require_once __DIR__ . '/includes/admin-integration-settings.php';
 require_once __DIR__ . '/includes/woocommerce-mobile-api.php';
 require_once __DIR__ . '/includes/google-sheets-sync.php';
+require_once __DIR__ . '/includes/customer-management.php';
 
 /** Unified admin landing page. */
 add_action('admin_menu', function () {
@@ -39,6 +40,7 @@ function pcwork_mobile_complete_dashboard() {
         ['Интеграции', 'Bookly, WooCommerce, Google Sheets, Firebase, Chatway, Chaty и ShopLentor.', admin_url('admin.php?page=pcwork-integrations')],
         ['Маркетинг и Push', 'Рекламни кампании, планиране, сегментиране и история.', admin_url('admin.php?page=pcwork-marketing')],
         ['Сервизни ремонти', 'Ремонти, история, документи, протоколи и разпределение към техник.', admin_url('admin.php?page=pcwork-repairs')],
+        ['Клиенти', 'Клиентски профили, потвърждение на имейл и блокиране на злоупотреби.', admin_url('admin.php?page=pcwork-customers')],
         ['REST API', 'Общ API адрес: /wp-json/pcwork/v1/ – използва се от Android и iOS приложението.', rest_url('pcwork/v1/')],
     ];
     foreach ($cards as $card) {

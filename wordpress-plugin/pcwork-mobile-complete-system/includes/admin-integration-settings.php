@@ -22,6 +22,7 @@ final class PCWork_Admin_Integration_Settings {
         add_action('wp_ajax_pcwork_test_integration', [__CLASS__, 'ajax_test_integration']);
         // Repair module should fire this action whenever a repair status changes.
         add_action('pcwork_repair_status_changed', [__CLASS__, 'on_repair_status_changed'], 10, 4);
+        add_action('pcwork_repair_assigned', [__CLASS__, 'on_repair_assigned'], 10, 5);
     }
 
     public static function defaults() {
@@ -483,6 +484,42 @@ final class PCWork_Admin_Integration_Settings {
                 'repair_id'=>$repair_id,'status'=>$status,'sent'=>$sent,'sent_at'=>current_time('mysql',true)
             ]);
         }
+    }
+
+    /** Notify the newly assigned technician; customer data is not included in the payload. */
+    public static function on_repair_assigned($repair_id, $technician_id, $repair_number='', $priority='normal', $due_at='') {
+        $s = self::get_settings();
+        if (($s['push_enabled'] ?? '0') !== '1' || empty($s['firebase_project_id']) || empty($s['firebase_service_account_json'])) return;
+        $repair_id = absint($repair_id);
+        $technician_id = absint($technician_id);
+        if (!$repair_id || !$technician_id) return;
+        $dedupe = 'pcw_assign_push_' . md5($repair_id . '|' . $technician_id . '|' . (string)$due_at . '|' . (string)$priority);
+        if (get_transient($dedupe)) return;
+        $devices = get_user_meta($technician_id, 'pcwork_fcm_devices', true);
+        if (!is_array($devices) || !$devices) return;
+        $repair_number = sanitize_text_field((string)$repair_number);
+        $title = 'Нова задача в PCWork';
+        $body = 'Назначен ви е ремонт' . ($repair_number !== '' ? ' № ' . $repair_number : '') . '.';
+        if ($due_at !== '') $body .= ' Срок: ' . sanitize_text_field((string)$due_at) . '.';
+        $sent = 0;
+        $invalid = [];
+        foreach ($devices as $token => $meta) {
+            $result = self::send_fcm_message($token, $title, $body, [
+                'event' => 'repair_assigned',
+                'repair_id' => $repair_id,
+                'repair_number' => $repair_number,
+                'priority' => sanitize_key((string)$priority),
+            ]);
+            if (is_wp_error($result)) {
+                $message = $result->get_error_message();
+                if (strpos($message, 'HTTP 404') !== false || strpos($message, 'UNREGISTERED') !== false) $invalid[] = $token;
+            } else {
+                $sent++;
+            }
+        }
+        foreach ($invalid as $token) unset($devices[$token]);
+        if ($invalid) update_user_meta($technician_id, 'pcwork_fcm_devices', $devices);
+        if ($sent > 0) set_transient($dedupe, 1, 10 * MINUTE_IN_SECONDS);
     }
 
     /** Explicit customer opt-in; marketing is disabled until the user enables it. */
