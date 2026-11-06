@@ -39,18 +39,28 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
-    final params = <String, String>{'per_page': '40'};
+    final params = <String, String>{'per_page': '20'};
     if (search.isNotEmpty) params['search'] = search;
     if (categoryId > 0) params['category'] = '$categoryId';
-    final response = await http.get(_uri('shop/products').replace(queryParameters: params)).timeout(const Duration(seconds: 25));
+    final response = await http.get(_uri('shop/products').replace(queryParameters: params)).timeout(const Duration(seconds: 15));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
     return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
   }
 
+  Future<List<Map<String, dynamic>>> getShopProductVariations(int productId) async {
+    final response = await http.get(_uri('shop/products/$productId/variations')).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) {
+      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    }
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
   Future<List<Map<String, dynamic>>> getShopCategories() async {
-    final response = await http.get(_uri('shop/categories')).timeout(const Duration(seconds: 20));
+    final response = await http.get(_uri('shop/categories')).timeout(const Duration(seconds: 12));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
@@ -90,7 +100,7 @@ class ApiService {
   }
 
   Future<bool> checkHealth() async {
-    final response = await http.get(_uri('health')).timeout(const Duration(seconds: 15));
+    final response = await http.get(_uri('health')).timeout(const Duration(seconds: 8));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception('API върна HTTP ${response.statusCode}');
     }

@@ -57,3 +57,7 @@ PHP синтаксисът на WooCommerce API и административн�
 The v34 release adds a dedicated sign-in/registration screen, email-or-username WordPress login, session restoration, password recovery link, and a signed-in home dashboard summary. Install the included WordPress plugin v2.4.1 before testing login. The app uses the existing WordPress account; no default username or password is created.
 
 For login, use the email address or WordPress username and the existing account password. New customer registration creates a Subscriber account. Staff features remain restricted by WordPress roles and server-side permissions.
+
+## v35 – Performance, Store & Login Reliability
+
+The v35 release lazily initializes app sections, avoids loading repair data until the repairs screen is opened, reduces WooCommerce catalogue requests, fetches variable-product options on demand, standardizes product image panels, and adds bounded Chatway loading diagnostics. The matching WordPress plugin is v2.5.0 and resolves existing WordPress accounts by email before authenticating with the account login. Install the matching plugin before testing the v35 app.

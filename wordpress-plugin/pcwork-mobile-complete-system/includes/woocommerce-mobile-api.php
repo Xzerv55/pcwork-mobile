@@ -6,6 +6,7 @@ final class PCWork_WooCommerce_Mobile_API {
     public static function init() { add_action('rest_api_init', [__CLASS__, 'routes']); }
     public static function routes() {
         register_rest_route('pcwork/v1', '/shop/products', ['methods'=>'GET','callback'=>[__CLASS__,'products'],'permission_callback'=>'__return_true']);
+        register_rest_route('pcwork/v1', '/shop/products/(?P<id>\\d+)/variations', ['methods'=>'GET','callback'=>[__CLASS__,'variations'],'permission_callback'=>'__return_true']);
         register_rest_route('pcwork/v1', '/shop/categories', ['methods'=>'GET','callback'=>[__CLASS__,'categories'],'permission_callback'=>'__return_true']);
         register_rest_route('pcwork/v1', '/shop/orders', ['methods'=>'GET','callback'=>[__CLASS__,'orders'],'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize']]);
         register_rest_route('pcwork/v1', '/shop/orders', ['methods'=>'POST','callback'=>[__CLASS__,'create_order'],'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize']]);
@@ -20,44 +21,83 @@ final class PCWork_WooCommerce_Mobile_API {
         return true;
     }
     private static function product_data($product) {
+        // Keep catalogue responses lightweight: variable products can have
+        // hundreds of variations, so load those only on the product detail view.
         $image = wp_get_attachment_image_url($product->get_image_id(), 'woocommerce_thumbnail');
-        $variations = [];
-        if ($product->is_type('variable')) {
-            foreach ($product->get_available_variations() as $variation) {
-                $variation_product = wc_get_product($variation['variation_id']);
-                if (!$variation_product) continue;
-                $attributes = [];
-                foreach ((array)($variation['attributes'] ?? []) as $key => $value) {
-                    $label = wc_attribute_label(str_replace('attribute_', '', $key), $product);
-                    $attributes[$label] = $value !== '' ? wc_clean($value) : '';
-                }
-                $variations[] = [
-                    'id'=>(int)$variation_product->get_id(),
-                    'attributes'=>$attributes,
-                    'price'=>$variation_product->get_price(),
-                    'regular_price'=>$variation_product->get_regular_price(),
-                    'in_stock'=>(bool)$variation_product->is_in_stock(),
-                    'purchasable'=>(bool)$variation_product->is_purchasable(),
-                    'stock_quantity'=>$variation_product->get_stock_quantity(),
-                ];
-            }
-        }
-        return ['id'=>(int)$product->get_id(),'name'=>wp_strip_all_tags($product->get_name()),'slug'=>$product->get_slug(),'description'=>wp_strip_all_tags($product->get_short_description()),'price'=>$product->get_price(),'regular_price'=>$product->get_regular_price(),'sale_price'=>$product->get_sale_price(),'currency'=>get_woocommerce_currency(),'image'=>$image ?: '', 'permalink'=>get_permalink($product->get_id()),'stock_status'=>$product->get_stock_status(),'stock_quantity'=>$product->get_stock_quantity(),'type'=>$product->get_type(),'purchasable'=>(bool)$product->is_type('simple') && (bool)$product->is_purchasable() && (bool)$product->is_in_stock(),'on_sale'=>(bool)$product->is_on_sale(),'variations'=>$variations,'categories'=>array_map(function($term){return ['id'=>(int)$term->term_id,'name'=>$term->name];}, get_the_terms($product->get_id(),'product_cat') ?: [])];
+        return [
+            'id'=>(int)$product->get_id(),
+            'name'=>wp_strip_all_tags($product->get_name()),
+            'slug'=>$product->get_slug(),
+            'description'=>wp_strip_all_tags($product->get_short_description()),
+            'price'=>$product->get_price(),
+            'regular_price'=>$product->get_regular_price(),
+            'sale_price'=>$product->get_sale_price(),
+            'currency'=>get_woocommerce_currency(),
+            'image'=>$image ?: '',
+            'permalink'=>get_permalink($product->get_id()),
+            'stock_status'=>$product->get_stock_status(),
+            'stock_quantity'=>$product->get_stock_quantity(),
+            'type'=>$product->get_type(),
+            'purchasable'=>(bool)$product->is_purchasable() && (bool)$product->is_in_stock(),
+            'on_sale'=>(bool)$product->is_on_sale(),
+            'variations'=>[]
+        ];
     }
+
     public static function products($request) {
         $ready=self::ready(); if (is_wp_error($ready)) return $ready;
-        $per_page=max(1,min(60,(int)$request->get_param('per_page') ?: 40));
-        $args=['status'=>'publish','limit'=>$per_page,'orderby'=>'menu_order','order'=>'ASC','return'=>'objects'];
-        $search=sanitize_text_field((string)$request->get_param('search')); if ($search!=='') $args['s']=$search;
+        $per_page=max(1,min(20,(int)$request->get_param('per_page') ?: 20));
+        $search=sanitize_text_field((string)$request->get_param('search'));
         $category=absint($request->get_param('category'));
+        $cache_key='pcw_mobile_shop_products_' . md5($per_page . '|' . $search . '|' . $category);
+        $cached=get_transient($cache_key);
+        if (is_array($cached)) return rest_ensure_response($cached);
+        $args=['status'=>'publish','limit'=>$per_page,'orderby'=>'menu_order','order'=>'ASC','return'=>'objects'];
+        if ($search!=='') $args['s']=$search;
         if ($category) { $term=get_term($category,'product_cat'); if ($term && !is_wp_error($term)) $args['category']=[$term->slug]; }
         $items=array_map([__CLASS__,'product_data'],wc_get_products($args));
-        return rest_ensure_response(['data'=>$items,'count'=>count($items),'currency'=>get_woocommerce_currency()]);
+        $payload=['data'=>$items,'count'=>count($items),'currency'=>get_woocommerce_currency()];
+        set_transient($cache_key,$payload,45);
+        return rest_ensure_response($payload);
+    }
+
+    public static function variations($request) {
+        $ready=self::ready(); if (is_wp_error($ready)) return $ready;
+        $product=wc_get_product(absint($request['id']));
+        if (!$product || $product->get_status() !== 'publish' || !$product->is_type('variable')) {
+            return new WP_Error('pcw_product_not_variable','Продуктът не е намерен или няма варианти.',['status'=>404]);
+        }
+        $rows=[];
+        // Read child IDs directly and cap the response; get_available_variations()
+        // builds a much larger formatted structure for every child variation.
+        $variation_ids=array_slice($product->get_children(),0,50);
+        foreach ($variation_ids as $variation_id) {
+            $variation_product=wc_get_product($variation_id);
+            if (!$variation_product || $variation_product->get_status() !== 'publish') continue;
+            $attributes=[];
+            foreach ((array)$variation_product->get_variation_attributes() as $key=>$value) {
+                $label=wc_attribute_label(str_replace('attribute_','',$key),$product);
+                $attributes[$label]=$value !== '' ? wc_clean($value) : '';
+            }
+            $rows[]=[
+                'id'=>(int)$variation_product->get_id(),
+                'attributes'=>$attributes,
+                'price'=>$variation_product->get_price(),
+                'regular_price'=>$variation_product->get_regular_price(),
+                'in_stock'=>(bool)$variation_product->is_in_stock(),
+                'purchasable'=>(bool)$variation_product->is_purchasable(),
+                'stock_quantity'=>$variation_product->get_stock_quantity(),
+            ];
+        }
+        return rest_ensure_response(['data'=>$rows]);
     }
     public static function categories() {
         $ready=self::ready(); if (is_wp_error($ready)) return $ready;
+        $cached=get_transient('pcw_mobile_shop_categories_v1');
+        if (is_array($cached)) return rest_ensure_response(['data'=>$cached]);
         $terms=get_terms(['taxonomy'=>'product_cat','hide_empty'=>true,'orderby'=>'name','order'=>'ASC']); if (is_wp_error($terms)) return $terms;
         $rows=[]; foreach($terms as $term) $rows[]=['id'=>(int)$term->term_id,'name'=>$term->name,'slug'=>$term->slug,'parent'=>(int)$term->parent,'count'=>(int)$term->count];
+        set_transient('pcw_mobile_shop_categories_v1',$rows,5 * MINUTE_IN_SECONDS);
         return rest_ensure_response(['data'=>$rows]);
     }
     public static function orders() {

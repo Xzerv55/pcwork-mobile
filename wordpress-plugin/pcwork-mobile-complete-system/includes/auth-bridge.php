@@ -43,19 +43,47 @@ final class PCWork_Mobile_Auth_Bridge {
         return true;
     }
 
-    private static function rate_limit($identifier = '') {
+    private static function rate_keys($identifier = '') {
         $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-        $keys = [
-            'pcw_auth_ip_' . md5($ip),
-        ];
-        if ($identifier !== '') $keys[] = 'pcw_auth_user_' . md5(strtolower(trim($identifier)));
-        foreach ($keys as $index => $key) {
-            $count = (int)get_transient($key);
-            $limit = $index === 0 ? 20 : 8;
-            if ($count >= $limit) return new WP_Error('pcwork_rate_limited','Твърде много опити за вход. Опитайте отново след 15 минути.',['status'=>429]);
+        $keys = ['pcw_auth_v2_ip_' . md5($ip)];
+        if ($identifier !== '') $keys[] = 'pcw_auth_v2_user_' . md5(strtolower(trim($identifier)));
+        return $keys;
+    }
+
+    /** Check limits without penalizing successful logins. */
+    private static function rate_limit($identifier = '') {
+        foreach (self::rate_keys($identifier) as $index => $key) {
+            $limit = $index === 0 ? 30 : 10;
+            if ((int)get_transient($key) >= $limit) {
+                return new WP_Error('pcwork_rate_limited','Твърде много неуспешни опити за вход. Опитайте отново след 15 минути.',['status'=>429]);
+            }
         }
-        foreach ($keys as $key) set_transient($key, (int)get_transient($key) + 1, 15 * MINUTE_IN_SECONDS);
         return true;
+    }
+
+    private static function record_failed_attempt($identifier = '') {
+        foreach (self::rate_keys($identifier) as $key) {
+            set_transient($key, (int)get_transient($key) + 1, 15 * MINUTE_IN_SECONDS);
+        }
+    }
+
+    private static function clear_failed_attempts($identifier = '') {
+        foreach (self::rate_keys($identifier) as $key) delete_transient($key);
+    }
+
+    /**
+     * Resolve an email to its WordPress login before authenticating. This keeps
+     * the normal wp_authenticate filters (2FA, security plugins, SSO) active,
+     * while also supporting sites where email authentication is disabled.
+     */
+    private static function authenticate_identifier($identifier, $password) {
+        // Resolve first, so a wrong password is counted as only one failed
+        // authentication attempt by WordPress/security plugins.
+        if (is_email($identifier)) {
+            $by_email = get_user_by('email', sanitize_email($identifier));
+            if ($by_email instanceof WP_User) $identifier = $by_email->user_login;
+        }
+        return wp_authenticate($identifier, $password);
     }
 
     private static function response($user_id) {
@@ -71,12 +99,12 @@ final class PCWork_Mobile_Auth_Bridge {
         $limit = self::rate_limit($identifier);
         if (is_wp_error($limit)) return $limit;
 
-        // wp_authenticate supports both WordPress usernames and email addresses
-        // and preserves the site's normal authentication filters.
-        $user = wp_authenticate($identifier, $password);
+        $user = self::authenticate_identifier($identifier, $password);
         if (is_wp_error($user) || !($user instanceof WP_User)) {
+            self::record_failed_attempt($identifier);
             return new WP_Error('pcwork_bad_credentials','Невалидни данни за вход. Проверете имейла/потребителското име и паролата.',['status'=>401]);
         }
+        self::clear_failed_attempts($identifier);
         return self::response($user->ID);
     }
 
@@ -87,9 +115,10 @@ final class PCWork_Mobile_Auth_Bridge {
         if (!$name || !is_email($email) || strlen($password)<10) return new WP_Error('pcwork_invalid_registration','Въведете име, валиден имейл и парола с поне 10 символа.',['status'=>400]);
         $limit = self::rate_limit($email);
         if (is_wp_error($limit)) return $limit;
-        if (email_exists($email)) return new WP_Error('pcwork_email_exists','Този имейл вече има регистрация.',['status'=>409]);
+        if (email_exists($email)) { self::record_failed_attempt($email); return new WP_Error('pcwork_email_exists','Този имейл вече има регистрация.',['status'=>409]); }
         $user_id=wp_insert_user(['user_login'=>$email,'user_email'=>$email,'user_pass'=>$password,'display_name'=>$name,'role'=>'subscriber']);
-        if (is_wp_error($user_id)) return $user_id;
+        if (is_wp_error($user_id)) { self::record_failed_attempt($email); return $user_id; }
+        self::clear_failed_attempts($email);
         return self::response($user_id);
     }
 

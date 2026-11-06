@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.4.1
+Stable tag: 2.5.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -56,3 +56,9 @@ License: GPLv2 or later
 * Login accepts WordPress email address or username using wp_authenticate and the site's normal authentication filters.
 * Improved per-IP and per-account login throttling and clearer generic authentication errors.
 * Preserved variable WooCommerce products, customer order details, and the v2.4.0 nonce-based Google Sheets HMAC integration with encrypted secret-at-rest settings.
+
+= 2.5.0 =
+* Resolve existing WordPress email addresses to their account login before authentication, while preserving normal WordPress authentication filters.
+* Count failed authentication attempts only; successful sign-ins clear the corresponding counters.
+* Reduce WooCommerce catalogue payloads by loading 20 products per request and fetching variable-product options only when a product is opened.
+* Cache product categories for five minutes.

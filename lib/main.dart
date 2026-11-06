@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -29,6 +31,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
   bool english = false;
   bool staffPreview = false;
   int tab = 0;
+  final Set<int> _visitedTabs = <int>{0};
   String apiUrl = defaultApi;
   bool apiReady = false;
   bool checkingApi = false;
@@ -53,14 +56,15 @@ class _PCWorkAppState extends State<PCWorkApp> {
   Future<void> _initialize() async {
     await _loadSettings();
     if (!mounted) return;
-    await _checkApi(silent: true);
-    if (!mounted) return;
+    // Do not make the server health check a startup dependency.
+    // Restore the account immediately; the status check runs independently.
+    unawaited(_checkApi(silent: true));
     await _restoreSession();
   }
 
   Future<void> _restoreSession() async {
-    try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; repairsFuture = api.getRepairs(t); });
-      await _enablePush(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
+    try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
+      unawaited(_enablePush(t)); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
   }
 
   Future<void> _loadSettings() async {
@@ -109,8 +113,31 @@ class _PCWorkAppState extends State<PCWorkApp> {
       _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
       if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
     }, onOpened: () {
-      if (mounted) setState(() { tab = 1; repairsFuture = _loadRepairsFuture(); });
+      if (mounted) _selectTab(1);
     });
+  }
+
+  void _selectTab(int index) {
+    if (index < 0 || index > 5) return;
+    setState(() {
+      tab = index;
+      _visitedTabs.add(index);
+      if (index == 1 && repairsFuture == null && signedInUser != null) {
+        repairsFuture = _loadRepairsFuture();
+      }
+    });
+  }
+
+  Widget _tabContent(int index) {
+    switch (index) {
+      case 0: return _home();
+      case 1: return _repairs();
+      case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, english: english);
+      case 3: return ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0);
+      case 4: return _booking();
+      case 5: return _profile();
+      default: return const SizedBox.shrink();
+    }
   }
 
   @override
@@ -175,9 +202,9 @@ class _PCWorkAppState extends State<PCWorkApp> {
         ),
         body: DecoratedBox(
           decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])),
-          child: IndexedStack(index: tab, children: [_home(), _repairs(), ShopScreen(api: api, tokenProvider: () => auth.token, english: english), ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0), _booking(), _profile()]),
+          child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink())),
         ),
-        bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
+        bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: _selectTab, destinations: [
           NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
           NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
           NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront_rounded), label: labels[2]),
@@ -213,16 +240,16 @@ class _PCWorkAppState extends State<PCWorkApp> {
         const SizedBox(height: 9),
         Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: const TextStyle(color: Color(0xFFC3D1E0), fontSize: 13)),
         const SizedBox(height: 20),
-        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => setState(() => tab = 4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
     const SizedBox(height: 22),
     if (signedInUser == null) _homeSignInCard() else _homeAccountDashboard(),
     const SizedBox(height: 8),
     Row(children: [
-      Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => setState(() => tab = 1))),
+      Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => _selectTab(1))),
       const SizedBox(width: 12),
-      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => setState(() => tab = 3))),
+      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => _selectTab(3))),
     ]),
     const SizedBox(height: 21),
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -249,7 +276,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
-      const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 5), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
+      const SizedBox(height: 16), FilledButton.icon(onPressed: () => _selectTab(5), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
     ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
     return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
@@ -336,7 +363,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                initialValue: selected,
+                value: selected,
                 decoration: InputDecoration(labelText: tr('Нов статус', 'New status')),
                 items: statuses.map((status) => DropdownMenuItem(
                   value: status,
@@ -531,6 +558,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
       signedInUser = user;
       repairsFuture = _loadRepairsFuture();
       tab = 5;
+      _visitedTabs.add(5);
     });
     if (bearer != null && bearer.isNotEmpty) await _enablePush(bearer);
     if (mounted) {
@@ -579,7 +607,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
       );
 
   Widget _homeAccountDashboard() {
-    final future = repairsFuture ??= _loadRepairsFuture();
+    final future = repairsFuture;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(17),
@@ -599,12 +627,17 @@ class _PCWorkAppState extends State<PCWorkApp> {
                   ),
                 ),
                 TextButton(
-                  onPressed: () => setState(() => tab = 1),
+                  onPressed: () => _selectTab(1),
                   child: Text(tr('Ремонти', 'Repairs')),
                 ),
               ],
             ),
-            FutureBuilder<List<Repair>>(
+            if (future == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _selectTab(1), icon: const Icon(Icons.build_outlined), label: Text(tr('Зареди моите ремонти', 'Load my repairs')))),
+              )
+            else FutureBuilder<List<Repair>>(
               future: future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {

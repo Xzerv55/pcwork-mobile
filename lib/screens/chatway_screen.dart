@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -19,6 +21,9 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
   int _progress = 0;
   bool _webViewStarted = false;
   String? _webError;
+  Uri? _lastUrl;
+  Timer? _navigationTimer;
+  Timer? _widgetCheckTimer;
 
   @override
   void initState() {
@@ -35,13 +40,16 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
   }
 
   Future<Uri?> _loadChatUrl() async {
-    final token = await widget.tokenProvider();
-    return widget.api.getChatwayUrl(token: token);
+    final token = await widget.tokenProvider().timeout(const Duration(seconds: 5));
+    return widget.api.getChatwayUrl(token: token).timeout(const Duration(seconds: 18));
   }
 
   Future<void> _reload() async {
     setState(() {
       _webError = null;
+      _lastUrl = null;
+      _navigationTimer?.cancel();
+      _widgetCheckTimer?.cancel();
       _progress = 0;
       _chatUrl = _loadChatUrl();
       _controller = null;
@@ -50,12 +58,35 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
   }
 
   void _openWebView(Uri url) {
+    _lastUrl = url;
+    _navigationTimer?.cancel();
+    _navigationTimer = Timer(const Duration(seconds: 28), () {
+      if (mounted && _progress < 100) setState(() => _webError = 'Връзката с чат страницата отне твърде дълго. Провери интернет връзката и опитай отново.');
+    });
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0B1220))
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (value) {
           if (mounted) setState(() => _progress = value);
+          if (value >= 100) _navigationTimer?.cancel();
+        },
+        onPageFinished: (_) {
+          _navigationTimer?.cancel();
+          if (!mounted) return;
+          setState(() => _progress = 100);
+          _widgetCheckTimer?.cancel();
+          _widgetCheckTimer = Timer(const Duration(seconds: 13), () async {
+            final activeController = _controller;
+            if (!mounted || activeController == null || _webError != null) return;
+            try {
+              final result = await activeController.runJavaScriptReturningResult(r"typeof window.$chatway !== 'undefined'");
+              final ready = result == true || result.toString().toLowerCase() == 'true';
+              if (!ready && mounted) setState(() => _webError = 'Страницата се отвори, но Chatway не зареди своя чат модул. Провери дали скриптът на Chatway не е блокиран от кеширане, защитна стена или оптимизатор на JavaScript.');
+            } catch (_) {
+              if (mounted) setState(() => _webError = 'Не успяхме да проверим зареждането на Chatway. Опитай отново.');
+            }
+          });
         },
         onWebResourceError: (error) {
           if (error.isForMainFrame == true && mounted) {
@@ -79,6 +110,13 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
       ))
       ..loadRequest(url);
     setState(() => _controller = controller);
+  }
+
+  @override
+  void dispose() {
+    _navigationTimer?.cancel();
+    _widgetCheckTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -164,6 +202,14 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
               icon: const Icon(Icons.refresh_rounded),
               label: Text(action),
             ),
+            if (_lastUrl != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => launchUrl(_lastUrl!, mode: LaunchMode.externalApplication),
+                icon: const Icon(Icons.open_in_browser_rounded),
+                label: const Text('Отвори чата в браузър'),
+              ),
+            ],
           ]),
         ),
       ),

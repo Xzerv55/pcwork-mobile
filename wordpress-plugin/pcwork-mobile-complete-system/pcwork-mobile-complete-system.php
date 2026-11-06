@@ -2,13 +2,13 @@
 /**
  * Plugin Name: PCWork Mobile – Complete System
  * Description: Единен модул за мобилно приложение, вход, сервизни ремонти и административни интеграции на PCWork.
- * Version: 2.4.1
+ * Version: 2.5.0
  * Author: PCWork
  * Text Domain: pcwork-mobile
  */
 if (!defined('ABSPATH')) exit;
 
-define('PCWORK_MOBILE_COMPLETE_VERSION', '2.4.1');
+define('PCWORK_MOBILE_COMPLETE_VERSION', '2.5.0');
 define('PCWORK_MOBILE_COMPLETE_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/auth-bridge.php';

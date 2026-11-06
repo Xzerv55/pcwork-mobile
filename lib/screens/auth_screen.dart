@@ -169,6 +169,9 @@ class _AuthScreenState extends State<AuthScreen> {
                             keyboardType: _register ? TextInputType.emailAddress : TextInputType.emailAddress,
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
+                            enableSuggestions: false,
+                            textCapitalization: TextCapitalization.none,
+                            autofillHints: _register ? const [AutofillHints.email] : const [AutofillHints.username, AutofillHints.email],
                             decoration: InputDecoration(
                               labelText: _register
                                   ? 'Email'
@@ -188,6 +191,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           TextFormField(
                             controller: _password,
                             obscureText: _obscurePassword,
+                            autofillHints: _register ? const [AutofillHints.newPassword] : const [AutofillHints.password],
                             textInputAction: TextInputAction.done,
                             onFieldSubmitted: (_) { if (!_busy) _submit(); },
                             decoration: InputDecoration(

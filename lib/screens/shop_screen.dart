@@ -20,6 +20,8 @@ class _ShopScreenState extends State<ShopScreen> {
   List<Map<String, dynamic>> products = [];
   List<Map<String, dynamic>> categories = [];
   bool loading = true;
+  bool categoriesLoaded = false;
+  int _loadGeneration = 0;
   bool placingOrder = false;
   String? error;
   int category = 0;
@@ -68,24 +70,27 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       loading = true;
       error = null;
     });
     try {
-      final results = await Future.wait<dynamic>([
-        widget.api.getShopProducts(search: search.text.trim(), categoryId: category),
-        widget.api.getShopCategories(),
-      ]);
-      if (!mounted) return;
+      final productRequest = widget.api.getShopProducts(search: search.text.trim(), categoryId: category);
+      final categoryRequest = categoriesLoaded
+          ? Future<List<Map<String, dynamic>>>.value(categories)
+          : widget.api.getShopCategories();
+      final results = await Future.wait<dynamic>([productRequest, categoryRequest]);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         products = results[0] as List<Map<String, dynamic>>;
         categories = results[1] as List<Map<String, dynamic>>;
+        categoriesLoaded = true;
       });
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted && generation == _loadGeneration) setState(() => error = e.toString());
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && generation == _loadGeneration) setState(() => loading = false);
     }
   }
 
@@ -94,7 +99,8 @@ class _ShopScreenState extends State<ShopScreen> {
   }
 
   void _add(Map<String, dynamic> product) {
-    final productId = (product['id'] as num).toInt();
+    final productId = int.tryParse('${product['id']}') ?? 0;
+    if (productId <= 0) return;
     final variationId = (product['selected_variation_id'] as num?)?.toInt() ?? 0;
     final key = '$productId:$variationId';
     final cartProduct = Map<String, dynamic>.from(product)..['cart_key'] = key;
@@ -179,7 +185,8 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
           ...categories.map((c) {
-            final id = (c['id'] as num).toInt();
+            final id = int.tryParse('${c['id']}') ?? 0;
+            if (id <= 0) return const SizedBox.shrink();
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: ChoiceChip(
@@ -221,7 +228,7 @@ class _ShopScreenState extends State<ShopScreen> {
       onRefresh: _load,
       child: GridView.builder(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: .66),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: .76),
         itemCount: products.length,
         itemBuilder: (ctx, i) => _productCard(products[i]),
       ),
@@ -230,39 +237,58 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Widget _productCard(Map<String, dynamic> product) {
     final imageUrl = product['image']?.toString() ?? '';
-    final canBuy = product['purchasable'] == true || (product['type'] == 'variable' && (product['variations'] is List) && (product['variations'] as List).isNotEmpty);
+    final canBuy = product['purchasable'] == true;
+    final isVariable = product['type'] == 'variable';
     return Card(
       clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
       child: InkWell(
         onTap: () => _showProduct(product),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                color: const Color(0xFF0D1724),
+            SizedBox(
+              height: 112,
+              width: double.infinity,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(color: Color(0xFF0D1724)),
                 child: imageUrl.isNotEmpty
-                    ? Image.network(imageUrl, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other, size: 54, color: Color(0xFF21D4D8)))
-                    : const Icon(Icons.devices_other, size: 54, color: Color(0xFF21D4D8)),
+                    ? Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Image.network(
+                          imageUrl,
+                          fit: BoxFit.contain,
+                          cacheWidth: 480,
+                          filterQuality: FilterQuality.low,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.devices_other, size: 42, color: Color(0xFF21D4D8)),
+                          loadingBuilder: (context, child, progress) => progress == null
+                              ? child
+                              : const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                        ),
+                      )
+                    : const Center(child: Icon(Icons.devices_other, size: 42, color: Color(0xFF21D4D8))),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 9, 10, 2),
-              child: Text('${product['name']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Text(money(product['price']), style: const TextStyle(color: Color(0xFF21D4D8), fontWeight: FontWeight.w800)),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 7),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonalIcon(
-                  onPressed: canBuy ? () { if (product['type'] == 'variable') { _showProduct(product); } else { _add(product); } } : null,
-                  icon: const Icon(Icons.add_shopping_cart, size: 16),
-                  label: Text(product['type'] == 'variable' && canBuy ? tr('Избери опции', 'Choose options') : canBuy ? tr('Добави', 'Add') : tr('Изчерпан', 'Unavailable'), style: const TextStyle(fontSize: 11)),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text('${product['name']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, height: 1.2, fontWeight: FontWeight.w700))),
+                    const SizedBox(height: 4),
+                    Text(money(product['price']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF21D4D8), fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 34,
+                      width: double.infinity,
+                      child: FilledButton.tonal(
+                        onPressed: canBuy ? () { if (isVariable) { _showProduct(product); } else { _add(product); } } : null,
+                        style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), visualDensity: VisualDensity.compact),
+                        child: Text(isVariable && canBuy ? tr('Избери вариант', 'Choose option') : canBuy ? tr('Добави', 'Add') : tr('Изчерпан', 'Unavailable'), maxLines: 1, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -278,14 +304,16 @@ class _ShopScreenState extends State<ShopScreen> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF111B29),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .82),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if ((product['image']?.toString().isNotEmpty ?? false))
-                Center(child: Image.network(product['image'].toString(), height: 190, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other, size: 80))),
+                Center(child: Image.network(product['image'].toString(), height: 190, cacheWidth: 600, filterQuality: FilterQuality.low, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other, size: 80))),
               const SizedBox(height: 12),
               Text('${product['name']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
@@ -297,18 +325,26 @@ class _ShopScreenState extends State<ShopScreen> {
                 const SizedBox(height: 8),
                 Text(tr('Избери вариант', 'Choose a variation'), style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
-                ...((product['variations'] as List? ?? []).whereType<Map>().map((raw) {
-                  final variation = Map<String, dynamic>.from(raw);
-                  final attrs = variation['attributes'] is Map ? (variation['attributes'] as Map).entries.map((e) => '${e.value}').join(' · ') : '';
-                  final available = variation['purchasable'] == true && variation['in_stock'] == true;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: SizedBox(width: double.infinity, child: OutlinedButton(
-                      onPressed: available ? () { final selected = Map<String, dynamic>.from(product); selected['selected_variation_id'] = variation['id']; selected['price'] = variation['price']; selected['variation_label'] = attrs; _add(selected); Navigator.pop(ctx); } : null,
-                      child: Text('${attrs.isEmpty ? tr('Вариант', 'Variation') : attrs} · ${variation['price']} $currencyCode${available ? '' : ' · ${tr('Изчерпан', 'Unavailable')}'}'),
-                    )),
-                  );
-                })),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: widget.api.getShopProductVariations(int.tryParse('${product['id']}') ?? 0),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()));
+                    if (snapshot.hasError) return Text('${tr('Вариантите не могат да се заредят:', 'Could not load options:')} ${snapshot.error}');
+                    final variations = snapshot.data ?? const <Map<String, dynamic>>[];
+                    if (variations.isEmpty) return Text(tr('Няма налични варианти.', 'No available options.'));
+                    return Column(children: variations.map((variation) {
+                      final attrs = variation['attributes'] is Map ? (variation['attributes'] as Map).entries.map((e) => '${e.value}').where((v) => v.isNotEmpty).join(' · ') : '';
+                      final available = variation['purchasable'] == true && variation['in_stock'] == true;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: SizedBox(width: double.infinity, child: OutlinedButton(
+                          onPressed: available ? () { final selected = Map<String, dynamic>.from(product); selected['selected_variation_id'] = variation['id']; selected['price'] = variation['price']; selected['variation_label'] = attrs; _add(selected); Navigator.pop(ctx); } : null,
+                          child: Text('${attrs.isEmpty ? tr('Вариант', 'Variation') : attrs} · ${variation['price']} $currencyCode${available ? '' : ' · ${tr('Изчерпан', 'Unavailable')}'}'),
+                        )),
+                      );
+                    }).toList());
+                  },
+                ),
               ] else
                 SizedBox(
                   width: double.infinity,
@@ -319,6 +355,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                 ),
             ],
+            ),
           ),
         ),
       ),
@@ -327,6 +364,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _orders() async {
     final token = await widget.tokenProvider();
+    if (!mounted) return;
     if (token == null) {
       _message(tr('Влезте в профила си, за да видите поръчките.', 'Sign in to view your orders.'));
       return;
@@ -338,9 +376,9 @@ class _ShopScreenState extends State<ShopScreen> {
         context: context,
         isScrollControlled: true,
         backgroundColor: const Color(0xFF111B29),
-        builder: (_) => SafeArea(
+        builder: (sheetContext) => SafeArea(
           child: SizedBox(
-            height: MediaQuery.of(context).size.height * .72,
+            height: MediaQuery.of(sheetContext).size.height * .72,
             child: ListView(
               padding: const EdgeInsets.all(18),
               children: [
@@ -526,7 +564,7 @@ class _ShopScreenState extends State<ShopScreen> {
       ),
     );
 
-    if (accepted != true) return;
+    if (!mounted || accepted != true) return;
     setState(() => placingOrder = true);
     try {
       final result = await widget.api.createShopOrder(
