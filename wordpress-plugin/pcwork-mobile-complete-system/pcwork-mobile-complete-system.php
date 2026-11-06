@@ -2,13 +2,13 @@
 /**
  * Plugin Name: PCWork Mobile – Complete System
  * Description: Единен модул за мобилно приложение, вход, сервизни ремонти и административни интеграции на PCWork.
- * Version: 3.4.0
+ * Version: 3.5.0
  * Author: PCWork
  * Text Domain: pcwork-mobile
  */
 if (!defined('ABSPATH')) exit;
 
-define('PCWORK_MOBILE_COMPLETE_VERSION', '3.4.0');
+define('PCWORK_MOBILE_COMPLETE_VERSION', '3.5.0');
 define('PCWORK_MOBILE_COMPLETE_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/auth-bridge.php';
@@ -37,7 +37,7 @@ function pcwork_mobile_complete_dashboard() {
     echo '<p>Единен административен център за мобилното приложение и сервизната система.</p>';
     echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;max-width:1000px">';
     $cards = [
-        ['Интеграции', 'Bookly, WooCommerce, Google Sheets, Firebase, Chatway, Chaty и ShopLentor.', admin_url('admin.php?page=pcwork-integrations')],
+        ['Интеграции', 'Bookly, WooCommerce, Google Sheets, Firebase, Chatway и ShopLentor.', admin_url('admin.php?page=pcwork-integrations')],
         ['Маркетинг и Push', 'Рекламни кампании, планиране, сегментиране и история.', admin_url('admin.php?page=pcwork-marketing')],
         ['Сервизни ремонти', 'Ремонти, история, документи, протоколи и разпределение към техник.', admin_url('admin.php?page=pcwork-repairs')],
         ['Клиенти', 'Клиентски профили, потвърждение на имейл и блокиране на злоупотреби.', admin_url('admin.php?page=pcwork-customers')],

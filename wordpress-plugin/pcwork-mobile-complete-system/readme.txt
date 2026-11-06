@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 3.4.0
+Stable tag: 3.5.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -20,8 +20,7 @@ License: GPLv2 or later
 * Auth Bridge – email OTP registration/sign-in, customer role and bearer token.
 * Repairs API – ремонти, статуси, локации, доказателства, протоколи, назначения.
 * Repairs Admin – списък, филтри, история, документи, статус, техник, приоритет и срок.
-* Admin Integration Settings – WooCommerce, Bookly, Chatway, Chaty, ShopLentor, Sheets, Firebase.
-* Chaty – официален widget в приложението и административна проверка за активен плъгин/скриптове.
+* Admin Integration Settings – WooCommerce, Bookly, Chatway, ShopLentor, Sheets, Firebase.
 * Staff Management – присъствие, начало/край на смяна, заявки за отпуск и администраторско одобрение.
 * Customer Management – списък на клиентите, email verification и блокиране/активиране на профили.
 * OTP Security – шестцифрен код, 5-минутна валидност, 5 опита, resend cooldown и IP/email rate limits.
@@ -31,7 +30,7 @@ License: GPLv2 or later
 
 = 2.8.0 =
 * Add working WordPress admin repairs page with filters, history, documents, status and technician assignment.
-* Add Chaty mobile launch page, public configuration endpoint and admin integration check.
+* 
 * Preserve the existing integration settings option and keys.
 
 = 2.9.0 =
@@ -50,3 +49,7 @@ License: GPLv2 or later
 = 3.1.0 =
 * Align plugin package version with PCWork Mobile v41.
 * Keep the public service-location endpoint used by the nine-location mobile directory.
+
+= 3.5.0 =
+* Remove Chaty integration completely from the PCWork Mobile plugin. Direct contact channels are handled by the mobile app.
+* Remove Chaty admin settings, status flag, public REST endpoint, launch page and integration test.

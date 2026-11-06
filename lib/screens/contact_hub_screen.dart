@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'chatway_screen.dart';
 
-/// The in-app support destination. Chaty has been removed; the home screen
-/// now exposes direct phone, Viber, Messenger and TikTok contact actions.
+/// The in-app support destination for the authenticated Chatway live chat.
 class ContactHubScreen extends StatelessWidget {
   const ContactHubScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english});
   final ApiService api;
