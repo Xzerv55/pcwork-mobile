@@ -36,6 +36,12 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
+      # flutter_launcher_icons has iOS enabled in pubspec.yaml. The Android
+      # workflow therefore also needs the iOS asset-catalog scaffold, even
+      # though this job only builds APKs.
+      - name: Generate iOS asset catalog for launcher icons
+        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+
       - name: Remove generated placeholder test
         run: rm -f test/widget_test.dart
 
