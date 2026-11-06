@@ -1,5 +1,5 @@
 @echo off
-set GRADLE_VERSION=8.4
+set GRADLE_VERSION=8.14.3
 set BASE=%USERPROFILE%\.gradle\pcwork-wrapper
 set DIST=%BASE%\gradle-%GRADLE_VERSION%
 if not exist "%DIST%\bin\gradle.bat" (

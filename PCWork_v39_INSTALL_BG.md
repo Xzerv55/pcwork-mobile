@@ -11,3 +11,7 @@
 
 ## Firebase сигурност
 Не качвайте service-account JSON ключове. `google-services.json` е клиентска Firebase конфигурация, но при публичен repository пак е разумно да ограничите API ключа чрез Firebase/Google Cloud API restrictions. Никога не публикувайте APNs private key или service-account credentials.
+
+
+### Android Gradle
+Архивът използва Gradle 8.14.3 и Android Gradle Plugin 8.9.1. Ако GitHub Actions все още показва Gradle 8.4, значи в GitHub не е качена обновената папка android/gradle и wrapper скриптовете от този архив.

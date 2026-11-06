@@ -14,3 +14,10 @@ Android: поставете Firebase файла на `android/app/google-service
 
 ## Проверки
 Архивът е проверен за ZIP целостта и структурата. В тази среда няма Flutter/Dart SDK и не е изпълнен `flutter analyze`, Android Gradle build или Xcode build. Тези проверки трябва да се изпълнят от GitHub Actions; не се твърди предварително успешна компилация.
+
+
+## Корекция на Android компилацията
+- Gradle Wrapper е обновен от 8.4 на 8.14.3.
+- Android Gradle Plugin е обновен от 8.3.2 на 8.9.1.
+- Kotlin Gradle plugin е обновен на 2.1.0 за съвместимост с обновената Android build среда.
+- Синхронизирани са gradle-wrapper.properties, gradlew и gradlew.bat.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Small wrapper for environments where the standard Gradle wrapper JAR is not bundled.
-GRADLE_VERSION="8.4"
+GRADLE_VERSION="8.14.3"
 BASE="${GRADLE_USER_HOME:-$HOME/.gradle}/pcwork-wrapper"
 DIST="$BASE/gradle-$GRADLE_VERSION"
 if [[ ! -x "$DIST/bin/gradle" ]]; then
