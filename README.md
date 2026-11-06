@@ -1,7 +1,7 @@
-# PCWork Mobile v54
+# PCWork Mobile v55
 
-- Flutter app: `0.54.0+54`
-- Unified WordPress plugin: `3.8.0` (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Flutter app: `0.55.0+55`
+- Unified WordPress plugin: `3.9.0` (`wordpress-plugin/pcwork-mobile-complete-system/`)
 - Google Apps Script webhook: `2.6.0` (`google-apps-script/Code.gs`)
 - Languages: Bulgarian / English
 - Android package / iOS bundle ID: `com.pcworkbg.pcwork_mobile`
@@ -18,4 +18,9 @@
 - Deploy `google-apps-script/Code.gs` as a new version of the existing Apps Script Web App deployment, preserving Script Properties and the `/exec` URL.
 - Never commit or share Firebase Service Account private keys or the Google Sheets HMAC secret.
 
-See `RELEASE_NOTES_v54.md` and `PCWork_v54_INSTALL_BG.md`.
+See `RELEASE_NOTES_v55.md` and `PCWork_v55_INSTALL_BG.md`.
+
+## v55 changes
+- Updated bottom navigation visual feedback and enlarged icons.
+- Added an explicit in-app pre-permission explanation before the operating-system push prompt.
+- Added separate, optional marketing opt-in/out controls in the customer profile.

@@ -48,6 +48,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Timer? _offlineSyncTimer;
   bool _syncingOfflineQueue = false;
   int _pendingSyncCount = 0;
+  bool _marketingOptIn = false;
+  bool _marketingPreferenceLoaded = false;
+  bool _pushConsentDialogOpen = false;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -72,9 +75,34 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _restoreSession() async {
     try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
+      unawaited(_loadMarketingPreference(t));
       unawaited(_enablePush(t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
   }
+
+  Future<void> _loadMarketingPreference(String bearer) async {
+    try {
+      final enabled = await push.getMarketingConsent(bearer);
+      if (mounted) setState(() { _marketingOptIn = enabled; _marketingPreferenceLoaded = true; });
+    } catch (_) { if (mounted) setState(() => _marketingPreferenceLoaded = true); }
+  }
+
+  Future<void> _setMarketingPreference(bool enabled) async {
+    final bearer = await auth.token;
+    if (bearer == null || bearer.isEmpty) return;
+    final previous = _marketingOptIn;
+    setState(() => _marketingOptIn = enabled);
+    try {
+      await push.setMarketingConsent(bearer, enabled);
+      _message(enabled
+          ? tr('Съгласието за промоционални известия е записано.', 'Marketing notification consent saved.')
+          : tr('Отписахте се от промоционални известия.', 'You unsubscribed from marketing notifications.'));
+    } catch (e) {
+      if (mounted) setState(() => _marketingOptIn = previous);
+      _message('${tr('Неуспешно записване:', 'Could not save:')} $e');
+    }
+  }
+
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -177,7 +205,23 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _enablePush([String? knownToken]) async {
     final bearer = knownToken ?? await auth.token;
-    if (bearer == null || bearer.isEmpty) return;
+    if (bearer == null || bearer.isEmpty || !mounted || _pushConsentDialogOpen) return;
+    final prefs = await SharedPreferences.getInstance();
+    final choice = prefs.getString('pcwork_push_consent_choice');
+    if (choice != 'yes') {
+      _pushConsentDialogOpen = true;
+      final allow = await showDialog<bool>(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
+        title: Text(tr('Известия от PCWork', 'PCWork notifications')),
+        content: Text(tr('Разрешавате ли push известия за статуса на ремонтите, важни промени и съобщения от сервиза? Можете да промените разрешението по-късно от настройките на телефона.', 'Would you like push notifications about repair status, important updates and service messages? You can change this later in your phone settings.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Не сега', 'Not now'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Разрешавам', 'Allow'))),
+        ],
+      ));
+      _pushConsentDialogOpen = false;
+      await prefs.setString('pcwork_push_consent_choice', allow == true ? 'yes' : 'no');
+      if (allow != true || !mounted) return;
+    }
     await push.register(bearer, onForeground: (title, body) {
       if (!mounted) return;
       _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
@@ -232,11 +276,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Icons.person_rounded,
     ];
     final selectedColor = isDarkTheme ? cyan : const Color(0xFF087F83);
-   const mutedColor = Color(0xFF8796AA);
+    final mutedColor = const Color(0xFF8796AA);
     return SafeArea(
       top: false,
       child: Container(
-        height: 64,
+        height: 70,
         decoration: BoxDecoration(
           color: isDarkTheme ? const Color(0xFF0E1724) : Colors.white,
         ),
@@ -249,6 +293,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 selected: selected,
                 label: labels[index],
                 child: InkWell(
+                  splashColor: Colors.transparent,
+                  highlightColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
                   onTap: () => _selectTab(index),
                   child: Center(
                     child: Column(
@@ -266,7 +313,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                           ),
                           child: Icon(
                             selected ? selectedIcons[index] : icons[index],
-                            size: 24,
+                            size: 29,
                             color: selected ? selectedColor : mutedColor,
                           ),
                         ),
@@ -332,6 +379,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       ),
       theme: ThemeData(
         useMaterial3: true,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
         fontFamily: 'NotoSans',
         brightness: isDarkTheme ? Brightness.dark : Brightness.light,
         colorScheme: ColorScheme.fromSeed(
@@ -754,6 +804,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (signedInUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
       const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.join(', ')))),
+      const SizedBox(height: 12),
+      Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [const Icon(Icons.notifications_active_outlined, color: cyan), const SizedBox(width: 10), Expanded(child: Text(tr('Известия от PCWork', 'PCWork notifications'), style: const TextStyle(fontWeight: FontWeight.bold)))]),
+        const SizedBox(height: 6),
+        Text(tr('Известия за ремонтите и важни сервизни съобщения се управляват от разрешението на телефона.', 'Repair updates and important service messages are controlled by your phone notification permission.'), style: const TextStyle(fontSize: 12)),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: () async { final bearer = await auth.token; if (bearer != null) await _enablePush(bearer); }, icon: const Icon(Icons.notifications), label: Text(tr('Настрой известията', 'Set up notifications'))),
+        const Divider(),
+        SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
+      ]))),
       const SizedBox(height: 12), FilledButton.icon(onPressed: _refreshProfile, icon: const Icon(Icons.refresh), label: Text(tr('Обнови профила', 'Refresh profile'))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
@@ -907,11 +967,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         signedInUser = user;
+        _marketingOptIn = false;
+        _marketingPreferenceLoaded = false;
         repairsFuture = _loadRepairsFuture();
         tab = 5;
         _visitedTabs.add(5);
       });
       if (bearer != null && bearer.isNotEmpty) {
+        unawaited(_loadMarketingPreference(bearer));
         unawaited(_enablePush(bearer));
         _startOfflineSync(bearer);
       }

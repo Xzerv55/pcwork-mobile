@@ -133,6 +133,22 @@ class PushNotificationService {
     _activeBearerToken = null;
   }
 
+  Future<bool> getMarketingConsent(String bearerToken) async {
+    final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final response = await http.get(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken'}).timeout(const Duration(seconds: 15));
+    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
+    final decoded = jsonDecode(response.body);
+    return decoded is Map && decoded['marketing_opt_in'] == true;
+  }
+
+  Future<void> setMarketingConsent(String bearerToken, bool enabled) async {
+    final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final response = await http.post(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken','Content-Type':'application/json'}, body: jsonEncode({'marketing_opt_in':enabled})).timeout(const Duration(seconds: 15));
+    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['saved'] != true) throw Exception('Server did not confirm the preference.');
+  }
+
   Future<void> _sendToken(String bearerToken, String token, String action) async {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     final platform = Platform.isIOS ? 'ios' : 'android';
