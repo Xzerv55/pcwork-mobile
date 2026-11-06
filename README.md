@@ -19,7 +19,7 @@
 4. Изтегли `pcwork-android-v30-apks`.
 5. За iOS стартирай ръчно workflow **PCWork iOS unsigned build** и изтегли `pcwork-ios-v30-app-unsigned`.
 
-Workflow-ите автоматично генерират launcher и splash ресурсите след `flutter pub get`.
+Workflow-ите автоматично генерират launcher и splash ресурсите след `flutter pub get`. Android workflow създава и iOS asset catalog преди генерирането на иконите, така че инструментът да намери `ios/Runner/Assets.xcassets/AppIcon.appiconset`.
 
 ## Chatway
 Chatway остава конфигуриран през WordPress: **PCWork Mobile → Интеграции → Chatway**. Не поставяй Visitor Verification Security Key в Flutter кода или GitHub.

@@ -9,7 +9,7 @@
 - Запазена е досегашната тъмна PCWork тема с цианови и виолетови акценти.
 
 ## Автоматично генериране
-GitHub Actions генерира иконите и splash ресурсите след `flutter pub get` чрез:
+GitHub Actions генерира иконите и splash ресурсите след `flutter pub get` чрез. Android workflow предварително създава и iOS asset catalog, защото `flutter_launcher_icons` е конфигуриран за Android и iOS; това предотвратява липсващия `AppIcon.appiconset` при генериране:
 - `dart run flutter_launcher_icons`
 - `dart run flutter_native_splash:create`
 
