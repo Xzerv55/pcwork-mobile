@@ -33,6 +33,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool isDarkTheme = true;
   bool staffPreview = false;
   int tab = 0;
+  bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
   String apiUrl = defaultApi;
   bool apiReady = false;
@@ -195,6 +196,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   void _selectTab(int index) {
     if (index < 0 || index > 5) return;
+    // The persistent navigation sits outside the route Navigator. Dismiss an
+    // open settings sheet before switching tabs; draft values are discarded.
+    if (_settingsOpen) {
+      _navigatorKey.currentState?.pop();
+    }
     setState(() {
       tab = index;
       _visitedTabs.add(index);
@@ -235,6 +241,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           SafeArea(
             top: false,
             child: NavigationBar(
+            height: 68,
             selectedIndex: tab,
             onDestinationSelected: _selectTab,
             destinations: [
@@ -1114,10 +1121,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _showFcmDeviceToken() async {
     try {
-      final token = await push.getDeviceToken();
+      final token = await push.getDeviceToken().timeout(const Duration(seconds: 25));
       if (!mounted) return;
       await showDialog<void>(
-        context: _navigatorKey.currentState!.overlay!.context,
+        context: _navigatorKey.currentContext!,
+        useRootNavigator: true,
         builder: (dialogContext) => AlertDialog(
           title: Text(tr('FCM token на това устройство', 'This device FCM token')),
           content: SizedBox(
@@ -1125,14 +1133,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             child: SelectableText(token, style: const TextStyle(fontSize: 12)),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(tr('Затвори', 'Close')),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(), child: Text(tr('Затвори', 'Close'))),
             FilledButton.icon(
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: token));
-                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (dialogContext.mounted) Navigator.of(dialogContext, rootNavigator: true).pop();
                 _message(tr('FCM token е копиран. Постави го в WordPress → Маркетинг и Push → Тестов FCM device token.',
                     'FCM token copied. Paste it into WordPress → Marketing & Push → Test FCM device token.'));
               },
@@ -1143,127 +1148,112 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ),
       );
     } catch (e) {
-      if (mounted) _message('${tr('Неуспешно получаване на FCM token:', 'Could not get FCM token:')} $e');
+      if (mounted) {
+        _message('${tr('FCM token не може да бъде получен:', 'Could not retrieve FCM token:')} $e');
+      }
     }
   }
 
   void _showSettings() {
+    if (_settingsOpen) return;
+    _settingsOpen = true;
     final controller = TextEditingController(text: apiUrl);
-    showModalBottomSheet(
-      context: _navigatorKey.currentState!.overlay!.context,
+    var draftStaffPreview = staffPreview;
+    var draftDarkTheme = isDarkTheme;
+    var draftEnglish = english;
+    showModalBottomSheet<void>(
+      context: _navigatorKey.currentContext!,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(22, 22, 22, MediaQuery.of(sheetContext).viewInsets.bottom + 22),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.tune_rounded, color: cyan),
-                const SizedBox(width: 9),
-                Expanded(child: Text(tr('Настройки на приложението', 'Application settings'),
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-                IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close)),
-              ]),
-              const SizedBox(height: 14),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'WordPress API URL',
-                  hintText: 'https://pcwork-bg.com',
-                  prefixIcon: Icon(Icons.link),
-                  border: OutlineInputBorder(),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(22, 18, 22, MediaQuery.of(sheetContext).viewInsets.bottom + 18),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Icon(Icons.tune_rounded, color: cyan),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text(tr('Настройки на приложението', 'Application settings'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                  IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close)),
+                ]),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: 'WordPress API URL', hintText: 'https://pcwork-bg.com', prefixIcon: Icon(Icons.link), border: OutlineInputBorder()),
                 ),
-              ),
-              const SizedBox(height: 10),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(tr('Преглед като служител', 'Staff preview mode')),
-                subtitle: Text(tr('Само визуален режим. Не предоставя служебни права.',
-                    'Visual preview only. Does not grant staff permissions.')),
-                value: staffPreview,
-                onChanged: (v) {
-                  setState(() => staffPreview = v);
-                  _savePreference('pcwork_staff_preview', v);
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                secondary: Icon(isDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-                title: Text(tr('Тъмна тема', 'Dark theme')),
-                subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')),
-                value: isDarkTheme,
-                onChanged: (v) {
-                  setState(() => isDarkTheme = v);
-                  _savePreference('pcwork_dark_theme', v);
-                },
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(tr('Английски език', 'English language')),
-                subtitle: Text(tr('Изключено: Български', 'Off: Bulgarian')),
-                value: english,
-                onChanged: (v) {
-                  setState(() => english = v);
-                  _savePreference('pcwork_english', v);
-                },
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _showFcmDeviceToken,
-                  icon: const Icon(Icons.notifications_active_outlined),
-                  label: Text(tr('Покажи / копирай FCM token', 'Show / copy FCM token')),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(tr('Преглед като служител', 'Staff preview mode')),
+                  subtitle: Text(tr('Само визуален режим. Не предоставя служебни права.', 'Visual preview only. Does not grant staff permissions.')),
+                  value: draftStaffPreview,
+                  onChanged: (v) => setSheetState(() => draftStaffPreview = v),
                 ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    try {
-                      await _saveApiUrl(controller.text);
-                      if (!mounted) return;
-                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                      await _checkApi();
-                    } catch (e) {
-                      if (sheetContext.mounted) {
-                        ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text('$e')));
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
+                  title: Text(tr('Тъмна тема', 'Dark theme')),
+                  subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')),
+                  value: draftDarkTheme,
+                  onChanged: (v) => setSheetState(() => draftDarkTheme = v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(tr('Английски език', 'English language')),
+                  subtitle: Text(tr('Изключено: Български', 'Off: Bulgarian')),
+                  value: draftEnglish,
+                  onChanged: (v) => setSheetState(() => draftEnglish = v),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async { Navigator.pop(sheetContext); await Future<void>.delayed(Duration.zero); if (mounted) _showFcmDeviceToken(); },
+                    icon: const Icon(Icons.notifications_active_outlined),
+                    label: Text(tr('Покажи / копирай FCM token', 'Show / copy FCM token')),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      try {
+                        await _saveApiUrl(controller.text);
+                        setState(() { staffPreview = draftStaffPreview; isDarkTheme = draftDarkTheme; english = draftEnglish; });
+                        await _savePreference('pcwork_staff_preview', draftStaffPreview);
+                        await _savePreference('pcwork_dark_theme', draftDarkTheme);
+                        await _savePreference('pcwork_english', draftEnglish);
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                        await _checkApi();
+                      } catch (e) {
+                        if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text('$e')));
                       }
-                    }
-                  },
-                  icon: const Icon(Icons.save_outlined),
-                  label: Text(tr('Запази и провери връзката', 'Save and test connection')),
+                    },
+                    icon: const Icon(Icons.save_outlined),
+                    label: Text(tr('Запази настройките', 'Save settings')),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    controller.text = defaultApi;
-                    try {
-                      await _saveApiUrl(defaultApi);
-                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                      await _checkApi();
-                    } catch (e) {
-                      _message('$e');
-                    }
-                  },
-                  icon: const Icon(Icons.restart_alt),
-                  label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () => setSheetState(() => controller.text = defaultApi),
+                    icon: const Icon(Icons.restart_alt),
+                    label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ).whenComplete(controller.dispose);
+    ).whenComplete(() { _settingsOpen = false; controller.dispose(); });
   }
 
   void _message(String value) { if (!mounted) return; _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(value))); }

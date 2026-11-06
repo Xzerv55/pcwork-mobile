@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 3.3.0
+Stable tag: 3.4.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.

@@ -10,6 +10,7 @@ final class PCWork_Mobile_Auth_Bridge {
     public static function init() {
         add_action('init', [__CLASS__, 'ensure_customer_role']);
         add_action('rest_api_init', [__CLASS__, 'routes']);
+        add_action('wp_mail_failed', [__CLASS__, 'capture_mail_error']);
     }
 
     public static function ensure_customer_role() {
@@ -27,6 +28,12 @@ final class PCWork_Mobile_Auth_Bridge {
         register_rest_route(self::NS, '/auth/profile', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_profile'],'permission_callback'=>[__CLASS__,'authorize']]);
     }
 
+    public static function capture_mail_error($error) {
+        if (is_wp_error($error)) {
+            // Keep only a short diagnostic for administrators; never store OTP content.
+            set_transient('pcwork_last_mail_error', sanitize_text_field($error->get_error_message()), 30 * MINUTE_IN_SECONDS);
+        }
+    }
     private static function b64($value) { return rtrim(strtr(base64_encode($value), '+/', '-_'), '='); }
     private static function secret() { return wp_salt('auth') . '|' . wp_salt('secure_auth'); }
     private static function issue($user_id) {
@@ -95,8 +102,19 @@ final class PCWork_Mobile_Auth_Bridge {
         set_transient(self::count_key('cooldown',$email,'60s'),1,self::OTP_RESEND_SECONDS);
         $subject='Код за потвърждение – PCWork';
         $message='<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#17212b"><h2>PCWork</h2><p>Вашият код за потвърждение е:</p><p style="font-size:30px;font-weight:bold;letter-spacing:8px">'.esc_html($code).'</p><p>Кодът е валиден 5 минути и може да бъде използван само веднъж.</p><p>Ако не сте заявили този код, игнорирайте съобщението.</p></div>';
-        $sent=wp_mail($email,$subject,$message,['Content-Type: text/html; charset=UTF-8']);
-        if (!$sent) { delete_transient(self::count_key('challenge',$type.'|'.$email,'otp')); return new WP_Error('pcwork_email_delivery_failed','Имейлът с кода не беше изпратен. Опитайте по-късно или се свържете с PCWork.',['status'=>503]); }
+        delete_transient('pcwork_last_mail_error');
+        $headers=['Content-Type: text/html; charset=UTF-8'];
+        $reply_to=sanitize_email((string)get_option('admin_email'));
+        if (is_email($reply_to)) $headers[]='Reply-To: PCWork <'.$reply_to.'>';
+        $sent=wp_mail($email,$subject,$message,$headers);
+        if (!$sent) {
+            delete_transient(self::count_key('challenge',$type.'|'.$email,'otp'));
+            $detail=(string)get_transient('pcwork_last_mail_error');
+            $message='WordPress не успя да изпрати имейла с кода.';
+            if ($detail!=='') $message.=' Причина: '.$detail;
+            $message.=' Провери SMTP настройките и тестовия имейл в PCWork Mobile → Интеграции.';
+            return new WP_Error('pcwork_email_delivery_failed',$message,['status'=>503]);
+        }
         return rest_ensure_response(['ok'=>true,'message'=>'Ако адресът може да получи код, изпратихме имейл с инструкции.','expires_in'=>self::OTP_TTL,'resend_after'=>self::OTP_RESEND_SECONDS]);
     }
     private static function verify_code($type, $email, $code) {

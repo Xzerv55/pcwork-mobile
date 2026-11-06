@@ -233,7 +233,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               enableSuggestions: false,
                               textCapitalization: TextCapitalization.none,
                               autofillHints: const [AutofillHints.email],
-                              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.alternate_email)),
+                              decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.alternate_email)),
                               validator: (value) {
                                 final text = (value ?? '').trim();
                                 if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(text)) return tr('Въведи валиден имейл.', 'Enter a valid email address.');
@@ -282,7 +282,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           if (_codeSent) ...[
                             const SizedBox(height: 8),
-                            TextButton(onPressed: _busy || _resendSeconds > 0 ? null : _resend, child: Text(_resendSeconds > 0 ? tr('Повторно изпращане след $_resendSeconds сек.', 'Resend in $_resendSeconds sec') : tr('Изпрати нов код', 'Send a new code'))),
+                            TextButton(onPressed: _busy || _resendSeconds > 0 ? null : _resend, child: Text(_resendSeconds > 0 ? tr('Повторно изпращане след ', 'Resend in ') + '$_resendSeconds сек.' : tr('Изпрати нов код', 'Send a new code'))),
                             TextButton(onPressed: _busy ? null : () { _timer?.cancel(); setState(() { _codeSent = false; _code.clear(); _resendSeconds = 0; _error = null; _info = null; }); }, child: Text(tr('Промени имейла', 'Change email'))),
                           ] else ...[
                             const SizedBox(height: 10),

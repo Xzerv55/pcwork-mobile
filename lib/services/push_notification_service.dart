@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../firebase_options.dart';
 
@@ -77,21 +78,42 @@ class PushNotificationService {
   /// into the WordPress test-token field.
   Future<String> getDeviceToken() async {
     if (!DefaultFirebaseOptions.isConfigured) {
-      throw Exception('Firebase не е конфигуриран в тази компилация. Провери GitHub Actions Secrets за FIREBASE_PROJECT_ID, FIREBASE_MESSAGING_SENDER_ID, FIREBASE_ANDROID_API_KEY и FIREBASE_ANDROID_APP_ID, след което компилирай нов APK.');
+      throw Exception('Firebase не е конфигуриран в тази компилация. Провери GitHub Actions Secrets: FIREBASE_PROJECT_ID, FIREBASE_MESSAGING_SENDER_ID, FIREBASE_ANDROID_API_KEY и FIREBASE_ANDROID_APP_ID. След добавянето им стартирай нова компилация.');
     }
-    await initialize();
-    final messaging = FirebaseMessaging.instance;
-    final permission = await messaging.requestPermission(
-      alert: true, badge: true, sound: true, provisional: false,
-    );
-    if (permission.authorizationStatus == AuthorizationStatus.denied) {
-      throw Exception('Разрешението за известия е отказано. Разреши известията от настройките на Android и опитай отново.');
+    try {
+      await initialize().timeout(const Duration(seconds: 15));
+      final messaging = FirebaseMessaging.instance;
+      await messaging.setAutoInitEnabled(true);
+      final permission = await messaging.requestPermission(
+        alert: true, badge: true, sound: true, provisional: false,
+      ).timeout(const Duration(seconds: 15));
+      if (permission.authorizationStatus == AuthorizationStatus.denied) {
+        throw Exception('Разрешението за известия е отказано. Разреши известията за PCWork от настройките на телефона и опитай отново.');
+      }
+      if (Platform.isIOS) {
+        String? apnsToken;
+        for (var attempt = 0; attempt < 20 && apnsToken == null; attempt++) {
+          apnsToken = await messaging.getAPNSToken();
+          if (apnsToken == null) await Future<void>.delayed(const Duration(milliseconds: 500));
+        }
+        if (apnsToken == null) {
+          throw Exception('Липсва APNs token. Провери Apple Push Notifications настройките във Firebase.');
+        }
+      }
+      String? token;
+      for (var attempt = 0; attempt < 3 && (token == null || token.isEmpty); attempt++) {
+        token = await messaging.getToken().timeout(const Duration(seconds: 15));
+        if (token == null || token.isEmpty) await Future<void>.delayed(const Duration(seconds: 2));
+      }
+      if (token == null || token.isEmpty) {
+        throw Exception('Firebase не върна FCM token. Провери google-services.json, package name com.pcworkbg.pcwork_mobile и интернет връзката.');
+      }
+      return token;
+    } on PlatformException catch (error) {
+      throw Exception('Firebase Messaging (${error.code}): ${error.message ?? error.details ?? 'неизвестна грешка'}');
+    } on TimeoutException {
+      throw Exception('Firebase не отговори навреме. Провери интернет връзката и опитай отново.');
     }
-    final token = await messaging.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('Firebase не върна device token. Провери интернет връзката и конфигурацията на Firebase.');
-    }
-    return token;
   }
 
   Future<void> unregister(String bearerToken) async {
