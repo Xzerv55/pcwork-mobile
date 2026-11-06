@@ -1,8 +1,9 @@
-# PCWork Mobile v38
+# PCWork Mobile v39
+Flutter Android/iOS app for PCWork service operations.
 
-- App version: `0.38.0+38`
-- Unified WordPress plugin: `2.8.0`
-- Languages: Bulgarian / English
-- Platforms: Android / iOS
+- App version: 0.39.0+39
+- WordPress integration plugin: 2.9.0 (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Android package / iOS bundle: `com.pcworkbg.pcwork_mobile`
+- Firebase Android config path: `android/app/google-services.json`
 
-Read `PCWork_v38_INSTALL_BG.md`, `V38_CHANGELOG_BG.md` and `ANDROID_APK_GUIDE_BG.md` before deployment.
+See `PCWork_v39_INSTALL_BG.md` and `V39_CHANGELOG_BG.md`.

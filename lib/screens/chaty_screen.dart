@@ -24,7 +24,9 @@ class _ChatyScreenState extends State<ChatyScreen> {
   void initState() { super.initState(); _url = widget.api.getChatyUrl(); }
 
   void _load(Uri url) {
-    final controller = WebViewController()
+    // Declare before the navigation delegate so its callbacks can safely capture it.
+    late final WebViewController controller;
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF0A101A))
       ..setNavigationDelegate(NavigationDelegate(

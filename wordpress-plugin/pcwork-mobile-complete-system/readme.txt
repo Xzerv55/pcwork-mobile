@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 2.8.0
+Stable tag: 2.9.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -29,3 +29,12 @@ License: GPLv2 or later
 * Add working WordPress admin repairs page with filters, history, documents, status and technician assignment.
 * Add Chaty mobile launch page, public configuration endpoint and admin integration check.
 * Preserve the existing integration settings option and keys.
+
+= 2.9.0 =
+* Final integration release aligned with PCWork Mobile v39; preserves existing integration settings and repair API.
+
+= 2.9.0 =
+* Final integration release aligned with PCWork Mobile v39; preserves existing integration settings and repair API.
+
+= 2.9.0 =
+* Final integration release aligned with PCWork Mobile v39; preserves existing integration settings and repair API.

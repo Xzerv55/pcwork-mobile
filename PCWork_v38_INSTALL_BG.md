@@ -26,3 +26,6 @@
 ## 4. Важно
 
 Тази доставка е проверена със статични проверки на PHP и целостта на ZIP архивите. Flutter SDK не е наличен в средата за създаване, затова `flutter analyze` и Android/iOS build трябва да бъдат потвърдени от GitHub Actions преди публикуване.
+
+
+Забележка за Android/iOS: платформените native папки се генерират от Flutter в GitHub Actions чрез `scripts/prepare_android.sh` и `flutter create`. Те не са включени като готови native проекти в този ZIP.
