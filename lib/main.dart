@@ -363,7 +363,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
-                value: selected,
+                initialValue: selected,
                 decoration: InputDecoration(labelText: tr('Нов статус', 'New status')),
                 items: statuses.map((status) => DropdownMenuItem(
                   value: status,
