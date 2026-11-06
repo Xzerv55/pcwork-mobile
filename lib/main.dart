@@ -212,10 +212,92 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     });
   }
 
-  // Keep the navigation icon and label group vertically centered.
-  // No translation or size reduction: NavigationBar supplies equal top/bottom
-  // breathing room around its icon-and-label layout.
-  Widget _navIcon(IconData icon) => Icon(icon);
+  // Custom six-item bar: the icon/label group is centered in a fixed-height
+  // cell, so its top and bottom free space is mathematically equal.
+  Widget _buildBottomNavigation(List<String> labels) {
+    const icons = [
+      Icons.grid_view_rounded,
+      Icons.handyman_outlined,
+      Icons.storefront_outlined,
+      Icons.forum_outlined,
+      Icons.calendar_month_outlined,
+      Icons.person_outline_rounded,
+    ];
+    const selectedIcons = [
+      Icons.grid_view_rounded,
+      Icons.handyman_rounded,
+      Icons.storefront_rounded,
+      Icons.forum_rounded,
+      Icons.calendar_month_rounded,
+      Icons.person_rounded,
+    ];
+    final selectedColor = isDarkTheme ? cyan : const Color(0xFF087F83);
+    final mutedColor = const Color(0xFF8796AA);
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: isDarkTheme ? const Color(0xFF0E1724) : Colors.white,
+        ),
+        child: Row(
+          children: List<Widget>.generate(6, (index) {
+            final selected = tab == index;
+            return Expanded(
+              child: Semantics(
+                button: true,
+                selected: selected,
+                label: labels[index],
+                child: InkWell(
+                  onTap: () => _selectTab(index),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          width: 64,
+                          height: 32,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: selected ? cyan.withValues(alpha: .16) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            selected ? selectedIcons[index] : icons[index],
+                            size: 24,
+                            color: selected ? selectedColor : mutedColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              labels[index],
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 11,
+                                height: 1.15,
+                                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                                color: selected ? selectedColor : mutedColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
 
   Widget _tabContent(int index) {
     switch (index) {
@@ -245,22 +327,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           // Clip the route overlay to the content viewport. Dialogs, pushed
           // pages and modal sheets cannot paint over the persistent tab bar.
           Expanded(child: ClipRect(child: child ?? const SizedBox.shrink())),
-          SafeArea(
-            top: false,
-            child: NavigationBar(
-            height: 64,
-            selectedIndex: tab,
-            onDestinationSelected: _selectTab,
-            destinations: [
-              NavigationDestination(icon: _navIcon(Icons.grid_view_rounded), selectedIcon: _navIcon(Icons.grid_view_rounded), label: labels[0]),
-              NavigationDestination(icon: _navIcon(Icons.handyman_outlined), selectedIcon: _navIcon(Icons.handyman_rounded), label: labels[1]),
-              NavigationDestination(icon: _navIcon(Icons.storefront_outlined), selectedIcon: _navIcon(Icons.storefront_rounded), label: labels[2]),
-              NavigationDestination(icon: _navIcon(Icons.forum_outlined), selectedIcon: _navIcon(Icons.forum_rounded), label: labels[3]),
-              NavigationDestination(icon: _navIcon(Icons.calendar_month_outlined), selectedIcon: _navIcon(Icons.calendar_month_rounded), label: labels[4]),
-              NavigationDestination(icon: _navIcon(Icons.person_outline_rounded), selectedIcon: _navIcon(Icons.person_rounded), label: labels[5]),
-            ],
-          ),
-          ),
+          _buildBottomNavigation(labels),
         ],
       ),
       theme: ThemeData(

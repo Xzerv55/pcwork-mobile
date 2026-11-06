@@ -1,5 +1,5 @@
 /**
- * PCWork Google Sheets webhook – Security v2.5.0
+ * PCWork Google Sheets webhook – Security v2.6.0
  *
  * Required Script Properties:
  *   PCWORK_HMAC_SECRET      - same value as WordPress PCWork HMAC Secret
@@ -10,7 +10,7 @@
  * POST payload is a URL-encoded `payload` field containing exact JSON.
  * HMAC-SHA256 covers timestamp + "." + nonce + "." + exact JSON payload.
  */
-var PCWORK_SECURITY_VERSION = '2.5.0';
+var PCWORK_SECURITY_VERSION = '2.6.0';
 var PCWORK_MAX_BODY_BYTES = 65536;
 var PCWORK_MAX_CLOCK_SKEW_SECONDS = 300;
 var PCWORK_NONCE_TTL_SECONDS = 600;
@@ -48,7 +48,8 @@ function doPost(e) {
     // the event parameter map. The HMAC still authenticates the exact JSON.
     if (rawBody === '' && typeof params.payload === 'string') rawBody = params.payload;
     if (rawBody === '') {
-      console.warn('[PCWork Security] rejected request ' + requestId + ': missing_post_data; has_event=' + Boolean(e) + '; has_parameters=' + Boolean(e && e.parameter) + '; has_post_data=' + Boolean(e && e.postData));
+      var parameterNames = Object.keys(params || {}).sort().join(',');
+      console.warn('[PCWork Security] rejected request ' + requestId + ': missing_post_data; has_event=' + Boolean(e) + '; has_parameters=' + Boolean(e && e.parameter) + '; has_post_data=' + Boolean(e && e.postData) + '; post_type=' + postType + '; post_content_length=' + postContents.length + '; parameter_names=' + parameterNames);
       return pcwFail_('missing_post_data', requestId);
     }
     if (Utilities.newBlob(rawBody).getBytes().length > PCWORK_MAX_BODY_BYTES) return pcwFail_('payload_too_large', requestId);

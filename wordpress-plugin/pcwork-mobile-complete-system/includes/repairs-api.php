@@ -127,9 +127,93 @@ final class PCWork_Mobile_Repairs_API {
         if (get_option('pcwork_repairs_api_db_version') !== '1.8.0') self::activate();
     }
 
-    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); }
+    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_create_repair', [__CLASS__, 'admin_create_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); }
     public static function admin_menu() {
         add_submenu_page('pcwork-mobile', 'Сервизни ремонти', 'Сервизни ремонти', 'manage_options', 'pcwork-repairs', [__CLASS__, 'render_admin_page']);
+    }
+
+    public static function admin_create_repair() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        check_admin_referer('pcwork_create_repair');
+        global $wpdb;
+        $customer_id = absint($_POST['customer_user_id'] ?? 0);
+        $new_email = sanitize_email(wp_unslash($_POST['new_customer_email'] ?? ''));
+        $new_name = sanitize_text_field(wp_unslash($_POST['new_customer_name'] ?? ''));
+        $new_phone = sanitize_text_field(wp_unslash($_POST['customer_phone'] ?? '')); 
+        $customer = $customer_id ? get_user_by('id', $customer_id) : false;
+        if (!$customer && $new_email !== '') {
+            if (!is_email($new_email)) wp_die('Въведи валиден имейл на клиента.');
+            $customer = get_user_by('email', $new_email);
+            if (!$customer) {
+                if ($new_name === '') wp_die('Въведи име на новия клиент.');
+                $login_base = sanitize_user(strstr($new_email, '@', true), true);
+                if ($login_base === '') $login_base = 'pcwork_customer';
+                $login = $login_base; $suffix = 1;
+                while (username_exists($login)) $login = $login_base . '_' . $suffix++;
+                $created_id = wp_insert_user([
+                    'user_login' => $login,
+                    'user_email' => $new_email,
+                    'user_pass' => wp_generate_password(48, true, true),
+                    'display_name' => $new_name,
+                    'role' => 'pcwork_customer',
+                ]);
+                if (is_wp_error($created_id)) wp_die(esc_html($created_id->get_error_message()));
+                $customer = get_user_by('id', $created_id);
+                if ($new_phone !== '') update_user_meta($created_id, 'pcwork_phone', $new_phone);
+                update_user_meta($created_id, 'pcwork_customer_created_by_admin', get_current_user_id());
+                if (function_exists('wp_new_user_notification')) wp_new_user_notification($created_id, null, 'user');
+            }
+        }
+        if (!$customer) wp_die('Избери съществуващ клиент или въведи имейл и име за нов клиент.');
+        if (!in_array('pcwork_customer', (array)$customer->roles, true) && !in_array('subscriber', (array)$customer->roles, true)) {
+            wp_die('Избраният профил не е клиентски профил.');
+        }
+        $location_code = sanitize_key(wp_unslash($_POST['location_code'] ?? ''));
+        $location = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . self::locations_table() . ' WHERE code=%s AND active=1', $location_code));
+        if (!$location) wp_die('Избери активен сервизен обект.');
+        $device_type = sanitize_text_field(wp_unslash($_POST['device_type'] ?? ''));
+        $device_model = sanitize_text_field(wp_unslash($_POST['device_model'] ?? ''));
+        $problem = sanitize_textarea_field(wp_unslash($_POST['problem_description'] ?? ''));
+        if ($device_type === '' || $device_model === '' || strlen($problem) < 5) wp_die('Попълни тип устройство, модел и описание на проблема (минимум 5 символа).');
+        $status = sanitize_key($_POST['status'] ?? 'received');
+        $statuses = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
+        if (!in_array($status, $statuses, true)) $status = 'received';
+        $priority = sanitize_key($_POST['priority'] ?? 'normal');
+        if (!in_array($priority, ['low','normal','high','urgent'], true)) $priority = 'normal';
+        $technician = absint($_POST['assigned_technician_id'] ?? 0);
+        if ($technician && !user_can($technician, 'pcwork_manage_repairs') && !user_can($technician, 'manage_options')) wp_die('Избраният потребител няма права за сервизни ремонти.');
+        $due_raw = sanitize_text_field(wp_unslash($_POST['due_at'] ?? ''));
+        $due = null;
+        if ($due_raw !== '') {
+            $due_timestamp = strtotime($due_raw);
+            if ($due_timestamp === false) wp_die('Невалидна крайна дата.');
+            $due = gmdate('Y-m-d H:i:s', $due_timestamp);
+        }
+        $now = current_time('mysql');
+        $number = 'PCW-' . wp_date('ymd') . '-' . strtoupper(wp_generate_password(6, false, false));
+        $phone = sanitize_text_field(wp_unslash($_POST['customer_phone'] ?? ''));
+        if ($phone === '') $phone = (string)get_user_meta($customer->ID, 'pcwork_phone', true);
+        $ok = $wpdb->insert(self::repairs_table(), [
+            'repair_number'=>$number, 'customer_user_id'=>(int)$customer->ID,
+            'customer_name'=>$customer->display_name, 'customer_email'=>$customer->user_email, 'customer_phone'=>$phone,
+            'location_code'=>$location->code, 'location_name'=>$location->name,
+            'device_type'=>$device_type, 'device_model'=>$device_model,
+            'serial_number'=>sanitize_text_field(wp_unslash($_POST['serial_number'] ?? '')),
+            'problem_description'=>$problem,
+            'external_condition'=>sanitize_textarea_field(wp_unslash($_POST['external_condition'] ?? '')),
+            'accessories'=>sanitize_textarea_field(wp_unslash($_POST['accessories'] ?? '')),
+            'intake_notes'=>sanitize_textarea_field(wp_unslash($_POST['intake_notes'] ?? '')),
+            'status'=>$status, 'assigned_technician_id'=>$technician, 'priority'=>$priority, 'due_at'=>$due,
+            'created_by'=>get_current_user_id(), 'created_at'=>$now, 'updated_at'=>$now,
+        ]);
+        if (!$ok) wp_die('Ремонтът не беше записан: ' . esc_html($wpdb->last_error));
+        $id = (int)$wpdb->insert_id;
+        $wpdb->insert(self::history_table(), ['repair_id'=>$id, 'status'=>$status, 'note'=>'Ремонтът е създаден от WordPress администрацията.', 'created_at'=>$now]);
+        do_action('pcwork_repair_status_changed', $id, (int)$customer->ID, $status, $number);
+        do_action('pcwork_repair_saved', $id, (int)$customer->ID, $status, $number);
+        if ($technician > 0) do_action('pcwork_repair_assigned', $id, $technician, (int)$customer->ID, $status, $number);
+        wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','repair_id'=>$id,'created'=>'1'], admin_url('admin.php')));
+        exit;
     }
 
     public static function admin_update_repair() {
@@ -219,6 +303,12 @@ final class PCWork_Mobile_Repairs_API {
         $id = absint($_GET['repair_id'] ?? 0);
         echo '<div class="wrap"><h1>Сервизни ремонти</h1><p>Централизирано управление на ремонтите, статуса, историята, документите и разпределението към техник.</p>';
         if (!empty($_GET['updated'])) echo '<div class="notice notice-success is-dismissible"><p>Промените по ремонта са записани.</p></div>';
+        if (!empty($_GET['created'])) echo '<div class="notice notice-success is-dismissible"><p>Новият ремонт е създаден успешно.</p></div>';
+        if (!empty($_GET['new_repair'])) {
+            self::render_admin_create_form();
+            echo '</div>';
+            return;
+        }
         if ($id) {
             $repair = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id=%d", $id));
             if (!$repair) { echo '<div class="notice notice-error"><p>Ремонтът не е намерен.</p></div>'; }
@@ -256,6 +346,7 @@ final class PCWork_Mobile_Repairs_API {
             if ($search !== '') { $like = '%' . $wpdb->esc_like($search) . '%'; $where .= ' AND (repair_number LIKE %s OR customer_name LIKE %s OR customer_email LIKE %s OR device_model LIKE %s)'; array_push($args,$like,$like,$like,$like); }
             $sql = "SELECT * FROM $table WHERE $where ORDER BY updated_at DESC LIMIT 100";
             $rows = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
+            echo '<p style="margin:18px 0"><a class="button button-primary" href="'.esc_url(add_query_arg(['page'=>'pcwork-repairs','new_repair'=>'1'], admin_url('admin.php'))).'">＋ Нов ремонт</a></p>';
             echo '<form method="get" style="display:flex;gap:8px;align-items:center;margin:16px 0"><input type="hidden" name="page" value="pcwork-repairs"><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Номер, клиент, имейл или модел"><select name="status"><option value="">Всички статуси</option>';
             foreach (['requested'=>'Нова заявка','received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($status,$key,false).'>'.esc_html($label).'</option>';
             echo '</select><button class="button">Филтрирай</button></form><table class="widefat striped"><thead><tr><th>Ремонт</th><th>Клиент</th><th>Устройство</th><th>Обект</th><th>Статус</th><th>Техник</th><th>Последна промяна</th></tr></thead><tbody>';
@@ -266,10 +357,31 @@ final class PCWork_Mobile_Repairs_API {
         echo '</div>';
     }
 
+    private static function render_admin_create_form() {
+        global $wpdb;
+        $customers = get_users(['role'=>'pcwork_customer', 'number'=>500, 'orderby'=>'display_name', 'order'=>'ASC']);
+        $locations = $wpdb->get_results('SELECT code,name FROM ' . self::locations_table() . ' WHERE active=1 ORDER BY name ASC');
+        $technicians = get_users(['fields'=>['ID','display_name'], 'number'=>300]);
+        echo '<p><a class="button" href="' . esc_url(admin_url('admin.php?page=pcwork-repairs')) . '">← Всички ремонти</a></p>';
+        echo '<h2>Регистриране на нов ремонт</h2><form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="max-width:1050px">';
+        echo '<input type="hidden" name="action" value="pcwork_create_repair">'; wp_nonce_field('pcwork_create_repair');
+        echo '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">';
+        echo '<section class="postbox" style="padding:18px"><h3>Клиент</h3><p><label>Съществуващ клиент</label><select name="customer_user_id" style="width:100%"><option value="0">— Нов клиент / въведи имейл —</option>';
+        foreach ($customers as $customer) echo '<option value="' . (int)$customer->ID . '">' . esc_html($customer->display_name . ' · ' . $customer->user_email) . '</option>';
+        echo '</select></p><p><label>Име на нов клиент</label><input name="new_customer_name" type="text" style="width:100%" placeholder="Име и фамилия"></p><p><label>Имейл на нов клиент</label><input name="new_customer_email" type="email" style="width:100%" placeholder="client@example.com"></p><p><label>Телефон</label><input name="customer_phone" type="text" style="width:100%"></p><p class="description">Ако имейлът не съществува, ще бъде създаден клиентски профил и WordPress ще изпрати имейл за задаване на парола.</p></section>';
+        echo '<section class="postbox" style="padding:18px"><h3>Прием на устройство</h3><p><label>Сервизен обект *</label><select name="location_code" required style="width:100%"><option value="">Избери обект</option>';
+        foreach ($locations as $location) echo '<option value="' . esc_attr($location->code) . '">' . esc_html($location->name) . '</option>';
+        echo '</select></p><p><label>Тип устройство *</label><input name="device_type" required type="text" style="width:100%" placeholder="Лаптоп, PlayStation, компютър..."></p><p><label>Модел *</label><input name="device_model" required type="text" style="width:100%"></p><p><label>Сериен номер</label><input name="serial_number" type="text" style="width:100%"></p><p><label>Описание на проблема *</label><textarea name="problem_description" required rows="4" style="width:100%"></textarea></p><p><label>Външно състояние</label><textarea name="external_condition" rows="2" style="width:100%"></textarea></p><p><label>Аксесоари</label><textarea name="accessories" rows="2" style="width:100%"></textarea></p><p><label>Вътрешни бележки при прием</label><textarea name="intake_notes" rows="2" style="width:100%"></textarea></p></section>';
+        echo '<section class="postbox" style="padding:18px"><h3>Организация</h3><p><label>Статус</label><select name="status" style="width:100%"><option value="received">Приет</option><option value="diagnostics">Диагностика</option><option value="waiting_approval">Очаква одобрение</option><option value="in_repair">В ремонт</option><option value="ready">Готов</option></select></p><p><label>Техник</label><select name="assigned_technician_id" style="width:100%"><option value="0">Без назначен техник</option>';
+        foreach ($technicians as $tech) if (user_can($tech->ID,'pcwork_manage_repairs') || user_can($tech->ID,'manage_options')) echo '<option value="' . (int)$tech->ID . '">' . esc_html($tech->display_name) . '</option>';
+        echo '</select></p><p><label>Приоритет</label><select name="priority" style="width:100%"><option value="low">Нисък</option><option value="normal" selected>Нормален</option><option value="high">Висок</option><option value="urgent">Спешен</option></select></p><p><label>Краен срок</label><input name="due_at" type="datetime-local" style="width:100%"></p></section>';
+        echo '</div><p><button type="submit" class="button button-primary button-hero">Създай ремонт</button></p></form>';
+    }
+
     public static function routes() {
         $auth = [__CLASS__, 'authorize'];
         $staff_auth = [__CLASS__, 'staff_authorize'];
-        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>'3.4.0']); },'permission_callback'=>'__return_true']);
+        register_rest_route(self::NS, '/health', ['methods'=>'GET','callback'=>function(){ return rest_ensure_response(['ok'=>true,'plugin'=>'PCWork Mobile Complete System','version'=>PCWORK_MOBILE_COMPLETE_VERSION]); },'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/locations', ['methods'=>'GET','callback'=>[__CLASS__,'list_locations'],'permission_callback'=>'__return_true']);
         register_rest_route(self::NS, '/repairs', ['methods'=>'GET','callback'=>[__CLASS__,'list_repairs'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/request', ['methods'=>'POST','callback'=>[__CLASS__,'create_customer_request'],'permission_callback'=>$auth]);
@@ -430,6 +542,7 @@ final class PCWork_Mobile_Repairs_API {
         set_transient($user_key,(int)get_transient($user_key)+1,DAY_IN_SECONDS);
         set_transient($ip_key,(int)get_transient($ip_key)+1,DAY_IN_SECONDS);
         do_action('pcwork_customer_repair_requested',$id,$user_id,$number,$location);
+        do_action('pcwork_repair_saved', $id, $user_id, 'requested', $number);
         $row=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
         return new WP_REST_Response(['data'=>self::present($row,true),'message'=>'Заявката е изпратена. Екипът на PCWork ще се свърже с вас.'],201);
     }
@@ -853,6 +966,7 @@ final class PCWork_Mobile_Repairs_API {
         if ($technician > 0 && $technician !== (int)$row->assigned_technician_id) {
             do_action('pcwork_repair_assigned', $id, $technician, (string)$row->repair_number, $priority, $due ?: '');
         }
+        do_action('pcwork_repair_saved', $id, (int)$row->customer_user_id, (string)$row->status, (string)$row->repair_number);
         $fresh=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
         return rest_ensure_response(['data'=>self::present($fresh,true),'message'=>'Назначението и срокът са записани.']);
     }

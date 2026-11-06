@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 3.6.1
+Stable tag: 3.8.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -19,7 +19,7 @@ License: GPLv2 or later
 == Modules ==
 * Auth Bridge – email OTP registration/sign-in, customer role and bearer token.
 * Repairs API – ремонти, статуси, локации, доказателства, протоколи, назначения.
-* Repairs Admin – списък, филтри, история, документи, статус, техник, приоритет и срок.
+* Repairs Admin – списък, филтри, бутон „Нов ремонт“, клиентски профили, история, документи, статус, техник, приоритет и срок.
 * Admin Integration Settings – WooCommerce, Bookly, Chatway, ShopLentor, Sheets, Firebase.
 * Staff Management – присъствие, начало/край на смяна, заявки за отпуск и администраторско одобрение.
 * Customer Management – списък на клиентите, email verification и блокиране/активиране на профили.
@@ -51,3 +51,9 @@ License: GPLv2 or later
 = 3.6.1 =
 * Improve Firebase service-account PEM parsing and RSA-SHA256 JWT signing diagnostics.
 * Normalize escaped PEM line breaks and clear cached OAuth tokens after integration settings are saved.
+
+= 3.8.0 =
+* Add an administrator repair creation form and optional new customer account creation.
+* Trigger Google Sheets upsert on new customer requests, admin-created repairs, admin edits, and status updates.
+* Preserve Firebase Service Account JSON exactly and validate private-key Base64 before OpenSSL parsing.
+* Add a signed payload query fallback for Apps Script requests when postData is missing.

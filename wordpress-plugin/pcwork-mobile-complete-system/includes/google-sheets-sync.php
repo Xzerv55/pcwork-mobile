@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * Server-to-server Google Sheets synchronization.
- * Apps Script verifies HMAC over "<timestamp>.<nonce>.<raw JSON body>".
+ * Apps Script verifies HMAC over "<timestamp>.<nonce>.<exact JSON payload>".
  */
 final class PCWork_Google_Sheets_Sync {
     /**
@@ -38,10 +38,10 @@ final class PCWork_Google_Sheets_Sync {
                 'Content-Type' => 'application/x-www-form-urlencoded; charset=utf-8',
                 'Accept' => 'application/json',
             ],
-            // Apps Script exposes URL-encoded POST fields through e.parameter
-            // consistently, including when e.postData.contents is unavailable.
-            // The exact JSON string remains the HMAC-signed payload.
-            'body' => ['payload' => $payload],
+            // Build the form body explicitly instead of relying on WP_Http to
+            // serialize an array when Content-Type is overridden. This ensures
+            // the request carries a real POST body for Apps Script e.postData.
+            'body' => 'payload=' . rawurlencode($payload),
         ]);
 
         if (is_wp_error($response)) return $response;

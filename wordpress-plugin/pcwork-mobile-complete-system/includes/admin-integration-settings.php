@@ -107,7 +107,26 @@ final class PCWork_Admin_Integration_Settings {
         }
         $secrets = ['woocommerce_consumer_key','woocommerce_consumer_secret','bookly_api_key','sheets_webhook_url','sheets_webhook_secret','firebase_service_account_json','chatway_verification_secret'];
         foreach ($secrets as $key) {
-            $value = isset($input[$key]) ? trim(wp_unslash($input[$key])) : '';
+            $value = isset($input[$key]) ? trim((string) $input[$key]) : ''; // Settings API has already unslashed POST values.
+            // Firebase Service Account е структуриран JSON: не го прекарваме
+            // през sanitize_textarea_field(), защото това може да промени PEM.
+            if ($key === 'firebase_service_account_json' && $value !== '') {
+                $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
+                $decoded = json_decode($value, true);
+                $valid = is_array($decoded)
+                    && !empty($decoded['type']) && $decoded['type'] === 'service_account'
+                    && !empty($decoded['client_email'])
+                    && !empty($decoded['private_key']) && is_string($decoded['private_key'])
+                    && !empty($decoded['token_uri']);
+                if (!$valid) {
+                    add_settings_error(self::OPTION, 'pcwork_invalid_service_account_json', 'Service Account JSON не е валиден или липсват задължителни полета. Предишната стойност е запазена.');
+                    $out[$key] = $old[$key] ?? '';
+                } else {
+                    // Запазваме JSON байт-по-байт (след премахване само на BOM и външни интервали).
+                    $out[$key] = $value;
+                }
+                continue;
+            }
             // Празно поле означава запазване на вече записаната тайна.
             $out[$key] = $value !== '' ? sanitize_textarea_field($value) : ($old[$key] ?? '');
         }
@@ -374,29 +393,37 @@ final class PCWork_Admin_Integration_Settings {
         if (!function_exists('openssl_pkey_get_private') || !function_exists('openssl_sign')) {
             return new WP_Error('pcwork_firebase_openssl', 'PHP OpenSSL не е активен на хостинга. Активирай OpenSSL extension и опитай отново.');
         }
-        // Normalize PEM copied through JSON, admin textareas and hosting panels.
-        // Never log or return the private key itself.
+        // Parse the JSON private_key without lossy text sanitization. Only normalize
+        // line endings/JSON escaped newlines and whitespace around the PEM body.
+        // Never log, return, or persist a derived copy of the key in diagnostics.
         $private_key = (string) $account['private_key'];
-        $private_key = preg_replace('/^\xEF\xBB\xBF/', '', $private_key); // UTF-8 BOM
+        $private_key = preg_replace('/^\xEF\xBB\xBF/', '', $private_key);
         $private_key = html_entity_decode($private_key, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $private_key = preg_replace('/<br\s*\/?\s*>/i', "\n", $private_key);
         $private_key = str_replace(["\\r\\n", "\\n", "\\r"], "\n", $private_key);
         $private_key = str_replace(["\r\n", "\r"], "\n", $private_key);
         $private_key = trim($private_key, " \t\n\r\0\x0B\"'");
-        // Rebuild a canonical PEM body so whitespace/wrapping does not break OpenSSL.
-        if (!preg_match('/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/', $private_key, $pem_match)) {
-            return new WP_Error('pcwork_firebase_key_format', 'Service Account private_key не съдържа пълен PEM блок BEGIN/END PRIVATE KEY. Постави целия оригинален JSON файл.');
+        if (!preg_match('/^-----BEGIN (PRIVATE KEY|RSA PRIVATE KEY)-----([\s\S]*?)-----END \1-----$/', $private_key, $pem_match)) {
+            return new WP_Error('pcwork_firebase_key_format', 'Service Account private_key няма цял PEM блок. Използвай оригиналния JSON от Firebase/Google Cloud без редактиране.');
         }
         $pem_type = $pem_match[1];
         $pem_body = preg_replace('/\s+/', '', $pem_match[2]);
-        if ($pem_body === '' || !preg_match('/^[A-Za-z0-9+\/=]+$/', $pem_body)) {
-            return new WP_Error('pcwork_firebase_key_format', 'Съдържанието на PEM private_key е празно или има невалидни символи. Постави оригиналния Service Account JSON без редактиране.');
+        // Strict Base64 decode catches truncation/invalid characters before OpenSSL.
+        $der = ($pem_body !== '') ? base64_decode($pem_body, true) : false;
+        if ($der === false || strlen($der) < 128) {
+            return new WP_Error('pcwork_firebase_key_base64', 'PEM съдържанието не е валиден или е непълен Base64 блок. JSON-ът вероятно е променен/отрязан при копиране или запис. Изтегли нов оригинален Service Account JSON и го постави цял.');
         }
-        $private_key = '-----BEGIN ' . $pem_type . "-----\n" . chunk_split($pem_body, 64, "\n") . '-----END ' . $pem_type . "-----\n";
+        // Re-encode decoded DER to canonical Base64. This normalizes wrapping only;
+        // it cannot repair a missing or corrupted part of the private key.
+        $canonical_body = base64_encode($der);
+        $private_key = '-----BEGIN ' . $pem_type . "-----\n" . chunk_split($canonical_body, 64, "\n") . '-----END ' . $pem_type . "-----\n";
+        while (openssl_error_string() !== false) { /* clear stale OpenSSL errors */ }
         $key_resource = openssl_pkey_get_private($private_key);
         if ($key_resource === false) {
-            $openssl_error = openssl_error_string();
-            return new WP_Error('pcwork_firebase_key_parse', 'OpenSSL не може да прочете нормализирания PEM private_key. Провери дали Service Account JSON е оригинален и пълен.' . ($openssl_error ? ' OpenSSL: ' . sanitize_text_field($openssl_error) : ''));
+            $openssl_errors = [];
+            while (($error = openssl_error_string()) !== false) $openssl_errors[] = $error;
+            $diagnostic = $openssl_errors ? implode('; ', array_map('sanitize_text_field', $openssl_errors)) : 'неизвестна OpenSSL грешка';
+            return new WP_Error('pcwork_firebase_key_parse', 'OpenSSL не може да прочете Service Account private_key. Провери дали ключът е оригинален, цял и не е бил редактиран. OpenSSL: ' . $diagnostic);
         }
         $now=time(); $b64=function($v){ return rtrim(strtr(base64_encode($v),'+/','-_'),'='); };
         $header=$b64(wp_json_encode(['alg'=>'RS256','typ'=>'JWT']));

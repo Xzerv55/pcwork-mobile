@@ -1,12 +1,12 @@
-# PCWork Mobile v53
+# PCWork Mobile v54
 
-- Flutter app: `0.53.0+53`
-- Unified WordPress plugin: `3.7.0` (`wordpress-plugin/pcwork-mobile-complete-system/`)
-- Google Apps Script webhook: `2.5.0` (`google-apps-script/Code.gs`)
+- Flutter app: `0.54.0+54`
+- Unified WordPress plugin: `3.8.0` (`wordpress-plugin/pcwork-mobile-complete-system/`)
+- Google Apps Script webhook: `2.6.0` (`google-apps-script/Code.gs`)
 - Languages: Bulgarian / English
 - Android package / iOS bundle ID: `com.pcworkbg.pcwork_mobile`
 
-## v53 changes
+## v54 changes
 - Vertically centers the existing bottom-navigation icon/label groups by removing the previous upward translation; all six destinations and icon sizes are preserved.
 - Uses a signed URL-encoded `payload` field for Apps Script webhook requests, with matching fallback handling in `Code.gs`.
 - Synchronizes repairs on creation and every supported save/update, including technician, priority and due-date changes; updates match the existing Repair ID.
@@ -18,4 +18,4 @@
 - Deploy `google-apps-script/Code.gs` as a new version of the existing Apps Script Web App deployment, preserving Script Properties and the `/exec` URL.
 - Never commit or share Firebase Service Account private keys or the Google Sheets HMAC secret.
 
-See `RELEASE_NOTES_v53.md` and `PCWork_v53_INSTALL_BG.md`.
+See `RELEASE_NOTES_v54.md` and `PCWork_v54_INSTALL_BG.md`.
