@@ -121,7 +121,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         const SizedBox(height: 18),
         _sectionTitle(tr('Присъствие на екипа днес', 'Team attendance today')),
         if (attendanceRows.isEmpty) _empty(tr('Все още няма отчетено присъствие.', 'No attendance has been recorded yet.')),
-        ...attendanceRows.map((row) => Card(child: ListTile(leading: CircleAvatar(child: const Icon(Icons.person_outline)), title: Text('${row['display_name'] ?? tr('Служител', 'Staff member')}'), subtitle: Text('${tr('Начало', 'In')}: ${row['check_in'] ?? '—'}  ·  ${tr('Край', 'Out')}: ${row['check_out'] ?? tr('На смяна', 'On shift')}'), trailing: Icon(row['check_out'] == null || row['check_out'] == '' ? Icons.circle : Icons.check_circle, color: _cyan, size: 16)))),
+        ...attendanceRows.map((row) => Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person_outline)), title: Text('${row['display_name'] ?? tr('Служител', 'Staff member')}'), subtitle: Text('${tr('Начало', 'In')}: ${row['check_in'] ?? '—'}  ·  ${tr('Край', 'Out')}: ${row['check_out'] ?? tr('На смяна', 'On shift')}'), trailing: Icon(row['check_out'] == null || row['check_out'] == '' ? Icons.circle : Icons.check_circle, color: _cyan, size: 16)))),
         const SizedBox(height: 18),
         _sectionTitle(tr('Резултати по техници · 30 дни', 'Technician results · 30 days')),
         if (stats.isEmpty) _empty(tr('Няма приключени ремонти за периода.', 'No completed repairs in this period.')),

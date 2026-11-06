@@ -2,18 +2,20 @@
 /**
  * Plugin Name: PCWork Mobile – Complete System
  * Description: Единен модул за мобилно приложение, вход, сервизни ремонти и административни интеграции на PCWork.
- * Version: 2.1.0
+ * Version: 2.4.1
  * Author: PCWork
  * Text Domain: pcwork-mobile
  */
 if (!defined('ABSPATH')) exit;
 
-define('PCWORK_MOBILE_COMPLETE_VERSION', '2.1.0');
+define('PCWORK_MOBILE_COMPLETE_VERSION', '2.4.1');
 define('PCWORK_MOBILE_COMPLETE_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/auth-bridge.php';
 require_once __DIR__ . '/includes/repairs-api.php';
 require_once __DIR__ . '/includes/admin-integration-settings.php';
+require_once __DIR__ . '/includes/woocommerce-mobile-api.php';
+require_once __DIR__ . '/includes/google-sheets-sync.php';
 
 /** Unified admin landing page. */
 add_action('admin_menu', function () {

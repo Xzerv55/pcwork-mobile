@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 /// Decodes JSON safely and reports useful errors when WordPress returns HTML,
 /// an empty response, or a proxy/server error page.
@@ -35,6 +36,57 @@ class ApiService {
   Uri _uri(String path) {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     return Uri.parse('$base/wp-json/pcwork/v1/$path');
+  }
+
+  Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
+    final params = <String, String>{'per_page': '40'};
+    if (search.isNotEmpty) params['search'] = search;
+    if (categoryId > 0) params['category'] = '$categoryId';
+    final response = await http.get(_uri('shop/products').replace(queryParameters: params)).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<List<Map<String, dynamic>>> getShopCategories() async {
+    final response = await http.get(_uri('shop/categories')).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping}) async {
+    final response = await http.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping})).timeout(const Duration(seconds: 35));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор при създаване на поръчка.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getShopOrders(String token) async {
+    final response = await http.get(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<Map<String, dynamic>> getShopOrder(String token, int id) async {
+    final response = await http.get(_uri('shop/orders/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалидни подробности за поръчката.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<void> openExternal(String value) async {
+    final uri = Uri.tryParse(value);
+    if (uri == null || !['https', 'http'].contains(uri.scheme)) throw Exception('Невалиден адрес за плащане.');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) throw Exception('Неуспешно отваряне на страницата за плащане.');
   }
 
   Future<bool> checkHealth() async {
@@ -210,7 +262,7 @@ class ApiService {
     final authenticated = token != null && token.trim().isNotEmpty;
     final response = authenticated
         ? await http.post(_uri('chatway/session'),
-            headers: {'Authorization': 'Bearer ${token!.trim()}', 'Content-Type': 'application/json'},
+            headers: {'Authorization': 'Bearer ${token.trim()}', 'Content-Type': 'application/json'},
             body: jsonEncode(<String, dynamic>{})).timeout(const Duration(seconds: 15))
         : await http.get(_uri('chatway/config')).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {

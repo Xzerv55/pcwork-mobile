@@ -1,46 +1,177 @@
 import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 class AuthUser {
-  const AuthUser({required this.id, required this.name, required this.email, this.roles = const []});
+  const AuthUser({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.roles = const [],
+  });
+
   final int id;
   final String name;
   final String email;
   final List<String> roles;
-  factory AuthUser.fromJson(Map<String, dynamic> j) => AuthUser(
-    id: (j['id'] as num).toInt(), name: (j['name'] ?? '').toString(),
-    email: (j['email'] ?? '').toString(), roles: (j['roles'] as List? ?? []).map((e) => e.toString()).toList());
+
+  factory AuthUser.fromJson(Map<String, dynamic> json) {
+    final rawRoles = json['roles'];
+    final roles = rawRoles is List
+        ? rawRoles.map((value) => value.toString()).toList()
+        : <String>[];
+    final rawId = json['id'];
+    final id = rawId is num ? rawId.toInt() : int.tryParse('$rawId') ?? 0;
+    if (id <= 0) {
+      throw const FormatException('Сървърът върна невалиден потребителски профил.');
+    }
+    return AuthUser(
+      id: id,
+      name: (json['name'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      roles: roles,
+    );
+  }
 }
 
 class AuthService {
   AuthService({required this.baseUrl});
+
   final String baseUrl;
-  static const _storage = FlutterSecureStorage();
-  Uri _uri(String p) => Uri.parse('${baseUrl.replaceFirst(RegExp(r'/+$'), '')}/wp-json/pcwork/v1/$p');
-  Future<String?> get token => _storage.read(key: 'pcwork_access_token');
-  Future<void> logout() => _storage.delete(key: 'pcwork_access_token');
-  Future<AuthUser> login(String email, String password) => _send('auth/login', {'email': email, 'password': password});
-  Future<AuthUser> register(String name, String email, String password) => _send('auth/register', {'name': name, 'email': email, 'password': password});
-  Future<AuthUser> _send(String path, Map<String, dynamic> body) async {
-    final r = await http.post(_uri(path), headers: {'Content-Type':'application/json'}, body: jsonEncode(body)).timeout(const Duration(seconds: 20));
-    final data = jsonDecode(r.body);
-    if (r.statusCode < 200 || r.statusCode >= 300) {
-      final message = data is Map ? (data['message'] ?? 'HTTP ${r.statusCode}') : 'HTTP ${r.statusCode}';
-      throw Exception(message);
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const String _tokenKey = 'pcwork_access_token';
+
+  Uri _uri(String path) {
+    final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final uri = Uri.tryParse('$base/wp-json/pcwork/v1/$path');
+    if (uri == null || uri.host.isEmpty || uri.scheme != 'https') {
+      throw const FormatException(
+        'Входът изисква валиден HTTPS адрес на PCWork сайта.',
+      );
     }
-    final payload = data is Map && data['data'] is Map ? data['data'] as Map : data as Map;
-    final t = payload['token'];
-    if (t is! String || t.isEmpty) throw Exception('Сървърът не върна токен за достъп.');
-    await _storage.write(key: 'pcwork_access_token', value: t);
-    return AuthUser.fromJson(Map<String,dynamic>.from(payload['user'] as Map));
+    return uri;
   }
+
+  Future<String?> get token => _storage.read(key: _tokenKey);
+
+  Future<void> logout() => _storage.delete(key: _tokenKey);
+
+  Future<AuthUser> login(String identifier, String password) => _send(
+        'auth/login',
+        {
+          'login': identifier.trim(),
+          // Kept for compatibility with older PCWork plugin versions.
+          'email': identifier.trim(),
+          'password': password,
+        },
+      );
+
+  Future<AuthUser> register(String name, String email, String password) =>
+      _send('auth/register', {
+        'name': name.trim(),
+        'email': email.trim(),
+        'password': password,
+      });
+
+  Map<String, dynamic> _decode(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      throw const FormatException('Сървърът върна неочакван формат.');
+    } on FormatException {
+      throw FormatException(
+        'PCWork сървърът върна невалиден отговор (HTTP ${response.statusCode}). '
+        'Провери REST API адреса и WordPress плъгина.',
+      );
+    }
+  }
+
+  Map<String, dynamic> _payload(Map<String, dynamic> response) {
+    final data = response['data'];
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return response;
+  }
+
+  String _message(Map<String, dynamic> response, int statusCode) {
+    final message = response['message'] ?? response['error'];
+    if (message != null && message.toString().trim().isNotEmpty) {
+      return message.toString();
+    }
+    switch (statusCode) {
+      case 401:
+        return 'Невалиден имейл/потребителско име или парола.';
+      case 403:
+        return 'Достъпът е отказан от WordPress.';
+      case 404:
+        return 'Липсва PCWork Auth API. Обнови WordPress плъгина.';
+      case 429:
+        return 'Твърде много опити за вход. Изчакай и опитай отново.';
+      default:
+        return 'Грешка при вход (HTTP $statusCode).';
+    }
+  }
+
+  Future<AuthUser> _send(String path, Map<String, dynamic> body) async {
+    late final http.Response response;
+    try {
+      response = await http
+          .post(
+            _uri(path),
+            headers: const {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 25));
+    } on Exception catch (error) {
+      throw Exception(
+        'Неуспешна връзка с PCWork. Провери интернет връзката и адреса на сайта. ($error)',
+      );
+    }
+
+    final decoded = _decode(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_message(decoded, response.statusCode));
+    }
+
+    final payload = _payload(decoded);
+    final accessToken = payload['token'];
+    final userData = payload['user'];
+    if (accessToken is! String || accessToken.isEmpty || userData is! Map) {
+      throw const FormatException(
+        'WordPress не върна валиден токен и потребителски профил. Провери Auth Bridge плъгина.',
+      );
+    }
+
+    final user = AuthUser.fromJson(Map<String, dynamic>.from(userData));
+    await _storage.write(key: _tokenKey, value: accessToken);
+    return user;
+  }
+
   Future<AuthUser> me() async {
-    final t = await token; if (t == null) throw Exception('Няма активна сесия.');
-    final r = await http.get(_uri('auth/me'), headers: {'Authorization':'Bearer $t'}).timeout(const Duration(seconds: 15));
-    final data=jsonDecode(r.body);
-    if (r.statusCode != 200) { await logout(); throw Exception(data is Map ? (data['message'] ?? 'Сесията изтече.') : 'Сесията изтече.'); }
-    final payload=data is Map && data['data'] is Map ? data['data'] as Map : data as Map;
-    return AuthUser.fromJson(Map<String,dynamic>.from(payload));
+    final accessToken = await token;
+    if (accessToken == null || accessToken.isEmpty) {
+      throw const FormatException('Няма активна сесия. Влез отново.');
+    }
+
+    final response = await http
+        .get(
+          _uri('auth/me'),
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Accept': 'application/json',
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+    final decoded = _decode(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        await logout();
+      }
+      throw Exception(_message(decoded, response.statusCode));
+    }
+    return AuthUser.fromJson(_payload(decoded));
   }
 }

@@ -11,6 +11,8 @@ import 'screens/repair_evidence_screen.dart';
 import 'screens/repair_documents_screen.dart';
 import 'screens/staff_dashboard_screen.dart';
 import 'screens/chatway_screen.dart';
+import 'screens/auth_screen.dart';
+import 'screens/shop_screen.dart';
 
 void main() => runApp(const PCWorkApp());
 
@@ -79,7 +81,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
   Future<void> _saveApiUrl(String value) async {
     final cleaned = value.trim().replaceFirst(RegExp(r'/+$'), '');
     final uri = Uri.tryParse(cleaned);
-    if (uri == null || uri.host.isEmpty || !['https', 'http'].contains(uri.scheme)) {
+    if (uri == null || uri.host.isEmpty || uri.scheme != 'https') {
       throw Exception(tr('Въведете валиден адрес, започващ с https://', 'Enter a valid https:// URL.'));
     }
     final prefs = await SharedPreferences.getInstance();
@@ -116,7 +118,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
 
   @override
   Widget build(BuildContext context) {
-    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Магазин', 'Shop'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
@@ -173,14 +175,15 @@ class _PCWorkAppState extends State<PCWorkApp> {
         ),
         body: DecoratedBox(
           decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])),
-          child: IndexedStack(index: tab, children: [_home(), _repairs(), ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0), _booking(), _profile()]),
+          child: IndexedStack(index: tab, children: [_home(), _repairs(), ShopScreen(api: api, tokenProvider: () => auth.token, english: english), ChatwayScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0), _booking(), _profile()]),
         ),
         bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (v) => setState(() => tab = v), destinations: [
           NavigationDestination(icon: const Icon(Icons.grid_view_rounded), selectedIcon: const Icon(Icons.grid_view_rounded), label: labels[0]),
           NavigationDestination(icon: const Icon(Icons.handyman_outlined), selectedIcon: const Icon(Icons.handyman_rounded), label: labels[1]),
-          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[2]),
-          NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[3]),
-          NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[4]),
+          NavigationDestination(icon: const Icon(Icons.storefront_outlined), selectedIcon: const Icon(Icons.storefront_rounded), label: labels[2]),
+          NavigationDestination(icon: const Icon(Icons.forum_outlined), selectedIcon: const Icon(Icons.forum_rounded), label: labels[3]),
+          NavigationDestination(icon: const Icon(Icons.calendar_month_outlined), selectedIcon: const Icon(Icons.calendar_month_rounded), label: labels[4]),
+          NavigationDestination(icon: const Icon(Icons.person_outline_rounded), selectedIcon: const Icon(Icons.person_rounded), label: labels[5]),
         ]),
       ),
     );
@@ -210,14 +213,16 @@ class _PCWorkAppState extends State<PCWorkApp> {
         const SizedBox(height: 9),
         Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: const TextStyle(color: Color(0xFFC3D1E0), fontSize: 13)),
         const SizedBox(height: 20),
-        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => setState(() => tab = 3), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => setState(() => tab = 4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
     const SizedBox(height: 22),
+    if (signedInUser == null) _homeSignInCard() else _homeAccountDashboard(),
+    const SizedBox(height: 8),
     Row(children: [
       Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => setState(() => tab = 1))),
       const SizedBox(width: 12),
-      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => setState(() => tab = 2))),
+      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => setState(() => tab = 3))),
     ]),
     const SizedBox(height: 21),
     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -244,7 +249,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
-      const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 4), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
+      const SizedBox(height: 16), FilledButton.icon(onPressed: () => setState(() => tab = 5), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
     ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
     return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
@@ -317,6 +322,71 @@ class _PCWorkAppState extends State<PCWorkApp> {
     return (english ? en[s] : bg[s]) ?? s;
   }
 
+
+  Future<void> _changeRepairStatus(Repair repair, BuildContext sheetContext) async {
+    final noteController = TextEditingController();
+    const statuses = ['received', 'diagnostics', 'waiting_approval', 'in_repair', 'ready', 'completed', 'cancelled'];
+    var selected = repair.status;
+    final confirmed = await showDialog<bool>(
+      context: sheetContext,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: Text(tr('Промяна на статуса', 'Update repair status')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selected,
+                decoration: InputDecoration(labelText: tr('Нов статус', 'New status')),
+                items: statuses.map((status) => DropdownMenuItem(
+                  value: status,
+                  child: Text(_statusLabel(status)),
+                )).toList(),
+                onChanged: (value) {
+                  if (value != null) refresh(() => selected = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: tr('Бележка към историята (по желание)', 'History note (optional)'),
+                  hintText: tr('Напр. извършена диагностика…', 'E.g. diagnostics completed…'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Отказ', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Запази', 'Save'))),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      noteController.dispose();
+      return;
+    }
+    final token = await auth.token;
+    if (token == null) {
+      noteController.dispose();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Please sign in again.'))));
+      return;
+    }
+    try {
+      await api.updateRepairStatus(token, repair.id, selected, note: noteController.text.trim());
+      noteController.dispose();
+      if (!mounted) return;
+      Navigator.of(sheetContext).pop();
+      setState(() => repairsFuture = _loadRepairsFuture());
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Статусът на ремонта е обновен.', 'Repair status updated.'))));
+    } catch (e) {
+      noteController.dispose();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешна промяна:', 'Update failed:')} $e')));
+    }
+  }
+
   void _showRepairDetails(Repair repair) async {
     final token = await auth.token;
     if (token == null || !mounted) return;
@@ -325,7 +395,7 @@ class _PCWorkAppState extends State<PCWorkApp> {
       if (snap.hasError) return SizedBox(height: 220, child: Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('${snap.error}'))));
       final r = snap.data!;
       final isStaff = signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role));
-      return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
+      return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
         OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager'].contains(role))))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
     }));
   }
@@ -362,8 +432,8 @@ class _PCWorkAppState extends State<PCWorkApp> {
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
       const SizedBox(height: 18),
-      FilledButton.icon(onPressed: authBusy ? null : () => _showAuthDialog(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход с имейл', 'Sign in with email'))),
-      OutlinedButton.icon(onPressed: authBusy ? null : () => _showAuthDialog(register: true), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Създай профил', 'Create account'))),
+      FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход с имейл', 'Sign in with email'))),
+      OutlinedButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: true), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Създай профил', 'Create account'))),
       const SizedBox(height: 10),
       Text(tr('Телефон/SMS входът ще бъде включен след избор и конфигуриране на SMS доставчик. Не въвеждайте SMS кодове в тази версия.', 'Phone/SMS sign-in will be enabled after selecting and configuring an SMS provider. Do not enter SMS codes in this version.'), style: const TextStyle(color: Colors.white60)),
     ],
@@ -445,23 +515,141 @@ class _PCWorkAppState extends State<PCWorkApp> {
 
   Future<void> _logout() async { final bearer = await auth.token; if (bearer != null) await push.unregister(bearer); await auth.logout(); if (mounted) setState(() { signedInUser = null; repairsFuture = null; }); }
 
-  void _showAuthDialog({required bool register}) {
-    final name = TextEditingController(); final email = TextEditingController(); final password = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: Text(register ? tr('Регистрация', 'Create account') : tr('Вход', 'Sign in')),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (register) ...[TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: tr('Име', 'Name'))), const SizedBox(height: 10)],
-        TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
-        const SizedBox(height: 10), TextField(controller: password, obscureText: true, decoration: InputDecoration(labelText: tr('Парола (минимум 10 символа)', 'Password (at least 10 characters)'))),
-      ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () async {
-        if (register && password.text.length < 10) { _message(tr('Паролата трябва да е поне 10 символа.', 'Password must be at least 10 characters.')); return; }
-        Navigator.pop(ctx); setState(() => authBusy = true);
-        try { final u = register ? await auth.register(name.text.trim(), email.text.trim(), password.text) : await auth.login(email.text.trim(), password.text); if (mounted) { setState(() { signedInUser = u; repairsFuture = _loadRepairsFuture(); }); await _enablePush(); _message(tr('Успешен вход в PCWork.', 'Successfully signed in to PCWork.')); } }
-        catch (e) { _message('$e'); }
-        finally { if (mounted) setState(() => authBusy = false); }
-      }, child: Text(register ? tr('Регистрирай', 'Register') : tr('Вход', 'Sign in')))],
-    ));
+  Future<void> _openAuthScreen({required bool register}) async {
+    final user = await Navigator.of(context).push<AuthUser>(
+      MaterialPageRoute(
+        builder: (_) => AuthScreen(
+          baseUrl: apiUrl,
+          english: english,
+          initialRegister: register,
+        ),
+      ),
+    );
+    if (!mounted || user == null) return;
+    final bearer = await auth.token;
+    setState(() {
+      signedInUser = user;
+      repairsFuture = _loadRepairsFuture();
+      tab = 5;
+    });
+    if (bearer != null && bearer.isNotEmpty) await _enablePush(bearer);
+    if (mounted) {
+      _message(tr('Успешен вход в PCWork.', 'Successfully signed in to PCWork.'));
+    }
+  }
+
+  Widget _homeSignInCard() => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: cyan.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.lock_open_rounded, color: cyan),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('Влез в своя профил', 'Sign in to your account'),
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(
+                      tr('Проследявай ремонтите и поръчките си.', 'Track your repairs and orders.'),
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: tr('Вход', 'Sign in'),
+                onPressed: () => _openAuthScreen(register: false),
+                icon: const Icon(Icons.arrow_forward_rounded, color: cyan),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _homeAccountDashboard() {
+    final future = repairsFuture ??= _loadRepairsFuture();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(17),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.dashboard_customize_outlined, color: cyan),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    tr('Здравей, ${signedInUser?.name ?? ''}', 'Welcome, ${signedInUser?.name ?? ''}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => tab = 1),
+                  child: Text(tr('Ремонти', 'Repairs')),
+                ),
+              ],
+            ),
+            FutureBuilder<List<Repair>>(
+              future: future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 14),
+                    child: LinearProgressIndicator(minHeight: 3),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Row(
+                    children: [
+                      const Expanded(child: Text('Неуспешно зареждане на ремонтите.', style: TextStyle(color: Colors.white60, fontSize: 12))),
+                      IconButton(
+                        tooltip: tr('Опитай отново', 'Retry'),
+                        onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()),
+                        icon: const Icon(Icons.refresh, color: cyan),
+                      ),
+                    ],
+                  );
+                }
+                final rows = snapshot.data ?? const <Repair>[];
+                final active = rows.where((r) => !['completed', 'cancelled'].contains(r.status)).length;
+                final ready = rows.where((r) => r.status == 'ready').length;
+                return Row(
+                  children: [
+                    Expanded(child: _repairMetric(tr('Всички', 'Total'), rows.length)),
+                    Expanded(child: _repairMetric(tr('Активни', 'Active'), active)),
+                    Expanded(child: _repairMetric(tr('Готови', 'Ready'), ready)),
+                  ],
+                );
+              },
+            ),
+            if (signedInUser?.roles.any((role) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(role)) ?? false)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openStaffDashboard,
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  label: Text(tr('Служебно табло', 'Staff dashboard')),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _openBookly() async {

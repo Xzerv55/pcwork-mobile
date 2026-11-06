@@ -8,6 +8,7 @@ final class PCWork_Admin_Integration_Settings {
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'menu'], 99);
         add_action('admin_init', [__CLASS__, 'register']);
+        add_action('admin_init', [__CLASS__, 'maybe_encrypt_legacy_sheets_secret'], 20);
         add_action('admin_enqueue_scripts', [__CLASS__, 'styles']);
         add_action('admin_footer', [__CLASS__, 'admin_script']);
         add_action('rest_api_init', [__CLASS__, 'rest_routes']);
@@ -32,7 +33,51 @@ final class PCWork_Admin_Integration_Settings {
     }
 
     public static function get_settings() {
-        return wp_parse_args(get_option(self::OPTION, []), self::defaults());
+        $settings = wp_parse_args(get_option(self::OPTION, []), self::defaults());
+        if (!empty($settings['sheets_webhook_secret'])) {
+            $settings['sheets_webhook_secret'] = self::decrypt_sheets_secret((string)$settings['sheets_webhook_secret']);
+        }
+        return $settings;
+    }
+
+    /** Encrypt the Sheets HMAC secret at rest using the site's WordPress salts. */
+    private static function sheets_secret_key() {
+        $material = (function_exists('wp_salt') ? wp_salt('auth') . '|' . wp_salt('secure_auth') : AUTH_KEY . '|' . SECURE_AUTH_KEY);
+        return hash('sha256', $material . '|PCWork Google Sheets HMAC v1', true);
+    }
+
+    private static function encrypt_sheets_secret($secret) {
+        $secret = (string)$secret;
+        if ($secret === '' || strpos($secret, 'pcwenc:v1:') === 0 || !function_exists('openssl_encrypt')) return $secret;
+        try { $iv = random_bytes(12); } catch (Throwable $e) { return $secret; }
+        $tag = '';
+        $cipher = openssl_encrypt($secret, 'aes-256-gcm', self::sheets_secret_key(), OPENSSL_RAW_DATA, $iv, $tag, 'pcwork-sheets-secret-v1', 16);
+        if ($cipher === false || strlen($tag) !== 16) return $secret;
+        return 'pcwenc:v1:' . base64_encode($iv . $tag . $cipher);
+    }
+
+    private static function decrypt_sheets_secret($stored) {
+        if (strpos($stored, 'pcwenc:v1:') !== 0) return $stored; // legacy plaintext; migrated by admin_init.
+        if (!function_exists('openssl_decrypt')) return '';
+        $raw = base64_decode(substr($stored, 10), true);
+        if ($raw === false || strlen($raw) < 29) return '';
+        $iv = substr($raw, 0, 12);
+        $tag = substr($raw, 12, 16);
+        $cipher = substr($raw, 28);
+        $plain = openssl_decrypt($cipher, 'aes-256-gcm', self::sheets_secret_key(), OPENSSL_RAW_DATA, $iv, $tag, 'pcwork-sheets-secret-v1');
+        return is_string($plain) ? $plain : '';
+    }
+
+    public static function maybe_encrypt_legacy_sheets_secret() {
+        if (!current_user_can('manage_options') || !function_exists('openssl_encrypt')) return;
+        $stored = get_option(self::OPTION, []);
+        if (!is_array($stored) || empty($stored['sheets_webhook_secret'])) return;
+        if (strpos((string)$stored['sheets_webhook_secret'], 'pcwenc:v1:') === 0) return;
+        $encrypted = self::encrypt_sheets_secret((string)$stored['sheets_webhook_secret']);
+        if (strpos($encrypted, 'pcwenc:v1:') === 0) {
+            $stored['sheets_webhook_secret'] = $encrypted;
+            update_option(self::OPTION, $stored, false);
+        }
     }
 
     public static function menu() {
@@ -59,6 +104,8 @@ final class PCWork_Admin_Integration_Settings {
             // Празно поле означава запазване на вече записаната тайна.
             $out[$key] = $value !== '' ? sanitize_textarea_field($value) : ($old[$key] ?? '');
         }
+        // Only the Google Sheets HMAC secret is encrypted at rest.
+        $out['sheets_webhook_secret'] = self::encrypt_sheets_secret($out['sheets_webhook_secret']);
         $out['chatway_verification_identifier'] = in_array(($input['chatway_verification_identifier'] ?? 'id'), ['id','email'], true) ? $input['chatway_verification_identifier'] : 'id';
         $out['push_provider'] = in_array(($input['push_provider'] ?? ''), ['firebase'], true) ? $input['push_provider'] : 'firebase';
         $out['app_environment'] = in_array(($input['app_environment'] ?? ''), ['staging','production'], true) ? $input['app_environment'] : 'staging';
@@ -87,14 +134,14 @@ final class PCWork_Admin_Integration_Settings {
         if (!current_user_can('manage_options')) return;
         echo '<div class="wrap pcw-wrap"><div class="pcw-hero"><h1>⚙ PCWork – настройки и интеграции</h1><p>Централно място за свързване на сайта, резервациите, чата, магазина, Google Sheets и push известията.</p></div>';
         if (!class_exists('WooCommerce')) echo '<div class="notice notice-warning"><p>WooCommerce не е активен или не е открит. Настройките могат да бъдат въведени предварително.</p></div>';
-        echo '<div class="pcw-note"><strong>Сигурност:</strong> тайните се записват в базата данни на WordPress и са достъпни през администраторския екран. Използвай HTTPS, ограничен администраторски достъп и резервни копия. За production препоръчваме секретите да се преместят в wp-config.php или защитена среда. Празно поле запазва текущата стойност.</div>'; 
+        echo '<div class="pcw-note"><strong>Сигурност:</strong> Google Sheets HMAC Secret се съхранява криптирано в базата данни чрез AES-256-GCM и WordPress salts (когато OpenSSL е наличен). Пази wp-config.php и не сменяй AUTH_KEY/SECURE_AUTH_KEY без предварително да запазиш HMAC Secret. Използвай HTTPS, ограничен администраторски достъп и резервни копия. Празно поле запазва текущата стойност.</div>'; 
         echo '<form method="post" action="options.php">'; settings_fields(self::GROUP); echo '<div class="pcw-grid">';
         self::card_start('Основни настройки','Адрес и среда на приложението.');
         self::field('site_url','WordPress сайт','url');
         echo '<label for="app_environment">Среда</label><select id="app_environment" name="'.self::OPTION.'[app_environment]"><option value="staging" '.selected(self::get_settings()['app_environment'],'staging',false).'>Тестова (Staging)</option><option value="production" '.selected(self::get_settings()['app_environment'],'production',false).'>Работна (Production)</option></select>';
         self::field('support_email','Имейл за поддръжка','email'); self::field('support_phone','Телефон за поддръжка'); echo '</section>';
 
-        self::card_start('WooCommerce','Продукти, услуги, поръчки и клиентски профили.'); self::toggle('woocommerce_enabled','Активирай интеграцията'); self::field('woocommerce_consumer_key','Consumer Key','password'); self::field('woocommerce_consumer_secret','Consumer Secret','password'); echo '<button type="button" class="button pcw-test" data-integration="woocommerce">Провери връзката</button><span class="pcw-result" id="pcw-result-woocommerce"></span>'; echo '</section>'; 
+        self::card_start('WooCommerce','Продукти, услуги, поръчки и клиентски профили.'); self::toggle('woocommerce_enabled','Активирай интеграцията'); self::field('woocommerce_consumer_key','Consumer Key (по избор за външен REST API)','password'); self::field('woocommerce_consumer_secret','Consumer Secret (по избор за външен REST API)','password'); echo '<p class="description">Мобилният магазин v32 използва защитения сървърен WooCommerce API и не изисква Consumer Key/Secret в приложението. Ключовете са нужни само за външни REST API интеграции и допълнителния тест.</p>';  echo '<button type="button" class="button pcw-test" data-integration="woocommerce">Провери връзката</button><span class="pcw-result" id="pcw-result-woocommerce"></span>'; echo '</section>'; 
         self::card_start('Bookly','Резервиране на часове и графици.'); self::toggle('bookly_enabled','Активирай интеграцията'); self::field('bookly_api_url','API адрес / endpoint','url','https://...'); self::field('bookly_api_key','API ключ (само ако използваш отделен Bookly REST API add-on)','password'); self::field('bookly_booking_page_url','Страница за резервации в сайта','url','https://pcwork-bg.com/rezervirane/','Това е страницата, в която е поставена стандартната Bookly форма. Приложението ще я отваря в защитен WebView/браузър.'); self::field('bookly_shortcode','Bookly shortcode','text','[bookly-form]','Стандартен shortcode за Bookly. Не се изпълнява от приложението; служи за проверка/документация.'); echo '<button type="button" class="button pcw-test" data-integration="bookly">Провери Bookly</button><span class="pcw-result" id="pcw-result-bookly"></span>'; echo '</section>'; 
         self::card_start('Chatway Live Chat','Вграден клиентски чат с опционална сигурна идентификация на влезлите клиенти.'); self::toggle('chatway_enabled','Показвай Chatway в приложението'); self::field('chatway_installation_id','Chatway Installation ID','text','например AbCdEf123456','Вземи ID от кода за инсталиране. Въведи само стойността след id=, не API ключ.'); self::toggle('chatway_verification_enabled','Включи Visitor Verification за влезли клиенти'); echo '<label for="chatway_verification_identifier">Идентификатор за проверка</label><select id="chatway_verification_identifier" name="'.self::OPTION.'[chatway_verification_identifier]"><option value="id" '.selected(self::get_settings()['chatway_verification_identifier'],'id',false).'>WordPress User ID (препоръчително)</option><option value="email" '.selected(self::get_settings()['chatway_verification_identifier'],'email',false).'>Имейл адрес</option></select>'; self::field('chatway_verification_secret','Chatway Visitor Verification Security Key','password','','Копирай ключа от Chatway → Settings → Visitors Verification. Ключът остава само на сървъра и никога не се изпраща към приложението.'); self::field('chatway_widget_id','Widget ID (за бъдеща API синхронизация)'); echo '<button type="button" class="button pcw-test" data-integration="chatway">Провери настройката</button><span class="pcw-result" id="pcw-result-chatway"></span>'; echo '</section>';
         self::card_start('Chaty Pro','Бутони за бърз контакт.'); self::toggle('chaty_enabled','Активирай Chaty'); self::field('chaty_widget_id','Widget ID / идентификатор'); echo '</section>';
@@ -120,7 +167,9 @@ final class PCWork_Admin_Integration_Settings {
         $integration = sanitize_key($_POST['integration'] ?? '');
         $s = self::get_settings();
         if ($integration === 'woocommerce') {
-            if (empty($s['woocommerce_consumer_key']) || empty($s['woocommerce_consumer_secret'])) wp_send_json_error(['message'=>'Въведи Consumer Key и Consumer Secret и запази настройките.']);
+            if (($s['woocommerce_enabled'] ?? '0') !== '1') wp_send_json_error(['message'=>'WooCommerce интеграцията е изключена.']);
+            if (!class_exists('WooCommerce') || !function_exists('wc_get_products')) wp_send_json_error(['message'=>'WooCommerce не е инсталиран или активен.']);
+            if (empty($s['woocommerce_consumer_key']) || empty($s['woocommerce_consumer_secret'])) wp_send_json_success(['message'=>'WooCommerce е активен. Сървърният мобилен магазин е готов; Consumer Key/Secret не са необходими за v32.']);
             $base = untrailingslashit($s['site_url']);
             if (strtolower((string) wp_parse_url($base, PHP_URL_HOST)) !== strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST))) wp_send_json_error(['message'=>'Адресът на сайта трябва да съвпада с домейна на този WordPress.']);
             if (stripos($base, 'https://') !== 0) wp_send_json_error(['message'=>'WooCommerce ключовете се изпращат само през HTTPS.']);
@@ -160,15 +209,28 @@ final class PCWork_Admin_Integration_Settings {
         if ($integration === 'sheets') {
             if (empty($s['sheets_webhook_url']) || empty($s['sheets_webhook_secret'])) wp_send_json_error(['message'=>'Въведи Webhook URL и HMAC Secret и запази настройките.']);
             if (stripos($s['sheets_webhook_url'], 'https://') !== 0) wp_send_json_error(['message'=>'Webhook адресът трябва да използва HTTPS.']);
-            $timestamp = (string) time();
-            $payload = wp_json_encode(['event'=>'pcwork.integration.ping','timestamp'=>(int)$timestamp,'sent_at'=>gmdate('c')]);
-            $signature = hash_hmac('sha256', $timestamp.'.'.$payload, $s['sheets_webhook_secret']);
-            $url = add_query_arg(['ts'=>$timestamp,'sig'=>$signature], $s['sheets_webhook_url']);
-            $response = wp_remote_post($url, ['timeout'=>20,'headers'=>['Content-Type'=>'application/json'],'body'=>$payload]);
-            if (is_wp_error($response)) wp_send_json_error(['message'=>'Грешка: '.$response->get_error_message()]);
-            $code = wp_remote_retrieve_response_code($response);
-            if ($code >= 200 && $code < 300) wp_send_json_success(['message'=>'Webhook отговори успешно. HTTP '.$code.' (провери Apps Script логовете за потвърждение).']);
-            wp_send_json_error(['message'=>'Webhook върна HTTP '.$code.'. Провери URL, достъпа и Apps Script deployment-а.']);
+            $payload = wp_json_encode(['event'=>'pcwork.integration.ping','timestamp'=>time(),'sent_at'=>gmdate('c')]);
+            $response = PCWork_Google_Sheets_Sync::post_json(
+                $s['sheets_webhook_url'],
+                $payload,
+                $s['sheets_webhook_secret']
+            );
+            if (is_wp_error($response)) {
+                wp_send_json_error(['message' => 'Грешка при Google Sheets заявката: ' . $response->get_error_message()]);
+            }
+            $code = (int) wp_remote_retrieve_response_code($response);
+            $raw_body = (string) wp_remote_retrieve_body($response);
+            $decoded = json_decode($raw_body, true);
+            if ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['ok'])) {
+                wp_send_json_success(['message' => 'Google Apps Script потвърди връзката. HTTP ' . $code . '.']);
+            }
+            if ($code >= 200 && $code < 300 && is_array($decoded) && array_key_exists('ok', $decoded) && !$decoded['ok']) {
+                $reason = sanitize_text_field((string)($decoded['error'] ?? 'unknown_error'));
+                wp_send_json_error(['message' => 'Apps Script получи заявката, но я отхвърли: ' . $reason . '. Провери HMAC Secret, часа на сървъра и Script Properties.']);
+            }
+            $body_excerpt = trim(wp_strip_all_tags($raw_body));
+            if (function_exists('mb_substr')) $body_excerpt = mb_substr($body_excerpt, 0, 500); else $body_excerpt = substr($body_excerpt, 0, 500);
+            wp_send_json_error(['message' => 'Webhook върна HTTP ' . $code . '. Отговор: ' . ($body_excerpt !== '' ? $body_excerpt : '[празно тяло]')]);
         }
         wp_send_json_error(['message'=>'Няма тест за тази интеграция в текущата версия.']);
     }
