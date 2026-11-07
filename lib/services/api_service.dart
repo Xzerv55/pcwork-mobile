@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
@@ -43,6 +44,8 @@ class ApiService {
   String _repairsCacheKey(String token) => 'pcwork_v37_repairs_${_scope(token)}';
   String _locationsCacheKey() => 'pcwork_v37_locations_${sha256.convert(utf8.encode(baseUrl.trim()))}';
   String _queueKey(String token) => 'pcwork_v37_queue_${_scope(token)}';
+  String createClientRequestId() => _newRequestId();
+
   String _newRequestId() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
@@ -429,19 +432,32 @@ class ApiService {
   }
 
 
-  Future<Map<String, dynamic>> createCustomerRepairRequest(String token, Map<String, dynamic> payload) async {
-    final response = await http.post(
-      _uri('repairs/request'),
-      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-      body: jsonEncode({...payload, 'client_request_id': _newRequestId()}),
-    ).timeout(const Duration(seconds: 25));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 201 && response.statusCode != 200) {
-      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  Future<Map<String, dynamic>> createCustomerRepairRequest(String token, Map<String, dynamic> payload, {String? clientRequestId}) async {
+    final requestId = clientRequestId ?? _newRequestId();
+    final body = jsonEncode({...payload, 'client_request_id': requestId});
+    Future<Map<String, dynamic>> sendOnce() async {
+      final response = await http.post(
+        _uri('repairs/request'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 201 && response.statusCode != 200) {
+        throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      }
+      final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+      if (data is! Map) throw Exception('Сървърът върна невалиден отговор за заявката.');
+      return Map<String, dynamic>.from(data);
     }
-    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
-    if (data is! Map) throw Exception('Сървърът върна невалиден отговор за заявката.');
-    return Map<String, dynamic>.from(data);
+    try {
+      return await sendOnce();
+    } catch (error) {
+      // A timeout may happen after WordPress has committed the repair. Retry
+      // once with the SAME idempotency key so the server returns the original
+      // record instead of creating a duplicate.
+      if (error is TimeoutException || _isNetworkError(error)) return await sendOnce();
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> createRepair(String token, Map<String, dynamic> payload) async {

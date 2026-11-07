@@ -110,6 +110,11 @@ class AuthService {
         'code': code.trim(),
       });
 
+  /// Password login is accepted by WordPress only for accounts explicitly
+  /// authorized by an administrator (or existing staff accounts).
+  Future<AuthUser> loginWithPassword({required String identifier, required String password}) =>
+      _sendOtp('auth/login', {'login': identifier.trim(), 'password': password});
+
   Map<String, dynamic> _decode(http.Response response) {
     try {
       final decoded = jsonDecode(response.body);

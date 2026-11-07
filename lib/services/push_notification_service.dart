@@ -22,10 +22,28 @@ class PushNotificationService {
     _initialized = true;
   }
 
-  Future<void> register(String bearerToken,
+  /// Requests the operating-system notification permission independently
+  /// of account login. Token registration is deferred until a user session exists.
+  Future<bool> requestPermission() async {
+    if (!DefaultFirebaseOptions.isConfigured) return false;
+    try {
+      await initialize();
+      final messaging = FirebaseMessaging.instance;
+      await messaging.setAutoInitEnabled(true);
+      final settings = await messaging.requestPermission(
+        alert: true, badge: true, sound: true, provisional: false,
+      );
+      return settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> register(String bearerToken,
       {required void Function(String title, String body) onForeground,
       required void Function(Map<String, dynamic> data) onOpened}) async {
-    if (!DefaultFirebaseOptions.isConfigured) return;
+    if (!DefaultFirebaseOptions.isConfigured) return false;
     try {
       _activeBearerToken = bearerToken;
       await initialize();
@@ -35,7 +53,7 @@ class PushNotificationService {
         alert: true, badge: true, sound: true,
         provisional: false,
       );
-      if (permission.authorizationStatus == AuthorizationStatus.denied) return;
+      if (permission.authorizationStatus != AuthorizationStatus.authorized && permission.authorizationStatus != AuthorizationStatus.provisional) return false;
       if (Platform.isIOS) {
         // FCM token is issued after APNs registration is available.
         String? apnsToken;
@@ -43,12 +61,11 @@ class PushNotificationService {
           apnsToken = await messaging.getAPNSToken();
           if (apnsToken == null) await Future<void>.delayed(const Duration(milliseconds: 500));
         }
-        if (apnsToken == null) return;
+        if (apnsToken == null) return false;
       }
       final token = await messaging.getToken();
-      if (token != null && token.isNotEmpty) {
-        await _sendToken(bearerToken, token, 'register');
-      }
+      if (token == null || token.isEmpty) return false;
+      await _sendToken(bearerToken, token, 'register');
       await _tokenSubscription?.cancel();
       _tokenSubscription = messaging.onTokenRefresh.listen((fresh) {
         final activeToken = _activeBearerToken;
@@ -67,8 +84,10 @@ class PushNotificationService {
       _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
       final initial = await messaging.getInitialMessage();
       if (initial != null) onOpened(initial.data);
+      return true;
     } catch (_) {
       // Missing Firebase/APNs configuration must not block login or app use.
+      return false;
     }
   }
 
@@ -88,6 +107,27 @@ class PushNotificationService {
     _foregroundSubscription = null;
     _openedSubscription = null;
     _activeBearerToken = null;
+  }
+
+  Future<Map<String, dynamic>> getDiagnostics(String bearerToken) async {
+    final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    var permission = 'unknown';
+    String? token;
+    if (DefaultFirebaseOptions.isConfigured) {
+      try {
+        await initialize();
+        final settings = await FirebaseMessaging.instance.getNotificationSettings();
+        permission = settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional ? 'granted' : settings.authorizationStatus == AuthorizationStatus.denied ? 'denied' : 'not_determined';
+        if (permission == 'granted') token = await FirebaseMessaging.instance.getToken();
+      } catch (_) {}
+    }
+    final response = await http.post(Uri.parse('$base/wp-json/pcwork/v1/push/status'),
+      headers: {'Authorization':'Bearer $bearerToken','Content-Type':'application/json'},
+      body: jsonEncode({'token': token ?? '', 'platform': Platform.isIOS ? 'ios' : 'android'})).timeout(const Duration(seconds: 15));
+    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) throw Exception('Невалиден отговор за статуса на известията.');
+    return {...Map<String, dynamic>.from(decoded), 'permission': permission, 'token_available': token != null && token.isNotEmpty};
   }
 
   Future<bool> getMarketingConsent(String bearerToken) async {

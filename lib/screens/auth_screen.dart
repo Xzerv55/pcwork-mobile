@@ -27,8 +27,10 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phone = TextEditingController();
   final _email = TextEditingController();
   final _code = TextEditingController();
+  final _password = TextEditingController();
   late bool _register;
   bool _codeSent = false;
+  bool _passwordMode = false;
   bool _acceptedTerms = false;
   bool _busy = false;
   String? _error;
@@ -52,6 +54,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _phone.dispose();
     _email.dispose();
     _code.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -84,7 +87,13 @@ class _AuthScreenState extends State<AuthScreen> {
     });
     try {
       final service = AuthService(baseUrl: widget.baseUrl);
-      if (!_codeSent) {
+      if (!_register && _passwordMode) {
+        final user = await service.loginWithPassword(
+          identifier: _email.text.trim(),
+          password: _password.text,
+        );
+        if (mounted) Navigator.of(context).pop(user);
+      } else if (!_codeSent) {
         final message = await service.requestCode(
           register: _register,
           email: _email.text.trim(),
@@ -138,6 +147,8 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() {
       _register = !_register;
       _codeSent = false;
+      _passwordMode = false;
+      _password.clear();
       _acceptedTerms = false;
       _resendSeconds = 0;
       _code.clear();
@@ -197,9 +208,11 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                           const SizedBox(height: 7),
                           Text(
-                            _codeSent
-                                ? tr('Изпратихме шестцифрен код на ', 'We sent a six-digit code to ') + _email.text.trim()
-                                : _register
+                            _passwordMode
+                                ? tr('Въведи WordPress паролата си. Входът без код е достъпен само ако администраторът го е разрешил за този профил.', 'Enter your WordPress password. Password sign-in is available only when an administrator has enabled it for this account.')
+                                : _codeSent
+                                    ? tr('Изпратихме шестцифрен код на ', 'We sent a six-digit code to ') + _email.text.trim()
+                                    : _register
                                     ? tr('Регистрация с име, телефон и имейл. Кодът за потвърждение се изпраща само по имейл.', 'Register with your name, phone and email. Verification is by email only.')
                                     : tr('Въведи имейла си и ще ти изпратим еднократен код за вход.', 'Enter your email and we will send you a one-time sign-in code.'),
                             textAlign: TextAlign.center,
@@ -240,6 +253,19 @@ class _AuthScreenState extends State<AuthScreen> {
                                 return null;
                               },
                             ),
+                          if (!_register && _passwordMode)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 13),
+                              child: TextFormField(
+                                controller: _password,
+                                obscureText: true,
+                                textInputAction: TextInputAction.done,
+                                autofillHints: const [AutofillHints.password],
+                                decoration: InputDecoration(labelText: tr('WordPress парола', 'WordPress password'), prefixIcon: const Icon(Icons.lock_outline)),
+                                validator: (value) => (value ?? '').isEmpty ? tr('Въведи паролата си.', 'Enter your password.') : null,
+                                onFieldSubmitted: (_) { if (!_busy) _submit(); },
+                              ),
+                            ),
                           if (_register && !_codeSent)
                             CheckboxListTile(
                               value: _acceptedTerms,
@@ -248,7 +274,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               controlAffinity: ListTileControlAffinity.leading,
                               title: Text(tr('Съгласен/на съм с общите условия и политиката за поверителност.', 'I agree to the Terms and Privacy Policy.'), style: const TextStyle(fontSize: 12)),
                             ),
-                          if (_codeSent)
+                          if (_codeSent && !_passwordMode)
                             TextFormField(
                               controller: _code,
                               keyboardType: TextInputType.number,
@@ -277,15 +303,20 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: FilledButton.icon(
                               onPressed: _busy ? null : _submit,
                               icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Icon(_codeSent ? Icons.verified_outlined : _register ? Icons.person_add_alt_1 : Icons.login),
-                              label: Text(_busy ? tr('Моля, изчакай…', 'Please wait…') : _codeSent ? tr('Потвърди кода', 'Verify code') : _register ? tr('Изпрати код за регистрация', 'Send registration code') : tr('Изпрати код за вход', 'Send sign-in code')),
+                              label: Text(_busy ? tr('Моля, изчакай…', 'Please wait…') : _passwordMode ? tr('Вход с парола', 'Sign in with password') : _codeSent ? tr('Потвърди кода', 'Verify code') : _register ? tr('Изпрати код за регистрация', 'Send registration code') : tr('Изпрати код за вход', 'Send sign-in code')),
                             ),
                           ),
-                          if (_codeSent) ...[
+                          if (_codeSent && !_passwordMode) ...[
                             const SizedBox(height: 8),
                             TextButton(onPressed: _busy || _resendSeconds > 0 ? null : _resend, child: Text(_resendSeconds > 0 ? tr('Повторно изпращане след $_resendSeconds сек.', 'Resend in $_resendSeconds sec') : tr('Изпрати нов код', 'Send a new code'))),
                             TextButton(onPressed: _busy ? null : () { _timer?.cancel(); setState(() { _codeSent = false; _code.clear(); _resendSeconds = 0; _error = null; _info = null; }); }, child: Text(tr('Промени имейла', 'Change email'))),
                           ] else ...[
                             const SizedBox(height: 10),
+                            if (!_register)
+                              TextButton(
+                                onPressed: _busy ? null : () => setState(() { _passwordMode = !_passwordMode; _password.clear(); _error = null; _info = null; }),
+                                child: Text(_passwordMode ? tr('Вход с имейл код', 'Sign in with email code') : tr('Вход с парола (само за разрешени профили)', 'Sign in with password (authorized accounts only)')),
+                              ),
                             TextButton(onPressed: _busy ? null : _switchMode, child: Text(_register ? tr('Вече имаш профил? Вход', 'Already registered? Sign in') : tr('Нямаш профил? Регистрация', 'No account? Register'))),
                           ],
                           const SizedBox(height: 5),

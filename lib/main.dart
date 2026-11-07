@@ -54,9 +54,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   int _pendingSyncCount = 0;
   bool _marketingOptIn = false;
   bool _marketingPreferenceLoaded = false;
+  String? _pushStatusMessage;
+  bool _checkingPushStatus = false;
+  bool _refreshingServerData = false;
   bool _pushConsentDialogOpen = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 62;
+  static const int _currentBuildNumber = 64;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -81,14 +84,19 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     // Do not make the server health check a startup dependency.
     // Restore the account immediately; the status check runs independently.
     unawaited(_checkApi(silent: true));
-    await _restoreSession();
+    // Ask after the first frame so the permission dialog is not delayed by
+    // the WordPress session restore/network round-trip. Token association is
+    // performed by _enablePush when a stored bearer token exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_enablePush());
+    });
+    unawaited(_restoreSession());
     unawaited(_checkForAppUpdate());
   }
 
   Future<void> _restoreSession() async {
     try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
       unawaited(_loadMarketingPreference(t));
-      unawaited(_enablePush(knownToken: t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
   }
 
@@ -152,6 +160,67 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
+
+  Future<void> _checkNotificationStatus({bool showMessage = false}) async {
+    final bearer = await auth.token;
+    if (bearer == null || bearer.isEmpty) {
+      if (mounted) setState(() => _pushStatusMessage = tr('Влезте в профила си, за да проверите регистрацията на устройството.', 'Sign in to check device registration.'));
+      return;
+    }
+    if (mounted) setState(() => _checkingPushStatus = true);
+    try {
+      final status = await push.getDiagnostics(bearer);
+      final permission = (status['permission'] ?? 'unknown').toString();
+      final registered = status['device_registered'] == true;
+      final configured = status['firebase_configured'] == true;
+      final pushEnabled = status['push_enabled'] == true;
+      final marketing = status['marketing_opt_in'] == true;
+      final message = tr(
+        'Android: ${permission == 'granted' ? 'Разрешено' : permission == 'denied' ? 'Забранено' : 'Неизвестно'} · Firebase: ${configured ? 'Конфигуриран' : 'Непроверен/изключен'} · Push: ${pushEnabled ? 'Включен' : 'Изключен'} · Устройство: ${registered ? 'Регистрирано' : 'Нерегистрирано'} · Промоции: ${marketing ? 'Включени' : 'Изключени'}',
+        'Android: ${permission == 'granted' ? 'Allowed' : permission == 'denied' ? 'Denied' : 'Unknown'} · Firebase: ${configured ? 'Configured' : 'Not configured/disabled'} · Push: ${pushEnabled ? 'Enabled' : 'Disabled'} · Device: ${registered ? 'Registered' : 'Not registered'} · Promotions: ${marketing ? 'On' : 'Off'}');
+      if (mounted) setState(() => _pushStatusMessage = message);
+      if (showMessage) _message(message);
+    } catch (e) {
+      if (mounted) setState(() => _pushStatusMessage = '${tr('Проверката не успя:', 'Status check failed:')} $e');
+      if (showMessage) _message('${tr('Проверката не успя:', 'Status check failed:')} $e');
+    } finally {
+      if (mounted) setState(() => _checkingPushStatus = false);
+    }
+  }
+
+  Future<void> _refreshServerData() async {
+    if (_refreshingServerData) return;
+    setState(() => _refreshingServerData = true);
+    try {
+      final bearer = await auth.token;
+      if (bearer == null || bearer.isEmpty) throw Exception(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Sign in again.'));
+      final user = await auth.me();
+      final marketing = await push.getMarketingConsent(bearer);
+      await _checkNotificationStatus();
+      final repairs = api.getRepairs(bearer);
+      if (!mounted) return;
+      setState(() {
+        signedInUser = user;
+        _marketingOptIn = marketing;
+        _marketingPreferenceLoaded = true;
+        repairsFuture = repairs;
+      });
+      unawaited(_checkApi(silent: true));
+      _message(tr('Данните от WordPress са обновени.', 'Data from WordPress has been refreshed.'));
+    } catch (e) {
+      _message('${tr('Неуспешно обновяване:', 'Refresh failed:')} $e');
+    } finally {
+      if (mounted) setState(() => _refreshingServerData = false);
+    }
+  }
+
+  Future<void> _activateOrRetryNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pcwork_push_consent_choice_v2', 'yes');
+    if (mounted) await _enablePush(forcePrompt: true);
+    await _checkNotificationStatus(showMessage: true);
+    if (_pushStatusMessage?.contains('Забранено') == true) await _openNotificationSettings();
+  }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -260,15 +329,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _retryPushRegistration() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getString('pcwork_push_consent_choice') != 'yes' || !mounted) return;
-    await _enablePush();
+    if (!mounted) return;
+    if (prefs.getString('pcwork_push_consent_choice_v2') == 'yes') await _enablePush();
+    unawaited(_checkNotificationStatus());
   }
 
   Future<void> _enablePush({String? knownToken, bool forcePrompt = false}) async {
     final bearer = knownToken ?? await auth.token;
-    if (bearer == null || bearer.isEmpty || !mounted || _pushConsentDialogOpen) return;
+    if (!mounted || _pushConsentDialogOpen) return;
     final prefs = await SharedPreferences.getInstance();
-    final choice = prefs.getString('pcwork_push_consent_choice');
+    final choice = prefs.getString('pcwork_push_consent_choice_v2');
     if (choice == 'no' && !forcePrompt) return;
     if (choice != 'yes') {
       if (!mounted) return;
@@ -282,10 +352,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ],
       ));
       _pushConsentDialogOpen = false;
-      await prefs.setString('pcwork_push_consent_choice', allow == true ? 'yes' : 'no');
+      await prefs.setString('pcwork_push_consent_choice_v2', allow == true ? 'yes' : 'no');
       if (allow != true || !mounted) return;
     }
-    await push.register(bearer, onForeground: (title, body) {
+    if (bearer == null || bearer.isEmpty) {
+      // Permission is independent of login. The FCM token is linked to the
+      // WordPress account later, after successful authentication.
+      await push.requestPermission();
+      return;
+    }
+    final registered = await push.register(bearer, onForeground: (title, body) {
       if (!mounted) return;
       _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
       if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
@@ -299,6 +375,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         _selectTab(1);
       }
     });
+    if (mounted) setState(() => _pushStatusMessage = registered
+        ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
+        : tr('Регистрацията за push не е потвърдена. Провери разрешението и Firebase настройките.', 'Push registration was not confirmed. Check permission and Firebase settings.'));
   }
 
   void _selectTab(int index) {
@@ -677,47 +756,91 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _showCustomerRepairRequest() async {
     final token = await auth.token;
     if (token == null) { _message(tr('Влезте в клиентския профил.','Sign in to your customer account.')); return; }
-    List<ServiceLocation> locations;
-    try { locations = (await api.getLocations()).where((location) => location.canSelect && !location.isUpcoming).toList(); }
-    catch (error) { _message('${tr('Неуспешно зареждане на сервизните обекти:','Could not load service locations:')} $error'); return; }
-    if (!mounted) return;
-    final type = TextEditingController(text: 'Лаптоп');
+    // Start the request immediately, but show the form first so the user never
+    // sees a dead button while the service-location API is loading.
+    Future<List<ServiceLocation>> locationsFuture = api.getLocations();
+    final clientRequestId = api.createClientRequestId();
     final model = TextEditingController();
     final problem = TextEditingController();
-    ServiceLocation? selected = locations.isNotEmpty ? locations.first : null;
+    final otherDevice = TextEditingController();
+    ServiceLocation? selected;
+    String? selectedDeviceType;
+    String? deviceError;
+    String? problemError;
     bool saving = false;
     await showModalBottomSheet<void>(
       context: _navigatorKey.currentState!.overlay!.context,
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
         padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18),
-        child: SizedBox(height: MediaQuery.of(ctx).size.height * .72, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Expanded(child: Text(tr('Нова заявка за ремонт','New repair request'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
+        child: SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Expanded(child: Text(tr('Нова заявка за ремонт','New repair request'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))), IconButton(onPressed: saving ? null : () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
           Text(tr('Заявката ще бъде свързана с вашия профил. Екипът ни ще се свърже с вас за потвърждение.', 'The request will be linked to your account. Our team will contact you to confirm it.'), style: const TextStyle(color: Colors.white60, fontSize: 12)),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Expanded(child: ListView(children: [
-            DropdownButtonFormField<ServiceLocation>(initialValue: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект','Service location'), border: const OutlineInputBorder()), items: locations.map((location) => DropdownMenuItem(value: location, child: Text(location.name))).toList(), onChanged: (value) => setSheet(() => selected = value)),
+            FutureBuilder<List<ServiceLocation>>(
+              future: locationsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator()));
+                if (snapshot.hasError) return Column(children: [Text('${tr('Неуспешно зареждане на сервизните обекти:', 'Could not load service locations:')} ${snapshot.error}'), TextButton.icon(onPressed: () => setSheet(() => locationsFuture = api.getLocations()), icon: const Icon(Icons.refresh), label: Text(tr('Опитай отново', 'Retry')))]);
+                final locations = (snapshot.data ?? []).where((location) => location.canSelect && !location.isUpcoming && location.code.isNotEmpty).toList();
+                if (locations.isEmpty) return Text(tr('В момента няма обекти, които приемат онлайн заявки.', 'No service locations are currently accepting online requests.'));
+                selected ??= locations.first;
+                return DropdownButtonFormField<ServiceLocation>(
+                  value: locations.any((location) => location.code == selected?.code) ? selected : locations.first,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: tr('Сервизен обект*','Service location*'), border: const OutlineInputBorder()),
+                  items: locations.map((location) => DropdownMenuItem(value: location, child: Text(location.name))).toList(),
+                  onChanged: saving ? null : (value) => setSheet(() => selected = value),
+                );
+              },
+            ),
             const SizedBox(height: 12),
-            TextField(controller: type, decoration: InputDecoration(labelText: tr('Тип устройство','Device type'), border: const OutlineInputBorder())),
+            DropdownButtonFormField<String>(
+              value: selectedDeviceType,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: tr('Тип устройство*','Device type*'), errorText: deviceError, border: const OutlineInputBorder()),
+              items: const ['Лаптоп','Настолен компютър','PlayStation 5','PlayStation 4','Друго'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+              onChanged: saving ? null : (value) => setSheet(() { selectedDeviceType = value; deviceError = null; }),
+            ),
+            if (selectedDeviceType == 'Друго') ...[
+              const SizedBox(height: 12),
+              TextField(controller: otherDevice, enabled: !saving, decoration: InputDecoration(labelText: tr('Опишете устройството*','Specify the device*'), border: const OutlineInputBorder())),
+            ],
             const SizedBox(height: 12),
-            TextField(controller: model, decoration: InputDecoration(labelText: tr('Марка и модел','Brand and model'), border: const OutlineInputBorder())),
+            TextField(controller: model, enabled: !saving, decoration: InputDecoration(labelText: tr('Марка и модел*','Brand and model*'), border: const OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(controller: problem, minLines: 3, maxLines: 5, decoration: InputDecoration(labelText: tr('Описание на проблема','Problem description'), border: const OutlineInputBorder())),
+            TextField(controller: problem, enabled: !saving, minLines: 3, maxLines: 5, onChanged: (_) { if (problemError != null) setSheet(() => problemError = null); }, decoration: InputDecoration(labelText: tr('Описание на проблема*','Problem description*'), helperText: tr('Опишете симптомите и кога се появяват. Минимум 15 смислени символа.', 'Describe the symptoms and when they occur. At least 15 meaningful characters.'), errorText: problemError, border: const OutlineInputBorder())),
           ])),
+          const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : () async {
-            if (selected == null || type.text.trim().isEmpty || model.text.trim().isEmpty || problem.text.trim().length < 8) { _message(tr('Попълнете всички полета и опишете проблема по-подробно.','Complete all fields and describe the problem in more detail.')); return; }
+            final meaningfulProblem = problem.text.trim().replaceAll(RegExp(r'\s+'), '');
+            if (selectedDeviceType == null) { setSheet(() => deviceError = tr('Изберете тип устройство.', 'Choose a device type.')); return; }
+            if (selectedDeviceType == 'Друго' && otherDevice.text.trim().isEmpty) { setSheet(() => deviceError = tr('Въведете какво е устройството.', 'Enter the device type.')); return; }
+            if (selected == null) { _message(tr('Изберете сервизен обект.', 'Choose a service location.')); return; }
+            if (model.text.trim().isEmpty) { _message(tr('Въведете марка и модел.', 'Enter brand and model.')); return; }
+            if (meaningfulProblem.length < 15) { setSheet(() => problemError = tr('Моля, опишете проблема по-подробно (минимум 15 смислени символа).', 'Please describe the problem in more detail (at least 15 meaningful characters).')); return; }
             setSheet(() => saving = true);
             try {
-              final created = await api.createCustomerRepairRequest(token, {'location_code': selected!.code, 'device_type': type.text.trim(), 'device_model': model.text.trim(), 'problem_description': problem.text.trim()});
+              final deviceType = selectedDeviceType == 'Друго' ? 'Друго: ${otherDevice.text.trim()}' : selectedDeviceType!;
+              final created = await api.createCustomerRepairRequest(token, {
+                'location_code': selected!.code,
+                'device_type': deviceType,
+                'device_model': model.text.trim(),
+                'problem_description': problem.text.trim(),
+              }, clientRequestId: clientRequestId);
               if (ctx.mounted) Navigator.pop(ctx);
               if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
-              _message('${tr('Заявката е изпратена. Номер:','Request sent. Number:')} ${created['repair_number'] ?? ''}');
-            } catch (error) { _message('${tr('Грешка при изпращане:','Request failed:')} $error'); if (ctx.mounted) setSheet(() => saving = false); }
+              _message('${tr('Заявката е приета. Номер:', 'Request accepted. Number:')} ${created['repair_number'] ?? ''}');
+            } catch (error) {
+              _message('${tr('Заявката не беше приета:', 'The request was not accepted:')} $error');
+              if (ctx.mounted) setSheet(() => saving = false);
+            }
           }, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: Text(saving ? tr('Изпращане…','Sending…') : tr('Изпрати заявка','Submit request')))),
         ])),
       )),
     );
-    type.dispose(); model.dispose(); problem.dispose();
+    model.dispose(); problem.dispose(); otherDevice.dispose();
   }
 
   Widget _repairMetric(String title, int value) => Card(child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6), child: Column(children: [Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cyan)), Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))])));
@@ -872,18 +995,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
         const SizedBox(height: 6),
-        TextButton.icon(onPressed: () async { final prefs = await SharedPreferences.getInstance(); await prefs.setString('pcwork_push_consent_choice', 'yes'); if (mounted) await _enablePush(forcePrompt: true); }, icon: const Icon(Icons.notifications_active_outlined), label: Text(tr('Активирай / повтори настройката на известията', 'Enable / retry notifications'))),
+        TextButton.icon(onPressed: _activateOrRetryNotifications, icon: const Icon(Icons.notifications_active_outlined), label: Text(tr('Провери и активирай известията', 'Check and enable notifications'))),
+        OutlinedButton.icon(onPressed: _checkingPushStatus ? null : () => _checkNotificationStatus(showMessage: true), icon: _checkingPushStatus ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.fact_check_outlined), label: Text(tr('Провери статуса на известията', 'Check notification status'))),
+        if (_pushStatusMessage != null) Padding(padding: const EdgeInsets.only(top:6), child: Text(_pushStatusMessage!, style: const TextStyle(fontSize:11))),
         const Divider(),
         SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
       ]))),
-      const SizedBox(height: 12), OutlinedButton.icon(onPressed: authBusy ? null : _refreshProfile, icon: const Icon(Icons.cloud_sync_outlined), label: Text(tr('Презареди данните от сървъра', 'Reload data from server'))),
+      const SizedBox(height: 12), OutlinedButton.icon(onPressed: _refreshingServerData ? null : _refreshServerData, icon: _refreshingServerData ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.cloud_sync_outlined), label: Text(tr('Обнови данните от сървъра', 'Refresh data from server'))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
       const SizedBox(height: 18),
       FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход с имейл', 'Sign in with email'))),
       OutlinedButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: true), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Създай профил', 'Create account'))),
       const SizedBox(height: 10),
-      Text(tr('Потвърждението и входът са само с еднократен код по имейл. Не използваме SMS или Viber.', 'Verification and sign-in use one-time email codes only. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
+      Text(tr('Входът е с еднократен код по имейл; за избрани профили администраторът може да разреши и вход с WordPress парола. Не използваме SMS или Viber.', 'Sign-in uses email one-time codes; an administrator may also enable WordPress password login for selected accounts. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 16),
