@@ -42,7 +42,6 @@ class MainActivity : FlutterActivity() {
                 preferences.edit().putBoolean("first_prompt_requested", true).apply()
                 pendingNotificationResult = result
                 requestPermissions(
-                    this,
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                     notificationRequestCode
                 )
