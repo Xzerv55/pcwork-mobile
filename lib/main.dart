@@ -88,7 +88,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _restoreSession() async {
     try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
       unawaited(_loadMarketingPreference(t));
-      unawaited(_enablePush(t));
+      unawaited(_enablePush(knownToken: t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
   }
 
@@ -264,7 +264,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     await _enablePush();
   }
 
-  Future<void> _enablePush([String? knownToken], {bool forcePrompt = false}) async {
+  Future<void> _enablePush({String? knownToken, bool forcePrompt = false}) async {
     final bearer = knownToken ?? await auth.token;
     if (bearer == null || bearer.isEmpty || !mounted || _pushConsentDialogOpen) return;
     final prefs = await SharedPreferences.getInstance();
@@ -1165,7 +1165,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       });
       if (bearer != null && bearer.isNotEmpty) {
         unawaited(_loadMarketingPreference(bearer));
-        unawaited(_enablePush(bearer));
+        unawaited(_enablePush(knownToken: bearer));
         _startOfflineSync(bearer);
       }
       _message(tr('Успешен вход в PCWork.', 'Successfully signed in to PCWork.'));
