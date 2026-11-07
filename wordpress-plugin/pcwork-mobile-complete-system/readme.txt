@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 4.1.0
+Stable tag: 4.2.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -18,7 +18,7 @@ License: GPLv2 or later
 
 == Modules ==
 * Auth Bridge – email OTP registration/sign-in, customer role and bearer token.
-* Repairs API – ремонти, статуси, локации, доказателства, протоколи, назначения.
+* Repairs API – ремонти, статуси, локации, доказателства, протоколи, назначения и сервизен дневник за диагностика, работа, части, плащания и гаранции.
 * Repairs Admin – списък, филтри, бутон „Нов ремонт“, клиентски профили, история, документи, статус, техник, приоритет и срок.
 * Admin Integration Settings – WooCommerce, Bookly, Chatway, ShopLentor, Sheets, Firebase.
 * Staff Management – присъствие, начало/край на смяна, заявки за отпуск и администраторско одобрение.
@@ -26,7 +26,13 @@ License: GPLv2 or later
 * OTP Security – шестцифрен код, 5-минутна валидност, 5 опита, resend cooldown и IP/email rate limits.
 
 == Security ==
-За протоколите и снимките задайте PCWORK_PRIVATE_DIR извън публичния web root. Използвайте HTTPS.
+За протоколите и снимките задайте PCWORK_PRIVATE_DIR извън публичния web root. Използвайте HTTPS. Сервизният дневник прилага клиентски/служителски права и позволява отделно маркиране на записите, видими за клиента.
+
+= 4.2.0 =
+* Add repair worklog records for diagnostics, work performed, parts, payments and warranty.
+* Add customer visibility control, repair cost/payment summary and warranty date.
+* Notify customers by FCM when a new worklog record is marked visible to them.
+* Keep existing location-scoped staff access and customer ownership checks.
 
 = 2.8.0 =
 * Add working WordPress admin repairs page with filters, history, documents, status and technician assignment.

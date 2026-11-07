@@ -1,3 +1,2 @@
-# PCWork Mobile v59
-
-Flutter Android/iOS client, unified WordPress plugin and Google Apps Script sync. See `PCWork_v59_INSTALL_BG.md` for the Bulgarian update instructions and `RELEASE_NOTES_v59.md` for changes.
+# PCWork Mobile v60
+Flutter приложение Android/iOS и обединен WordPress плъгин. Вижте `PCWork_v60_INSTALL_BG.md` за инструкции.

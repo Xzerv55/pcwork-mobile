@@ -6,6 +6,7 @@ final class PCWork_Mobile_Repairs_API {
     public static function repairs_table() { global $wpdb; return $wpdb->prefix . 'pcwork_repairs'; }
     public static function history_table() { global $wpdb; return $wpdb->prefix . 'pcwork_repair_history'; }
     public static function documents_table() { global $wpdb; return $wpdb->prefix . 'pcwork_repair_documents'; }
+    public static function worklog_table() { global $wpdb; return $wpdb->prefix . 'pcwork_repair_worklog'; }
     public static function locations_table() { global $wpdb; return $wpdb->prefix . 'pcwork_locations'; }
 
     public static function activate() {
@@ -120,11 +121,28 @@ final class PCWork_Mobile_Repairs_API {
             KEY repair_id (repair_id),
             KEY kind (kind)
         ) $charset;");
-        update_option('pcwork_repairs_api_db_version', '1.8.0', false);
+        $worklog = self::worklog_table();
+        dbDelta("CREATE TABLE $worklog (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            repair_id bigint(20) unsigned NOT NULL,
+            entry_type varchar(24) NOT NULL DEFAULT 'work',
+            description text NOT NULL,
+            quantity decimal(10,2) NOT NULL DEFAULT 1.00,
+            unit_price decimal(12,2) NOT NULL DEFAULT 0.00,
+            total decimal(12,2) NOT NULL DEFAULT 0.00,
+            warranty_until date NULL,
+            visible_to_customer tinyint(1) NOT NULL DEFAULT 1,
+            actor_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+            created_at datetime NOT NULL,
+            PRIMARY KEY  (id),
+            KEY repair_id (repair_id),
+            KEY entry_type (entry_type)
+        ) $charset;");
+        update_option('pcwork_repairs_api_db_version', '1.9.0', false);
     }
 
     public static function maybe_upgrade() {
-        if (get_option('pcwork_repairs_api_db_version') !== '1.8.0') self::activate();
+        if (get_option('pcwork_repairs_api_db_version') !== '1.9.0') self::activate();
     }
 
     public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_create_repair', [__CLASS__, 'admin_create_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); }
@@ -389,6 +407,8 @@ final class PCWork_Mobile_Repairs_API {
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)', ['methods'=>'GET','callback'=>[__CLASS__,'get_repair'],'permission_callback'=>$auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/status', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_status'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/repairs/(?P<id>\d+)/assignment', ['methods'=>'PATCH','callback'=>[__CLASS__,'update_assignment'],'permission_callback'=>$staff_auth]);
+        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/worklog', ['methods'=>'GET','callback'=>[__CLASS__,'list_worklog'],'permission_callback'=>$auth]);
+        register_rest_route(self::NS, '/repairs/(?P<id>\d+)/worklog', ['methods'=>'POST','callback'=>[__CLASS__,'add_worklog_entry'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/staff/technicians', ['methods'=>'GET','callback'=>[__CLASS__,'list_technicians'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/staff/schedule', ['methods'=>'GET','callback'=>[__CLASS__,'get_staff_schedules'],'permission_callback'=>$staff_auth]);
         register_rest_route(self::NS, '/staff/schedule', ['methods'=>'POST','callback'=>[__CLASS__,'save_staff_schedule'],'permission_callback'=>$staff_auth]);
@@ -969,6 +989,61 @@ final class PCWork_Mobile_Repairs_API {
         do_action('pcwork_repair_saved', $id, (int)$row->customer_user_id, (string)$row->status, (string)$row->repair_number);
         $fresh=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
         return rest_ensure_response(['data'=>self::present($fresh,true),'message'=>'Назначението и срокът са записани.']);
+    }
+
+    public static function list_worklog($request) {
+        global $wpdb;
+        $repair = self::accessible_repair(absint($request['id']), get_current_user_id());
+        if (is_wp_error($repair)) return $repair;
+        $staff = self::is_staff(get_current_user_id());
+        $table = self::worklog_table();
+        $where = $staff ? '' : ' AND visible_to_customer=1';
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT id,entry_type,description,quantity,unit_price,total,warranty_until,visible_to_customer,actor_user_id,created_at FROM $table WHERE repair_id=%d $where ORDER BY id ASC", $repair->id), ARRAY_A);
+        $entries = [];
+        $subtotal = 0.0; $paid = 0.0; $warranty = [];
+        foreach ($rows ?: [] as $row) {
+            $row['id']=(int)$row['id']; $row['quantity']=(float)$row['quantity']; $row['unit_price']=(float)$row['unit_price']; $row['total']=(float)$row['total'];
+            $row['visible_to_customer']=(bool)$row['visible_to_customer'];
+            if ($row['entry_type'] === 'payment') $paid += (float)$row['total'];
+            elseif (in_array($row['entry_type'], ['work','part','diagnostic'], true)) $subtotal += (float)$row['total'];
+            if ($row['entry_type'] === 'warranty' && !empty($row['warranty_until'])) $warranty[] = $row['warranty_until'];
+            unset($row['actor_user_id']);
+            $entries[]=$row;
+        }
+        return rest_ensure_response(['data'=>$entries,'summary'=>['subtotal'=>round($subtotal,2),'paid'=>round($paid,2),'balance'=>round(max(0,$subtotal-$paid),2),'latest_warranty_until'=>$warranty ? max($warranty) : null]]);
+    }
+    public static function add_worklog_entry($request) {
+        global $wpdb;
+        $user_id=get_current_user_id();
+        if (!self::is_staff($user_id)) return new WP_Error('pcwork_staff_required','Само оторизиран служител може да добавя дейности, части и плащания.',['status'=>403]);
+        $repair=self::accessible_repair(absint($request['id']),$user_id); if (is_wp_error($repair)) return $repair;
+        if ((int)$repair->customer_user_id === $user_id) return new WP_Error('pcwork_worklog_forbidden','Клиентът няма право да редактира сервизния дневник.',['status'=>403]);
+        $p=$request->get_json_params(); if (!is_array($p)) $p=[];
+        $type=sanitize_key($p['entry_type'] ?? '');
+        $allowed=['diagnostic','work','part','payment','warranty'];
+        if (!in_array($type,$allowed,true)) return new WP_Error('pcwork_worklog_type','Невалиден тип запис.',['status'=>400]);
+        $description=sanitize_textarea_field($p['description'] ?? '');
+        if ($description==='') return new WP_Error('pcwork_worklog_description','Добавете описание.',['status'=>400]);
+        $quantity=max(0.01,(float)($p['quantity'] ?? 1));
+        $unit_price=max(0,(float)($p['unit_price'] ?? 0));
+        if ($type==='payment') { $quantity=1; $unit_price=max(0,(float)($p['amount'] ?? $unit_price)); }
+        $total=round($quantity*$unit_price,2);
+        $warranty_until=null;
+        if ($type==='warranty') {
+            $date=sanitize_text_field($p['warranty_until'] ?? '');
+            if ($date!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date)) return new WP_Error('pcwork_warranty_date','Невалидна дата на гаранцията.',['status'=>400]);
+            $warranty_until=$date!=='' ? $date : null;
+        }
+        $visible=!empty($p['visible_to_customer']) ? 1 : 0;
+        $ok=$wpdb->insert(self::worklog_table(),[
+            'repair_id'=>(int)$repair->id,'entry_type'=>$type,'description'=>$description,'quantity'=>$quantity,
+            'unit_price'=>$unit_price,'total'=>$total,'warranty_until'=>$warranty_until,
+            'visible_to_customer'=>$visible,'actor_user_id'=>$user_id,'created_at'=>current_time('mysql')
+        ],['%d','%s','%s','%f','%f','%f','%s','%d','%d','%s']);
+        if (!$ok) return new WP_Error('pcwork_worklog_save_failed','Записът не беше съхранен.',['status'=>500]);
+        do_action('pcwork_repair_worklog_added',(int)$repair->id,(int)$wpdb->insert_id,$type,(int)$repair->customer_user_id);
+        do_action('pcwork_repair_saved',(int)$repair->id,(int)$repair->customer_user_id,(string)$repair->status,(string)$repair->repair_number);
+        return new WP_REST_Response(['data'=>['id'=>(int)$wpdb->insert_id,'entry_type'=>$type,'description'=>$description,'quantity'=>$quantity,'unit_price'=>$unit_price,'total'=>$total,'warranty_until'=>$warranty_until,'visible_to_customer'=>(bool)$visible,'created_at'=>current_time('mysql')],'message'=>'Записът е добавен към ремонта.'],201);
     }
 
     public static function get_repair($request) {

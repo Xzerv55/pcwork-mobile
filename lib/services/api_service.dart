@@ -359,6 +359,25 @@ class ApiService {
     return Repair.fromJson(Map<String, dynamic>.from(data));
   }
 
+  Future<Map<String, dynamic>> getRepairWorklog(String token, int repairId) async {
+    final response = await http.get(_uri('repairs/$repairId/worklog'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? []) : [];
+    final summary = decoded is Map && decoded['summary'] is Map ? Map<String, dynamic>.from(decoded['summary']) : <String, dynamic>{};
+    final entries = data is List ? data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+    return {'entries': entries, 'summary': summary};
+  }
+
+  Future<Map<String, dynamic>> addRepairWorklogEntry(String token, int repairId, Map<String, dynamic> entry) async {
+    final response = await http.post(_uri('repairs/$repairId/worklog'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(entry)).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор при записване в сервизния дневник.');
+    return Map<String, dynamic>.from(data);
+  }
+
   Future<Repair> getRepair(String token, int id) async {
     try {
       final response = await http.get(_uri('repairs/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));

@@ -26,6 +26,7 @@ final class PCWork_Admin_Integration_Settings {
         // Repair module should fire this action whenever a repair status changes.
         add_action('pcwork_repair_status_changed', [__CLASS__, 'on_repair_status_changed'], 10, 4);
         add_action('pcwork_repair_assigned', [__CLASS__, 'on_repair_assigned'], 10, 5);
+        add_action('pcwork_repair_worklog_added', [__CLASS__, 'on_repair_worklog_added'], 10, 4);
     }
 
     public static function defaults() {
@@ -635,6 +636,38 @@ final class PCWork_Admin_Integration_Settings {
         }
         foreach ($invalid as $token) unset($devices[$token]);
         if ($invalid) update_user_meta($technician_id, 'pcwork_fcm_devices', $devices);
+        if ($sent > 0) set_transient($dedupe, 1, 10 * MINUTE_IN_SECONDS);
+    }
+
+    /** Notify the customer when a staff member adds a worklog item marked visible to them. */
+    public static function on_repair_worklog_added($repair_id, $entry_id, $entry_type, $customer_user_id) {
+        $settings = self::get_settings();
+        if (($settings['push_enabled'] ?? '0') !== '1' || empty($settings['firebase_project_id']) || empty($settings['firebase_service_account_json'])) return;
+        global $wpdb;
+        $repair_id = absint($repair_id); $entry_id = absint($entry_id); $customer_user_id = absint($customer_user_id);
+        if (!$repair_id || !$entry_id || !$customer_user_id) return;
+        $table = $wpdb->prefix . 'pcwork_repair_worklog';
+        $entry = $wpdb->get_row($wpdb->prepare("SELECT visible_to_customer FROM $table WHERE id=%d AND repair_id=%d", $entry_id, $repair_id));
+        if (!$entry || (int)$entry->visible_to_customer !== 1) return;
+        $repair_table = $wpdb->prefix . 'pcwork_repairs';
+        $repair = $wpdb->get_row($wpdb->prepare("SELECT repair_number FROM $repair_table WHERE id=%d", $repair_id));
+        $number = $repair ? sanitize_text_field($repair->repair_number) : '';
+        $dedupe = 'pcw_worklog_push_' . md5($repair_id . '|' . $entry_id . '|' . $customer_user_id);
+        if (get_transient($dedupe)) return;
+        $devices = get_user_meta($customer_user_id, 'pcwork_fcm_devices', true);
+        if (!is_array($devices) || !$devices) return;
+        $labels = ['diagnostic'=>'диагностика','work'=>'извършена работа','part'=>'резервна част','payment'=>'плащане','warranty'=>'гаранция'];
+        $label = $labels[sanitize_key((string)$entry_type)] ?? 'нова информация';
+        $title = 'Има обновяване по вашия ремонт';
+        $body = 'Добавен е запис: ' . $label . ($number !== '' ? ' · № ' . $number : '') . '.';
+        $invalid = []; $sent = 0;
+        foreach ($devices as $token => $meta) {
+            $result = self::send_fcm_message($token, $title, $body, ['event'=>'repair_worklog_added','repair_id'=>$repair_id,'repair_number'=>$number]);
+            if (is_wp_error($result)) { if (self::is_permanently_unregistered_token($result)) $invalid[] = $token; }
+            else $sent++;
+        }
+        foreach ($invalid as $token) unset($devices[$token]);
+        if ($invalid) update_user_meta($customer_user_id, 'pcwork_fcm_devices', $devices);
         if ($sent > 0) set_transient($dedupe, 1, 10 * MINUTE_IN_SECONDS);
     }
 
