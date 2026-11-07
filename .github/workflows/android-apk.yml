@@ -110,7 +110,7 @@ jobs:
       - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: pcwork-android-v54-apks
+          name: pcwork-android-v57-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/app-*-release.apk
