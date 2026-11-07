@@ -524,6 +524,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
     AuthUser? profile;
     try { profile = await widget.profileProvider(); } catch (_) {}
+    if (!mounted) return;
     final billing = profile?.billing ?? const <String, dynamic>{};
     final shipping = profile?.shipping ?? const <String, dynamic>{};
     final name = TextEditingController(text: [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ').isNotEmpty ? [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ') : (profile?.name ?? ''));

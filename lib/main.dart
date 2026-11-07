@@ -1181,33 +1181,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
-  void _showWarrantyTerms() {
-    showModalBottomSheet<void>(
-      context: _navigatorKey.currentState!.overlay!.context,
-      useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tr('Гаранция и условия на сервиза', 'Warranty and service terms'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(tr('Прегледайте информацията за гаранцията, ремонта и условията за обслужване на официалния сайт.',
-              'Review warranty, repair and service information on the official website.')),
-          const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: () { Navigator.pop(sheetContext); _openWebsite('https://pcwork-bg.com/profesionalen-remont-na-kompyutri-i-laptopi/'); },
-            icon: const Icon(Icons.verified_user_outlined),
-            label: Text(tr('Гаранция и условия на ремонта', 'Repair warranty and terms')),
-          )),
-          const SizedBox(height: 8),
-          SizedBox(width: double.infinity, child: OutlinedButton.icon(
-            onPressed: () { Navigator.pop(sheetContext); _openWebsite('https://pcwork-bg.com/faq/'); },
-            icon: const Icon(Icons.help_outline),
-            label: Text(tr('Често задавани въпроси', 'Frequently asked questions')),
-          )),
-        ]),
-      ),
-    );
-  }
+
 
   void _showLocations() {
     final future = api.getLocations();
