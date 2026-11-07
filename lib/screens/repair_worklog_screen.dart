@@ -53,7 +53,7 @@ class _RepairWorklogScreenState extends State<RepairWorklogScreen> {
       builder: (dialogContext) => StatefulBuilder(builder: (context, refresh) => AlertDialog(
         title: const Text('Добави запис към ремонта'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<String>(value: type, decoration: const InputDecoration(labelText: 'Тип запис'), items: const [DropdownMenuItem(value: 'diagnostic', child: Text('Диагностика')), DropdownMenuItem(value: 'work', child: Text('Извършена работа')), DropdownMenuItem(value: 'part', child: Text('Резервна част')), DropdownMenuItem(value: 'payment', child: Text('Плащане')), DropdownMenuItem(value: 'warranty', child: Text('Гаранция'))], onChanged: (v) => refresh(() => type = v ?? 'work')),
+          DropdownButtonFormField<String>(initialValue: type, decoration: const InputDecoration(labelText: 'Тип запис'), items: const [DropdownMenuItem(value: 'diagnostic', child: Text('Диагностика')), DropdownMenuItem(value: 'work', child: Text('Извършена работа')), DropdownMenuItem(value: 'part', child: Text('Резервна част')), DropdownMenuItem(value: 'payment', child: Text('Плащане')), DropdownMenuItem(value: 'warranty', child: Text('Гаранция'))], onChanged: (v) => refresh(() => type = v ?? 'work')),
           const SizedBox(height: 10), TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Описание', hintText: 'Напр. смяна на вентилатор')),
           if (type != 'warranty') ...[
             const SizedBox(height: 10), if (type != 'payment') TextField(controller: quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Количество')),
