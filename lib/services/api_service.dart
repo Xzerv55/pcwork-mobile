@@ -440,7 +440,7 @@ class ApiService {
         _uri('repairs/request'),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: body,
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 15));
       final decoded = _decodeResponse(response);
       if (response.statusCode != 201 && response.statusCode != 200) {
         throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');

@@ -56,10 +56,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _marketingPreferenceLoaded = false;
   String? _pushStatusMessage;
   bool _checkingPushStatus = false;
-  bool _refreshingServerData = false;
-  bool _pushConsentDialogOpen = false;
+  bool _pushRegistering = false;
+  bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 64;
+  static const int _currentBuildNumber = 65;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -84,19 +84,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     // Do not make the server health check a startup dependency.
     // Restore the account immediately; the status check runs independently.
     unawaited(_checkApi(silent: true));
-    // Ask after the first frame so the permission dialog is not delayed by
-    // the WordPress session restore/network round-trip. Token association is
-    // performed by _enablePush when a stored bearer token exists.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_enablePush());
+    // Ask the operating system directly on first launch/update. Android keeps
+    // an existing grant across app updates; in that case no second dialog is shown.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _requestSystemNotifications();
+      if (mounted) unawaited(_restoreSession());
     });
-    unawaited(_restoreSession());
     unawaited(_checkForAppUpdate());
   }
 
   Future<void> _restoreSession() async {
     try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
       unawaited(_loadMarketingPreference(t));
+      unawaited(_enablePush(knownToken: t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
   }
 
@@ -186,40 +187,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _checkingPushStatus = false);
     }
-  }
-
-  Future<void> _refreshServerData() async {
-    if (_refreshingServerData) return;
-    setState(() => _refreshingServerData = true);
-    try {
-      final bearer = await auth.token;
-      if (bearer == null || bearer.isEmpty) throw Exception(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Sign in again.'));
-      final user = await auth.me();
-      final marketing = await push.getMarketingConsent(bearer);
-      await _checkNotificationStatus();
-      final repairs = api.getRepairs(bearer);
-      if (!mounted) return;
-      setState(() {
-        signedInUser = user;
-        _marketingOptIn = marketing;
-        _marketingPreferenceLoaded = true;
-        repairsFuture = repairs;
-      });
-      unawaited(_checkApi(silent: true));
-      _message(tr('Данните от WordPress са обновени.', 'Data from WordPress has been refreshed.'));
-    } catch (e) {
-      _message('${tr('Неуспешно обновяване:', 'Refresh failed:')} $e');
-    } finally {
-      if (mounted) setState(() => _refreshingServerData = false);
-    }
-  }
-
-  Future<void> _activateOrRetryNotifications() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('pcwork_push_consent_choice_v2', 'yes');
-    if (mounted) await _enablePush(forcePrompt: true);
-    await _checkNotificationStatus(showMessage: true);
-    if (_pushStatusMessage?.contains('Забранено') == true) await _openNotificationSettings();
   }
 
   Future<void> _loadSettings() async {
@@ -327,58 +294,72 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
 
+  Future<void> _requestSystemNotifications() async {
+    // Permission is independent from login. If already granted, do not show
+    // another prompt; if not determined, Firebase requests the OS permission.
+    await push.requestPermission();
+  }
+
   Future<void> _retryPushRegistration() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    if (prefs.getString('pcwork_push_consent_choice_v2') == 'yes') await _enablePush();
+    final bearer = await auth.token;
+    if (bearer != null && bearer.isNotEmpty) await _enablePush(knownToken: bearer);
     unawaited(_checkNotificationStatus());
   }
 
-  Future<void> _enablePush({String? knownToken, bool forcePrompt = false}) async {
-    final bearer = knownToken ?? await auth.token;
-    if (!mounted || _pushConsentDialogOpen) return;
-    final prefs = await SharedPreferences.getInstance();
-    final choice = prefs.getString('pcwork_push_consent_choice_v2');
-    if (choice == 'no' && !forcePrompt) return;
-    if (choice != 'yes') {
+  Future<void> _enablePush({String? knownToken}) async {
+    if (_pushRegistering) return;
+    _pushRegistering = true;
+    try {
+      final bearer = knownToken ?? await auth.token;
       if (!mounted) return;
-      _pushConsentDialogOpen = true;
-      final allow = await showDialog<bool>(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(
-        title: Text(tr('Известия от PCWork', 'PCWork notifications')),
-        content: Text(tr('Разрешавате ли push известия за статуса на ремонтите, важни промени и съобщения от сервиза? Можете да промените разрешението по-късно от настройките на телефона.', 'Would you like push notifications about repair status, important updates and service messages? You can change this later in your phone settings.')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Не сега', 'Not now'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Разрешавам', 'Allow'))),
-        ],
-      ));
-      _pushConsentDialogOpen = false;
-      await prefs.setString('pcwork_push_consent_choice_v2', allow == true ? 'yes' : 'no');
-      if (allow != true || !mounted) return;
-    }
-    if (bearer == null || bearer.isEmpty) {
-      // Permission is independent of login. The FCM token is linked to the
-      // WordPress account later, after successful authentication.
-      await push.requestPermission();
-      return;
-    }
-    final registered = await push.register(bearer, onForeground: (title, body) {
-      if (!mounted) return;
-      _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
-      if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
-    }, onOpened: (data) async {
-      if (!mounted) return;
-      final target = (data['url'] ?? '').toString().trim();
-      final uri = Uri.tryParse(target);
-      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        _selectTab(1);
+      if (bearer == null || bearer.isEmpty) {
+        await push.requestPermission();
+        return;
       }
-    });
-    if (mounted) {
-      setState(() => _pushStatusMessage = registered
+      final registered = await push.register(bearer, onForeground: (title, body) {
+        if (!mounted) return;
+        _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
+        if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
+      }, onOpened: (data) async {
+        if (!mounted) return;
+        final target = (data['url'] ?? '').toString().trim();
+        final uri = Uri.tryParse(target);
+        if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          _selectTab(1);
+        }
+      });
+      if (mounted) setState(() => _pushStatusMessage = registered
           ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-          : tr('Регистрацията за push не е потвърдена. Провери разрешението и Firebase настройките.', 'Push registration was not confirmed. Check permission and Firebase settings.'));
+          : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
+    } finally {
+      _pushRegistering = false;
+    }
+  }
+
+  Future<void> _refreshAfterLeavingTab() async {
+    if (_refreshingOnTabExit || signedInUser == null) return;
+    _refreshingOnTabExit = true;
+    try {
+      final bearer = await auth.token;
+      if (bearer == null || bearer.isEmpty) return;
+      final results = await Future.wait<dynamic>([
+        auth.me(),
+        push.getMarketingConsent(bearer),
+        api.getRepairs(bearer),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        signedInUser = results[0] as AuthUser;
+        _marketingOptIn = results[1] as bool;
+        _marketingPreferenceLoaded = true;
+        repairsFuture = Future<List<Repair>>.value(results[2] as List<Repair>);
+      });
+    } catch (_) {
+      // Refresh is opportunistic; never block navigation or discard current data.
+    } finally {
+      _refreshingOnTabExit = false;
     }
   }
 
@@ -390,7 +371,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (navigator != null && navigator.canPop()) {
       navigator.popUntil((route) => route.isFirst);
     }
+    final previousTab = tab;
     _settingsOpen = false;
+    if (previousTab != index) unawaited(_refreshAfterLeavingTab());
     setState(() {
       tab = index;
       _visitedTabs.add(index);
@@ -757,12 +740,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _showCustomerRepairRequest() async {
     final token = await auth.token;
-    if (!mounted) return;
     if (token == null) { _message(tr('Влезте в клиентския профил.','Sign in to your customer account.')); return; }
-    final navigator = _navigatorKey.currentState;
-    final sheetHostContext = navigator?.overlay?.context;
-    if (sheetHostContext == null) return;
-    if (!sheetHostContext.mounted) return;
     // Start the request immediately, but show the form first so the user never
     // sees a dead button while the service-location API is loading.
     Future<List<ServiceLocation>> locationsFuture = api.getLocations();
@@ -775,6 +753,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     String? deviceError;
     String? problemError;
     bool saving = false;
+    final sheetHostContext = _navigatorKey.currentState?.overlay?.context;
+    if (sheetHostContext == null || !sheetHostContext.mounted) return;
     await showModalBottomSheet<void>(
       context: sheetHostContext,
       isScrollControlled: true,
@@ -835,13 +815,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 'device_type': deviceType,
                 'device_model': model.text.trim(),
                 'problem_description': problem.text.trim(),
-              }, clientRequestId: clientRequestId);
+              }, clientRequestId: clientRequestId).timeout(const Duration(seconds: 34));
               if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
-              _message('${tr('Заявката е приета. Номер:', 'Request accepted. Number:')} ${created['repair_number'] ?? ''}');
+              if (mounted) {
+                setState(() => repairsFuture = _loadRepairsFuture());
+                _message('${tr('Заявката е приета. Номер:', 'Request accepted. Number:')} ${created['repair_number'] ?? ''}');
+              }
             } catch (error) {
-              _message('${tr('Заявката не беше приета:', 'The request was not accepted:')} $error');
-              if (ctx.mounted) setSheet(() => saving = false);
+              if (ctx.mounted) {
+                setSheet(() => saving = false);
+                _message('${tr('Заявката не беше приета. Данните са запазени във формата. Причина:', 'The request was not accepted. Your entries remain in the form. Reason:')} $error');
+              }
+            } finally {
+              // Never leave the submit button spinning if a request fails or times out.
+              if (ctx.mounted && saving) setSheet(() => saving = false);
             }
           }, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send), label: Text(saving ? tr('Изпращане…','Sending…') : tr('Изпрати заявка','Submit request')))),
         ])),
@@ -1002,13 +989,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
         const SizedBox(height: 6),
-        TextButton.icon(onPressed: _activateOrRetryNotifications, icon: const Icon(Icons.notifications_active_outlined), label: Text(tr('Провери и активирай известията', 'Check and enable notifications'))),
         OutlinedButton.icon(onPressed: _checkingPushStatus ? null : () => _checkNotificationStatus(showMessage: true), icon: _checkingPushStatus ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.fact_check_outlined), label: Text(tr('Провери статуса на известията', 'Check notification status'))),
         if (_pushStatusMessage != null) Padding(padding: const EdgeInsets.only(top:6), child: Text(_pushStatusMessage!, style: const TextStyle(fontSize:11))),
         const Divider(),
         SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
       ]))),
-      const SizedBox(height: 12), OutlinedButton.icon(onPressed: _refreshingServerData ? null : _refreshServerData, icon: _refreshingServerData ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.cloud_sync_outlined), label: Text(tr('Обнови данните от сървъра', 'Refresh data from server'))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
       const SizedBox(height: 18),
@@ -1117,7 +1102,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       saveTimer = Timer(const Duration(milliseconds: 900), () => saveProfile());
     }
 
-    final closed = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(
+    final navigatorContext = _navigatorKey.currentState?.overlay?.context;
+    if (navigatorContext == null) return;
+    final closed = await showDialog<bool>(context: navigatorContext, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(
       builder: (ctx, updateDialog) {
         setDialogState = updateDialog;
         Widget field(TextEditingController controller, String label, {TextInputType? keyboardType, bool locked = false}) => Padding(

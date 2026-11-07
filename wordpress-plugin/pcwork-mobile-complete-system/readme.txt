@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 4.3.0
+Stable tag: 4.4.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -63,3 +63,10 @@ License: GPLv2 or later
 * Trigger Google Sheets upsert on new customer requests, admin-created repairs, admin edits, and status updates.
 * Preserve Firebase Service Account JSON exactly and validate private-key Base64 before OpenSSL parsing.
 * Add a signed payload query fallback for Apps Script requests when postData is missing.
+
+= 4.4.0 =
+* Add authenticated push diagnostics and fix Chatway Visitor Verification payload to the documented schema.
+* Queue Google Sheets synchronization and operational FCM delivery in WordPress Cron so external services do not block repair/order API responses.
+* Notify authorized staff about new customer repair requests and WooCommerce orders, independent of marketing consent.
+* Support customer, pcwork_customer and subscriber roles in the opt-in marketing audience.
+* Enforce a 15 meaningful-character minimum for customer repair problem descriptions.

@@ -546,7 +546,10 @@ final class PCWork_Mobile_Repairs_API {
         $active_locations=['sofia-lyulin','sofia-lyulin-2','sofia-simeonovsko','sofia-industrialna-11'];
         if (!in_array($location,$active_locations,true)) return new WP_Error('pcwork_location_unavailable','Избраният сервизен обект не приема заявки онлайн.',['status'=>400]);
         $type=sanitize_text_field($p['device_type']??''); $model=sanitize_text_field($p['device_model']??''); $problem=sanitize_textarea_field($p['problem_description']??'');
-        if ($type==='' || $model==='' || strlen($problem)<8) return new WP_Error('pcwork_request_fields','Попълнете тип устройство, модел и описание на проблема (поне 8 символа).',['status'=>400]);
+        $meaningful_problem = preg_replace('/\s+/u', '', $problem);
+        $problem_chars = [];
+        $problem_length = (preg_match_all('/./us', (string)$meaningful_problem, $problem_chars) !== false) ? count($problem_chars[0]) : strlen((string)$meaningful_problem);
+        if ($type==='' || $model==='' || $problem_length<15) return new WP_Error('pcwork_request_fields','Попълнете тип устройство, модел и описание на проблема (поне 15 смислени символа).',['status'=>400]);
         $locations=['sofia-lyulin'=>'София, Люлин - 5','sofia-lyulin-2'=>'София, Люлин - 2','sofia-simeonovsko'=>'София, Симеоновско шосе','sofia-industrialna-11'=>'София, Индустриална 11'];
         $now=current_time('mysql'); $number='PCW-'.wp_date('ymd').'-'.strtoupper(wp_generate_password(6,false,false));
         $ok=$wpdb->insert(self::repairs_table(),[
@@ -562,6 +565,7 @@ final class PCWork_Mobile_Repairs_API {
         set_transient($user_key,(int)get_transient($user_key)+1,DAY_IN_SECONDS);
         set_transient($ip_key,(int)get_transient($ip_key)+1,DAY_IN_SECONDS);
         do_action('pcwork_customer_repair_requested',$id,$user_id,$number,$location);
+        do_action('pcwork_repair_status_changed', $id, $user_id, 'requested', $number);
         do_action('pcwork_repair_saved', $id, $user_id, 'requested', $number);
         $row=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
         return new WP_REST_Response(['data'=>self::present($row,true),'message'=>'Заявката е изпратена. Екипът на PCWork ще се свърже с вас.'],201);

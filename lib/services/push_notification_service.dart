@@ -30,9 +30,12 @@ class PushNotificationService {
       await initialize();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
-      final settings = await messaging.requestPermission(
-        alert: true, badge: true, sound: true, provisional: false,
-      );
+      var settings = await messaging.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        settings = await messaging.requestPermission(
+          alert: true, badge: true, sound: true, provisional: false,
+        );
+      }
       return settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
     } catch (_) {
@@ -49,10 +52,12 @@ class PushNotificationService {
       await initialize();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
-      final permission = await messaging.requestPermission(
-        alert: true, badge: true, sound: true,
-        provisional: false,
-      );
+      var permission = await messaging.getNotificationSettings();
+      if (permission.authorizationStatus == AuthorizationStatus.notDetermined) {
+        permission = await messaging.requestPermission(
+          alert: true, badge: true, sound: true, provisional: false,
+        );
+      }
       if (permission.authorizationStatus != AuthorizationStatus.authorized && permission.authorizationStatus != AuthorizationStatus.provisional) return false;
       if (Platform.isIOS) {
         // FCM token is issued after APNs registration is available.

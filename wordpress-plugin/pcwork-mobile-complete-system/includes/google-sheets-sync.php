@@ -79,7 +79,21 @@ final class PCWork_Google_Sheets_Sync {
         return $response;
     }
     public static function init() {
-        add_action('pcwork_repair_saved', [__CLASS__, 'sync_repair'], 5, 4);
+        // Never hold the customer-facing REST request open while Google Apps Script
+        // performs OAuth/redirect/network work. Queue the mirror sync in WP-Cron.
+        add_action('pcwork_repair_saved', [__CLASS__, 'schedule_repair_sync'], 5, 4);
+        add_action('pcwork_sync_repair_async', [__CLASS__, 'sync_repair'], 10, 4);
+    }
+
+    public static function schedule_repair_sync($repair_id, $customer_user_id, $status, $repair_number = '') {
+        $args = [absint($repair_id), absint($customer_user_id), sanitize_key((string)$status), sanitize_text_field((string)$repair_number)];
+        if (!$args[0]) return;
+        $scheduled = wp_schedule_single_event(time() + 1, 'pcwork_sync_repair_async', $args, true);
+        if (is_wp_error($scheduled)) {
+            error_log('PCWork Sheets: could not queue repair sync: ' . $scheduled->get_error_message());
+            return;
+        }
+        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
     }
 
     public static function sync_repair($repair_id, $customer_user_id, $status, $repair_number = '') {
