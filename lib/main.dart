@@ -330,9 +330,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _selectTab(1);
         }
       });
-      if (mounted) setState(() => _pushStatusMessage = registered
+      if (mounted) {
+        setState(() => _pushStatusMessage = registered
           ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
           : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
+      }
     } finally {
       _pushRegistering = false;
     }
