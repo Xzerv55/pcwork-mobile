@@ -7,6 +7,8 @@ final class PCWork_Admin_Integration_Settings {
 
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'menu'], 99);
+        add_action('admin_init', [__CLASS__, 'redirect_legacy_marketing_page']);
+        add_action('admin_post_pcw_campaign_delete', [__CLASS__, 'delete_marketing_campaign']);
         add_action('show_user_profile', [__CLASS__, 'marketing_profile_field']);
         add_action('edit_user_profile', [__CLASS__, 'marketing_profile_field']);
         add_action('personal_options_update', [__CLASS__, 'save_marketing_profile_field']);
@@ -25,13 +27,13 @@ final class PCWork_Admin_Integration_Settings {
         add_action('wp_ajax_pcwork_test_integration', [__CLASS__, 'ajax_test_integration']);
         // Repair module should fire this action whenever a repair status changes.
         add_action('pcwork_repair_status_changed', [__CLASS__, 'on_repair_status_changed'], 10, 4);
-        add_action('pcwork_customer_repair_requested', [__CLASS__, 'on_customer_repair_requested'], 10, 4);
         add_action('pcwork_send_customer_repair_push', [__CLASS__, 'send_customer_repair_push'], 10, 4);
         add_action('pcwork_send_repair_status_push', [__CLASS__, 'send_repair_status_push'], 10, 4);
-        add_action('woocommerce_new_order', [__CLASS__, 'on_woocommerce_new_order'], 10, 1);
         add_action('pcwork_send_woocommerce_order_push', [__CLASS__, 'send_woocommerce_order_push'], 10, 1);
         add_action('pcwork_repair_assigned', [__CLASS__, 'on_repair_assigned'], 10, 5);
         add_action('pcwork_repair_worklog_added', [__CLASS__, 'on_repair_worklog_added'], 10, 4);
+        add_action('woocommerce_new_order', [__CLASS__, 'on_woocommerce_new_order'], 20, 1);
+        add_action('pcwork_customer_repair_requested', [__CLASS__, 'on_customer_repair_requested'], 10, 4);
     }
 
     public static function defaults() {
@@ -97,7 +99,14 @@ final class PCWork_Admin_Integration_Settings {
 
     public static function menu() {
         add_submenu_page('pcwork-mobile', 'Интеграции', 'Интеграции', 'manage_options', 'pcwork-integrations', [__CLASS__, 'render']);
-        add_submenu_page('pcwork-mobile', 'Маркетинг и Push', 'Маркетинг и Push', 'manage_options', 'pcwork-marketing', [__CLASS__, 'render_marketing']);
+    }
+
+    /** Keep old bookmarks working while moving campaign management into Клиенти. */
+    public static function redirect_legacy_marketing_page() {
+        if (!is_admin() || (string)($_GET['page'] ?? '') !== 'pcwork-marketing') return;
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        wp_safe_redirect(admin_url('admin.php?page=pcwork-customers&tab=campaigns'));
+        exit;
     }
 
     public static function register() {
@@ -185,8 +194,8 @@ final class PCWork_Admin_Integration_Settings {
         echo '<label for="app_environment">Среда</label><select id="app_environment" name="'.self::OPTION.'[app_environment]"><option value="staging" '.selected(self::get_settings()['app_environment'],'staging',false).'>Тестова (Staging)</option><option value="production" '.selected(self::get_settings()['app_environment'],'production',false).'>Работна (Production)</option></select>';
         self::field('support_email','Имейл за поддръжка','email'); self::field('support_phone','Телефон за поддръжка'); echo '</section>';
         self::card_start('Актуализации на мобилното приложение','Публичен манифест за проверка на нова версия. Качи подписания APK на HTTPS адрес и въведи същия versionCode като в pubspec.yaml.');
-        self::field('app_latest_version','Последна версия','text','0.62.0');
-        self::field('app_version_code','Android versionCode','number','62');
+        self::field('app_latest_version','Последна версия','text','0.64.0');
+        self::field('app_version_code','Android versionCode','number','64');
         self::field('app_apk_url','HTTPS адрес на APK','url','https://pcwork-bg.com/.../app-release.apk');
         self::field('app_release_notes','Бележки към версията','textarea','Кратко описание на промените.');
         echo '<p class="description">Приложението проверява този манифест и показва бутон за изтегляне. Android изисква потребителско потвърждение при инсталиране; тихо инсталиране не се извършва.</p></section>';
@@ -195,7 +204,7 @@ final class PCWork_Admin_Integration_Settings {
 
         self::card_start('WooCommerce','Продукти, услуги, поръчки и клиентски профили.'); self::toggle('woocommerce_enabled','Активирай интеграцията'); self::field('woocommerce_consumer_key','Consumer Key (по избор за външен REST API)','password'); self::field('woocommerce_consumer_secret','Consumer Secret (по избор за външен REST API)','password'); echo '<p class="description">Мобилният магазин v32 използва защитения сървърен WooCommerce API и не изисква Consumer Key/Secret в приложението. Ключовете са нужни само за външни REST API интеграции и допълнителния тест.</p>';  echo '<button type="button" class="button pcw-test" data-integration="woocommerce">Провери връзката</button><span class="pcw-result" id="pcw-result-woocommerce"></span>'; echo '</section>'; 
         self::card_start('Bookly','Резервиране на часове и графици.'); self::toggle('bookly_enabled','Активирай интеграцията'); self::field('bookly_api_url','API адрес / endpoint','url','https://...'); self::field('bookly_api_key','API ключ (само ако използваш отделен Bookly REST API add-on)','password'); self::field('bookly_booking_page_url','Страница за резервации в сайта','url','https://pcwork-bg.com/rezervirane/','Това е страницата, в която е поставена стандартната Bookly форма. Приложението ще я отваря в защитен WebView/браузър.'); self::field('bookly_shortcode','Bookly shortcode','text','[bookly-form]','Стандартен shortcode за Bookly. Не се изпълнява от приложението; служи за проверка/документация.'); echo '<button type="button" class="button pcw-test" data-integration="bookly">Провери Bookly</button><span class="pcw-result" id="pcw-result-bookly"></span>'; echo '</section>'; 
-        self::card_start('Chatway Live Chat','Вграден клиентски чат с опционална сигурна идентификация на влезлите клиенти.'); self::toggle('chatway_enabled','Показвай Chatway в приложението'); self::field('chatway_installation_id','Chatway Installation ID','text','например AbCdEf123456','Вземи ID от кода за инсталиране. Въведи само стойността след id=, не API ключ.'); self::toggle('chatway_verification_enabled','Включи Visitor Verification за влезли клиенти'); echo '<label for="chatway_verification_identifier">Идентификатор за проверка</label><select id="chatway_verification_identifier" name="'.self::OPTION.'[chatway_verification_identifier]"><option value="id" '.selected(self::get_settings()['chatway_verification_identifier'],'id',false).'>WordPress User ID (препоръчително)</option><option value="email" '.selected(self::get_settings()['chatway_verification_identifier'],'email',false).'>Имейл адрес</option></select>'; self::field('chatway_verification_secret','Chatway Visitor Verification Security Key','password','','Копирай ключа от Chatway → Settings → Visitors Verification. Ключът остава само на сървъра и никога не се изпраща към приложението.'); self::field('chatway_widget_id','Widget ID (за бъдеща API синхронизация)'); echo '<button type="button" class="button pcw-test" data-integration="chatway">Провери настройката</button><span class="pcw-result" id="pcw-result-chatway"></span>'; echo '</section>';
+        self::card_start('Chatway Live Chat','Вграден клиентски чат с опционална сигурна идентификация на влезлите клиенти.'); self::toggle('chatway_enabled','Показвай Chatway в приложението'); self::field('chatway_installation_id','Chatway Installation ID','text','например AbCdEf123456','Вземи ID от кода за инсталиране. Въведи само стойността след id=, не API ключ.'); self::toggle('chatway_verification_enabled','Включи Visitor Verification за влезли клиенти'); echo '<label for="chatway_verification_identifier">Идентификатор за проверка</label><select id="chatway_verification_identifier" name="'.self::OPTION.'[chatway_verification_identifier]"><option value="id" '.selected(self::get_settings()['chatway_verification_identifier'],'id',false).'>WordPress User ID (препоръчително)</option><option value="email" '.selected(self::get_settings()['chatway_verification_identifier'],'email',false).'>Имейл адрес</option></select>'; self::field('chatway_verification_secret','Chatway Visitor Verification Security Key','password','','Копирай ключа от Chatway → Settings → Visitors Verification. Избраният идентификатор трябва да съвпада с Chatway; при смяна от User ID към Email ID или обратно генерирай нов ключ. Ключът остава само на сървъра и никога не се изпраща към приложението.'); self::field('chatway_widget_id','Widget ID (за бъдеща API синхронизация)'); echo '<button type="button" class="button pcw-test" data-integration="chatway">Провери настройката</button><span class="pcw-result" id="pcw-result-chatway"></span>'; echo '</section>';
         self::card_start('ShopLentor Pro','WooCommerce изгледи и продуктови секции.'); self::toggle('shoplentor_enabled','Използвай ShopLentor съдържание'); echo '</section>';
         self::card_start('Google Sheets – ремонти','Синхронизация на ремонтите към частен Google Sheet чрез Apps Script webhook.'); self::toggle('sheets_enabled','Активирай синхронизацията'); self::field('sheets_webhook_url','Apps Script Web App URL','password'); self::field('sheets_webhook_secret','HMAC Secret','password'); echo '<button type="button" class="button pcw-test" data-integration="sheets">Провери връзката</button><span class="pcw-result" id="pcw-result-sheets"></span>'; echo '</section>'; 
         self::card_start('Push известия','Настройки за Firebase Cloud Messaging (FCM).'); self::toggle('push_enabled','Активирай push известията'); echo '<label for="push_provider">Доставчик</label><select id="push_provider" name="'.self::OPTION.'[push_provider]"><option value="firebase">Firebase Cloud Messaging</option></select>'; self::field('firebase_project_id','Firebase Project ID'); self::field('firebase_service_account_json','Service Account JSON','textarea','','Поставя се само в защитената администраторска среда. Не използвай клиентски Firebase ключ тук.'); self::field('firebase_test_device_token','Тестов FCM device token','password','','Въведи FCM registration token от тестово устройство, запази настройките и изпрати тестово известие.'); echo '<button type="button" class="button pcw-test" data-integration="firebase">Изпрати тестово известие</button><span class="pcw-result" id="pcw-result-firebase"></span>'; echo '</section>';
@@ -303,11 +312,11 @@ final class PCWork_Admin_Integration_Settings {
         register_rest_route('pcwork/v1','/app/update',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'app_update_info'] ]);
         register_rest_route('pcwork/v1','/chatway/config',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'chatway_config'] ]);
         register_rest_route('pcwork/v1','/chatway/session',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'chatway_session'] ]);
-        register_rest_route('pcwork/v1','/push/status',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'push_status'] ]);
         register_rest_route('pcwork/v1','/push/register',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'register_device'] ]);
         register_rest_route('pcwork/v1','/push/unregister',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'unregister_device'] ]);
         register_rest_route('pcwork/v1','/push/preferences',[ 'methods'=>'GET', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'get_marketing_preferences'] ]);
         register_rest_route('pcwork/v1','/push/preferences',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'update_marketing_preferences'] ]);
+        register_rest_route('pcwork/v1','/push/status',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'push_device_status'] ]);
     }
 
     public static function chatway_config(WP_REST_Request $request) {
@@ -366,10 +375,14 @@ final class PCWork_Admin_Integration_Settings {
         if ($user_id) {
             $visitor = get_user_by('id', $user_id);
             if ($visitor) {
-                $visitor_name = (string)$visitor->display_name;
+                $first_name = trim((string)get_user_meta($visitor->ID, 'first_name', true));
+                $last_name = trim((string)get_user_meta($visitor->ID, 'last_name', true));
+                $visitor_name = trim($first_name . ' ' . $last_name);
+                if ($visitor_name === '') $visitor_name = (string)$visitor->display_name;
                 $visitor_email = (string)$visitor->user_email;
-                $visitor_phone = (string)get_user_meta($visitor->ID, 'pcwork_phone', true);
-                if ($visitor_phone === '') $visitor_phone = (string)get_user_meta($visitor->ID, 'billing_phone', true);
+                $visitor_phone = trim((string)get_user_meta($visitor->ID, 'pcwork_phone', true));
+                if ($visitor_phone === '') $visitor_phone = trim((string)get_user_meta($visitor->ID, 'billing_phone', true));
+                if ($visitor_phone === '') $visitor_phone = trim((string)get_user_meta($visitor->ID, 'shipping_phone', true));
                 $visitor_script = '<script>window.pcwChatwayVisitor = '.wp_json_encode(['name'=>$visitor_name,'email'=>$visitor_email,'phone'=>$visitor_phone], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT).';</script>';
             }
         }
@@ -377,16 +390,19 @@ final class PCWork_Admin_Integration_Settings {
             $user = get_user_by('id', $user_id);
             if ($user) {
                 $identifier_type = in_array(($s['chatway_verification_identifier'] ?? 'id'), ['id','email'], true) ? $s['chatway_verification_identifier'] : 'id';
-                $visitor_id = (string)$user->ID;
                 $email = (string)$user->user_email;
-                $name = (string)$user->display_name;
-                $phone = (string)get_user_meta($user->ID, 'pcwork_phone', true);
-                if ($phone === '') $phone = (string)get_user_meta($user->ID, 'billing_phone', true);
+                $visitor_id = $identifier_type === 'email' ? $email : (string)$user->ID;
+                $first_name = trim((string)get_user_meta($user->ID, 'first_name', true));
+                $last_name = trim((string)get_user_meta($user->ID, 'last_name', true));
+                $name = trim($first_name . ' ' . $last_name);
+                if ($name === '') $name = (string)$user->display_name;
+                $phone = trim((string)get_user_meta($user->ID, 'pcwork_phone', true));
+                if ($phone === '') $phone = trim((string)get_user_meta($user->ID, 'billing_phone', true));
+                if ($phone === '') $phone = trim((string)get_user_meta($user->ID, 'shipping_phone', true));
+                // Chatway requires the HMAC of the exact selected identifier and
+                // visitor.data.id/email. The secret never leaves WordPress.
                 $hmac_base = $identifier_type === 'email' ? $email : $visitor_id;
                 $hmac = hash_hmac('sha256', $hmac_base, (string)$s['chatway_verification_secret']);
-                // Chatway's documented Visitor Verification contract is visitor.hmac
-                // beside visitor.data (not hmac beside data). The identifier must
-                // exactly match the User ID / Email ID selected in Chatway settings.
                 $identity = [
                     'visitor'=>[
                         'hmac'=>$hmac,
@@ -396,7 +412,8 @@ final class PCWork_Admin_Integration_Settings {
                             'site_url'=>home_url(),
                         ],
                     ],
-                    'tags'=>[], 'customFields'=>[],
+                    'tags'=>[],
+                    'customFields'=>$phone !== '' ? [['name'=>'phone','value'=>$phone]] : [],
                 ];
                 $identity_script = '<script>window.chatwaySettings = '.wp_json_encode($identity, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT).';</script>';
             }
@@ -412,7 +429,7 @@ final class PCWork_Admin_Integration_Settings {
         $page_text = $light_theme ? '#172033' : '#eaf4ff';
         $muted_text = $light_theme ? '#68778b' : '#9fb0c4';
         $heading_text = $light_theme ? '#172033' : '#ffffff';
-        echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="'.esc_attr($page_bg).'"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:'.esc_attr($page_bg).';color:'.esc_attr($page_text).';font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:'.esc_attr($muted_text).'}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:'.esc_attr($heading_text).';font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.$visitor_script.'<script id="chatway" async src="'.esc_url($script).'"></script><script>window.addEventListener("load",function(){var tries=0,updated=false;var timer=setInterval(function(){tries++;if(window.$chatway){var v=window.pcwChatwayVisitor||{};if(!updated&&typeof window.$chatway.updateChatwayCustomData==="function"){if(v.name)window.$chatway.updateChatwayCustomData("name",v.name);if(v.email)window.$chatway.updateChatwayCustomData("email",v.email);if(v.phone)window.$chatway.updateChatwayCustomData("phone",v.phone);updated=true;}if(typeof window.$chatway.openChatwayWidget==="function"){clearInterval(timer);window.$chatway.openChatwayWidget();}}if(tries>40)clearInterval(timer);},250);});</script></body></html>';
+        echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="'.esc_attr($page_bg).'"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:'.esc_attr($page_bg).';color:'.esc_attr($page_text).';font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:'.esc_attr($muted_text).'}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:'.esc_attr($heading_text).';font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.$visitor_script.'<script>(function(){var v=window.pcwChatwayVisitor||{},opened=false,identityApplied=false,tries=0;function applyIdentity(){if(!window.$chatway)return false;var hasIdentity=!!(v.name||v.email||v.phone),updateReady=typeof window.$chatway.updateChatwayCustomData==="function";if(hasIdentity&&!updateReady)return false;if(!identityApplied&&updateReady){function update(key,value){if(!value)return;try{window.$chatway.updateChatwayCustomData(key,value);}catch(e){}}update("name",v.name);update("email",v.email);update("phone",v.phone);identityApplied=true;}if((!hasIdentity||identityApplied)&&!opened&&typeof window.$chatway.openChatwayWidget==="function"){try{window.$chatway.openChatwayWidget();opened=true;}catch(e){return false;}}return opened;}window.$chatwayOnLoad=function(){applyIdentity();};window.addEventListener("chatwayLoaded",applyIdentity);var timer=setInterval(function(){tries++;applyIdentity();if(opened||tries>160)clearInterval(timer);},250);})();</script><script id="chatway" async src="'.esc_url($script).'"></script></body></html>';
         exit;
     }
 
@@ -439,6 +456,38 @@ final class PCWork_Admin_Integration_Settings {
     }
 
 
+    public static function push_device_status(WP_REST_Request $request) {
+        $settings = self::get_settings();
+        $user_id = get_current_user_id();
+        $devices = get_user_meta($user_id, 'pcwork_fcm_devices', true);
+        if (!is_array($devices)) $devices = [];
+        $token = sanitize_text_field((string)$request->get_param('token'));
+        return rest_ensure_response([
+            'push_enabled' => ($settings['push_enabled'] ?? '0') === '1',
+            'firebase_configured' => !empty($settings['firebase_project_id']) && !empty($settings['firebase_service_account_json']),
+            'device_registered' => $token !== '' && isset($devices[$token]),
+            'device_count' => count($devices),
+            'marketing_opt_in' => get_user_meta($user_id, 'pcwork_marketing_opt_in', true) === '1',
+        ]);
+    }
+
+    /** Send a transactional new-order alert to administrators and shop managers. */
+    public static function on_woocommerce_new_order($order_id) {
+        $order_id = absint($order_id);
+        if (!$order_id) return;
+        wp_schedule_single_event(time() + 1, 'pcwork_send_woocommerce_order_push', [$order_id], true);
+        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
+    }
+
+    /** Confirm receipt of a customer-submitted repair request on their registered devices. */
+    public static function on_customer_repair_requested($repair_id, $customer_user_id, $repair_number = '', $location_code = '') {
+        $repair_id = absint($repair_id);
+        if (!$repair_id) return;
+        $args = [$repair_id, absint($customer_user_id), sanitize_text_field((string)$repair_number), sanitize_key((string)$location_code)];
+        wp_schedule_single_event(time() + 1, 'pcwork_send_customer_repair_push', $args, true);
+        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
+    }
+
     public static function get_marketing_preferences() {
         $user_id = get_current_user_id();
         return rest_ensure_response(['marketing_opt_in' => get_user_meta($user_id, 'pcwork_marketing_opt_in', true) === '1']);
@@ -456,23 +505,6 @@ final class PCWork_Admin_Integration_Settings {
             update_user_meta($user_id, 'pcwork_marketing_opt_out_at', current_time('mysql', true));
         }
         return rest_ensure_response(['marketing_opt_in' => $value, 'saved' => true]);
-    }
-
-    public static function push_status(WP_REST_Request $request) {
-        $settings = self::get_settings();
-        $user_id = get_current_user_id();
-        $token = sanitize_text_field((string)$request->get_param('token'));
-        $devices = get_user_meta($user_id, 'pcwork_fcm_devices', true);
-        if (!is_array($devices)) $devices = [];
-        $registered = $token !== '' ? isset($devices[$token]) : !empty($devices);
-        $configured = !empty($settings['firebase_project_id']) && !empty($settings['firebase_service_account_json']);
-        return rest_ensure_response([
-            'firebase_configured' => $configured,
-            'push_enabled' => ($settings['push_enabled'] ?? '0') === '1',
-            'device_registered' => $registered,
-            'marketing_opt_in' => get_user_meta($user_id, 'pcwork_marketing_opt_in', true) === '1',
-            'device_count' => count($devices),
-        ]);
     }
 
     public static function register_device(WP_REST_Request $request) {
@@ -630,8 +662,15 @@ final class PCWork_Admin_Integration_Settings {
      * Called by the repair-management module when a repair status changes.
      * Hook contract: do_action('pcwork_repair_status_changed', $repair_id, $customer_user_id, $status, $repair_number).
      */
-    /** Sends operational events to administrators and authorized staff, never gated by marketing consent. */
-    private static function notify_operational_staff($title, $body, $data = [], $location_code = '') {
+    public static function on_repair_status_changed($repair_id, $customer_user_id, $status, $repair_number='') {
+        $repair_id = absint($repair_id);
+        if (!$repair_id) return;
+        $args = [$repair_id, absint($customer_user_id), sanitize_key((string)$status), sanitize_text_field((string)$repair_number)];
+        wp_schedule_single_event(time() + 1, 'pcwork_send_repair_status_push', $args, true);
+        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
+    }
+
+private static function notify_operational_staff($title, $body, $data = [], $location_code = '') {
         $settings = self::get_settings();
         if (($settings['push_enabled'] ?? '0') !== '1' || empty($settings['firebase_project_id']) || empty($settings['firebase_service_account_json'])) return 0;
         $users = get_users(['fields'=>'ID', 'number'=>-1]);
@@ -663,16 +702,7 @@ final class PCWork_Admin_Integration_Settings {
         }
         return $sent;
     }
-
-    public static function on_customer_repair_requested($repair_id, $customer_user_id, $repair_number = '', $location_code = '') {
-        $repair_id = absint($repair_id);
-        if (!$repair_id) return;
-        $args = [$repair_id, absint($customer_user_id), sanitize_text_field((string)$repair_number), sanitize_key((string)$location_code)];
-        wp_schedule_single_event(time() + 1, 'pcwork_send_customer_repair_push', $args, true);
-        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
-    }
-
-    public static function send_customer_repair_push($repair_id, $customer_user_id, $repair_number = '', $location_code = '') {
+public static function send_customer_repair_push($repair_id, $customer_user_id, $repair_number = '', $location_code = '') {
         $repair_id = absint($repair_id);
         $repair_number = sanitize_text_field((string)$repair_number);
         $location_code = sanitize_key((string)$location_code);
@@ -687,15 +717,7 @@ final class PCWork_Admin_Integration_Settings {
         );
         if ($sent > 0) set_transient($dedupe, 1, 10 * MINUTE_IN_SECONDS);
     }
-
-    public static function on_woocommerce_new_order($order_id) {
-        $order_id = absint($order_id);
-        if (!$order_id) return;
-        wp_schedule_single_event(time() + 1, 'pcwork_send_woocommerce_order_push', [$order_id], true);
-        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
-    }
-
-    public static function send_woocommerce_order_push($order_id) {
+public static function send_woocommerce_order_push($order_id) {
         if (!function_exists('wc_get_order')) return;
         $order = wc_get_order(absint($order_id));
         if (!$order) return;
@@ -710,16 +732,7 @@ final class PCWork_Admin_Integration_Settings {
         );
         if ($sent > 0) set_transient($dedupe, 1, 10 * MINUTE_IN_SECONDS);
     }
-
-    public static function on_repair_status_changed($repair_id, $customer_user_id, $status, $repair_number='') {
-        $repair_id = absint($repair_id);
-        if (!$repair_id) return;
-        $args = [$repair_id, absint($customer_user_id), sanitize_key((string)$status), sanitize_text_field((string)$repair_number)];
-        wp_schedule_single_event(time() + 1, 'pcwork_send_repair_status_push', $args, true);
-        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
-    }
-
-    public static function send_repair_status_push($repair_id, $customer_user_id, $status, $repair_number='') {
+public static function send_repair_status_push($repair_id, $customer_user_id, $status, $repair_number='') {
         $s=self::get_settings();
         if (($s['push_enabled'] ?? '0') !== '1' || empty($s['firebase_project_id']) || empty($s['firebase_service_account_json'])) return;
         $repair_id=absint($repair_id); $customer_user_id=absint($customer_user_id);
@@ -843,7 +856,7 @@ final class PCWork_Admin_Integration_Settings {
         if (!isset($_POST['pcwork_marketing_opt_in'])) update_user_meta($user_id, 'pcwork_marketing_opt_out_at', current_time('mysql', true));
     }
 
-    public static function render_marketing() {
+    public static function render_marketing($embedded = false) {
         if (!current_user_can('manage_options')) return;
         if (!empty($_POST['pcw_campaign_submit'])) {
             check_admin_referer('pcw_marketing_campaign');
@@ -862,24 +875,51 @@ final class PCWork_Admin_Integration_Settings {
                 $campaign = ['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'image'=>$image,'audience'=>in_array($audience,['all','customers'],true)?$audience:'all','created'=>current_time('mysql'),'status'=>'scheduled'];
                 $history = get_option('pcwork_marketing_campaigns', []); if (!is_array($history)) $history=[];
                 $history[$id]=$campaign; update_option('pcwork_marketing_campaigns',$history,false);
-                if ($when === 'now') { self::send_marketing_campaign($id); echo '<div class="notice notice-success"><p>Кампанията е обработена. Резултатът е записан в историята.</p></div>'; }
-                else {
+                if ($when === 'now') {
+                    self::send_marketing_campaign($id);
+                    echo '<div class="notice notice-success"><p>Кампанията е обработена. Резултатът е записан в историята.</p></div>';
+                } else {
                     $timestamp = strtotime($when);
-                    if (!$timestamp || $timestamp < time()+60) { unset($history[$id]); update_option('pcwork_marketing_campaigns',$history,false); echo '<div class="notice notice-error"><p>Избери бъдеща дата и час (поне 1 минута напред).</p></div>'; }
-                    else { wp_schedule_single_event($timestamp,'pcwork_send_marketing_campaign',[$id]); echo '<div class="notice notice-success"><p>Кампанията е планирана за '.esc_html(wp_date('d.m.Y H:i',$timestamp)).'.</p></div>'; }
+                    if (!$timestamp || $timestamp < time()+60) {
+                        unset($history[$id]); update_option('pcwork_marketing_campaigns',$history,false);
+                        echo '<div class="notice notice-error"><p>Избери бъдеща дата и час (поне 1 минута напред).</p></div>';
+                    } else {
+                        wp_schedule_single_event($timestamp,'pcwork_send_marketing_campaign',[$id]);
+                        echo '<div class="notice notice-success"><p>Кампанията е планирана за '.esc_html(wp_date('d.m.Y H:i',$timestamp)).'.</p></div>';
+                    }
                 }
             }
         }
         $history=get_option('pcwork_marketing_campaigns',[]); if(!is_array($history))$history=[];
         $eligible=0; $users=get_users(['fields'=>['ID'],'number'=>-1,'meta_key'=>'pcwork_marketing_opt_in','meta_value'=>'1']);
         foreach($users as $u){$devices=get_user_meta($u->ID,'pcwork_fcm_devices',true);if(is_array($devices))$eligible+=count($devices);}
-        echo '<div class="wrap"><h1>PCWork – Маркетинг и Push кампании</h1><p>Изпращай промоции до клиенти, които изрично са се съгласили да получават маркетингови известия.</p><div class="notice notice-info"><p><strong>Абонирани устройства:</strong> '.absint($eligible).' · <strong>Клиенти със съгласие:</strong> '.count($users).'</p></div>';
+        if (!$embedded) echo '<div class="wrap">';
+        echo '<h2>Реклами и Push кампании</h2><p>Изпращай промоции до клиенти, които изрично са се съгласили да получават маркетингови известия.</p><div class="notice notice-info inline"><p><strong>Абонирани устройства:</strong> '.absint($eligible).' · <strong>Клиенти със съгласие:</strong> '.count($users).'</p></div>';
         echo '<form method="post" style="background:#fff;border:1px solid #dcdcde;border-radius:10px;padding:20px;max-width:760px">'; wp_nonce_field('pcw_marketing_campaign');
-        echo '<h2>Нова кампания</h2><p><label>Заглавие<br><input required maxlength="80" name="campaign_title" class="large-text"></label></p><p><label>Съобщение<br><textarea required maxlength="240" rows="4" name="campaign_body" class="large-text"></textarea></label></p><p><label>Линк при отваряне (по избор)<br><input type="url" name="campaign_url" class="large-text" placeholder="https://pcwork-bg.com/..."></label></p><p><label>Изображение HTTPS URL (по избор)<br><input type="url" name="campaign_image" class="large-text"></label></p><p><label>Получатели<br><select name="campaign_audience"><option value="all">Всички клиенти със съгласие</option><option value="customers">Клиенти (customer) със съгласие</option></select></label></p><p><label>Изпращане<br><select id="pcw-campaign-when" name="campaign_when"><option value="now">Веднага</option><option value="schedule">Планирай</option></select></label> <input id="pcw-campaign-date" type="datetime-local" name="campaign_when" style="display:none"></p><p><button class="button button-primary" name="pcw_campaign_submit" value="1">Изпрати / планирай кампания</button></p><p class="description">Клиентите без съгласие са изключени. Всяко устройство се изпраща само веднъж за кампанията. За планираните кампании WordPress Cron трябва да е активен.</p></form>';
-        echo '<h2 style="margin-top:28px">История на кампаниите</h2><table class="widefat striped" style="max-width:1100px"><thead><tr><th>Дата</th><th>Кампания</th><th>Статус</th><th>Изпратени</th><th>Грешки</th></tr></thead><tbody>';
-        foreach(array_reverse($history) as $c) echo '<tr><td>'.esc_html($c['created']??'').'</td><td><strong>'.esc_html($c['title']??'').'</strong><br>'.esc_html($c['body']??'').'</td><td>'.esc_html($c['status']??'').'</td><td>'.absint($c['sent']??0).'</td><td>'.absint($c['failed']??0).'</td></tr>';
-        if(!$history)echo '<tr><td colspan="5">Все още няма кампании.</td></tr>';
-        echo '</tbody></table><script>(function(){var s=document.getElementById("pcw-campaign-when"),d=document.getElementById("pcw-campaign-date");function sync(){d.style.display=s.value==="schedule"?"inline-block":"none";s.name=s.value==="schedule"?"campaign_mode":"campaign_when";d.name=s.value==="schedule"?"campaign_when":"campaign_date_unused";}s.addEventListener("change",sync);sync();})();</script></div>';
+        echo '<h3>Нова кампания</h3><p><label>Заглавие<br><input required maxlength="80" name="campaign_title" class="large-text"></label></p><p><label>Съобщение<br><textarea required maxlength="240" rows="4" name="campaign_body" class="large-text"></textarea></label></p><p><label>Линк при отваряне (по избор)<br><input type="url" name="campaign_url" class="large-text" placeholder="https://pcwork-bg.com/..."></label></p><p><label>Изображение HTTPS URL (по избор)<br><input type="url" name="campaign_image" class="large-text"></label></p><p><label>Получатели<br><select name="campaign_audience"><option value="all">Всички клиенти със съгласие</option><option value="customers">Клиенти (customer) със съгласие</option></select></label></p><p><label>Изпращане<br><select id="pcw-campaign-when" name="campaign_when"><option value="now">Веднага</option><option value="schedule">Планирай</option></select></label> <input id="pcw-campaign-date" type="datetime-local" name="campaign_when" style="display:none"></p><p><button class="button button-primary" name="pcw_campaign_submit" value="1">Изпрати / планирай кампания</button></p><p class="description">Клиентите без съгласие са изключени. Всяко устройство се изпраща само веднъж за кампанията. За планираните кампании WordPress Cron трябва да е активен.</p></form>';
+        echo '<h3 style="margin-top:28px">История на кампаниите</h3><table class="widefat striped"><thead><tr><th>Дата</th><th>Кампания</th><th>Статус</th><th>Изпратени</th><th>Грешки</th><th>Действие</th></tr></thead><tbody>';
+        foreach(array_reverse($history, true) as $id=>$c) {
+            echo '<tr><td>'.esc_html($c['created']??'').'</td><td><strong>'.esc_html($c['title']??'').'</strong><br>'.esc_html($c['body']??'').'</td><td>'.esc_html($c['status']??'').'</td><td>'.absint($c['sent']??0).'</td><td>'.absint($c['failed']??0).'</td><td><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Изтриването премахва кампанията от историята и отменя планираното изпращане. Вече изпратени известия не могат да бъдат върнати. Продължавате ли?\')"><input type="hidden" name="action" value="pcw_campaign_delete"><input type="hidden" name="campaign_id" value="'.esc_attr((string)$id).'">';
+            wp_nonce_field('pcw_campaign_delete_'.(string)$id);
+            echo '<button type="submit" class="button button-link-delete">Изтрий</button></form></td></tr>';
+        }
+        if(!$history)echo '<tr><td colspan="6">Все още няма кампании.</td></tr>';
+        echo '</tbody></table><script>(function(){var s=document.getElementById("pcw-campaign-when"),d=document.getElementById("pcw-campaign-date");if(!s||!d)return;function sync(){d.style.display=s.value==="schedule"?"inline-block":"none";s.name=s.value==="schedule"?"campaign_mode":"campaign_when";d.name=s.value==="schedule"?"campaign_when":"campaign_date_unused";}s.addEventListener("change",sync);sync();})();</script>';
+        if (!$embedded) echo '</div>';
+    }
+
+    public static function delete_marketing_campaign() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        $id = sanitize_text_field(wp_unslash($_POST['campaign_id'] ?? ''));
+        if ($id === '') wp_die('Липсва идентификатор на кампанията.');
+        check_admin_referer('pcw_campaign_delete_' . $id);
+        $history = get_option('pcwork_marketing_campaigns', []);
+        if (!is_array($history) || !isset($history[$id])) wp_die('Кампанията не е намерена.');
+        wp_clear_scheduled_hook('pcwork_send_marketing_campaign', [$id]);
+        unset($history[$id]);
+        update_option('pcwork_marketing_campaigns', $history, false);
+        wp_safe_redirect(admin_url('admin.php?page=pcwork-customers&tab=campaigns&campaign_deleted=1'));
+        exit;
     }
 
     public static function send_marketing_campaign($id) {

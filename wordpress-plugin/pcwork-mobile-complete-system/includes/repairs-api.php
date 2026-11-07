@@ -145,7 +145,7 @@ final class PCWork_Mobile_Repairs_API {
         if (get_option('pcwork_repairs_api_db_version') !== '1.9.0') self::activate();
     }
 
-    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_create_repair', [__CLASS__, 'admin_create_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); }
+    public static function init() { add_action('init', [__CLASS__, 'maybe_upgrade'], 1); add_action('rest_api_init', [__CLASS__, 'routes']); add_action('admin_menu', [__CLASS__, 'admin_menu'], 100); add_action('admin_post_pcwork_update_repair', [__CLASS__, 'admin_update_repair']); add_action('admin_post_pcwork_create_repair', [__CLASS__, 'admin_create_repair']); add_action('admin_post_pcwork_download_repair_document', [__CLASS__, 'admin_download_repair_document']); add_action('admin_post_pcwork_delete_repair', [__CLASS__, 'admin_delete_repair']); add_action('admin_post_pcwork_cleanup_repair_data', [__CLASS__, 'admin_cleanup_repair_data']); }
     public static function admin_menu() {
         add_submenu_page('pcwork-mobile', 'Сервизни ремонти', 'Сервизни ремонти', 'manage_options', 'pcwork-repairs', [__CLASS__, 'render_admin_page']);
     }
@@ -262,10 +262,19 @@ final class PCWork_Mobile_Repairs_API {
             $due = gmdate('Y-m-d H:i:s', $timestamp);
         }
         $now = current_time('mysql');
+        $device_type = sanitize_text_field(wp_unslash($_POST['device_type'] ?? $row->device_type));
+        $device_model = sanitize_text_field(wp_unslash($_POST['device_model'] ?? $row->device_model));
+        $serial_number = sanitize_text_field(wp_unslash($_POST['serial_number'] ?? $row->serial_number));
+        $problem = sanitize_textarea_field(wp_unslash($_POST['problem_description'] ?? $row->problem_description));
+        $customer_phone = sanitize_text_field(wp_unslash($_POST['customer_phone'] ?? $row->customer_phone));
+        $intake_notes = sanitize_textarea_field(wp_unslash($_POST['intake_notes'] ?? $row->intake_notes));
+        if ($device_type === '' || $device_model === '' || trim($problem) === '') wp_die('Типът, моделът и описанието на проблема са задължителни.');
         $updated = $wpdb->update(self::repairs_table(), [
             'status'=>$status, 'assigned_technician_id'=>$technician, 'priority'=>$priority,
-            'due_at'=>$due, 'updated_at'=>$now,
-        ], ['id'=>$id], ['%s','%d','%s','%s','%s'], ['%d']);
+            'due_at'=>$due, 'device_type'=>$device_type, 'device_model'=>$device_model,
+            'serial_number'=>$serial_number, 'problem_description'=>$problem,
+            'customer_phone'=>$customer_phone, 'intake_notes'=>$intake_notes, 'updated_at'=>$now,
+        ], ['id'=>$id]);
         if ($updated === false) wp_die('Промените не бяха записани.');
         if ($status !== (string)$row->status || $note !== '') {
             $history_note = $note !== '' ? $note : 'Статусът е променен от административния панел.';
@@ -284,6 +293,27 @@ final class PCWork_Mobile_Repairs_API {
         exit;
     }
 
+    public static function admin_delete_repair() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        $id=absint($_POST['repair_id']??0); check_admin_referer('pcwork_delete_repair_'.$id);
+        global $wpdb;
+        $row=$wpdb->get_row($wpdb->prepare('SELECT * FROM '.self::repairs_table().' WHERE id=%d',$id));
+        if (!$row) wp_die('Ремонтът не е намерен.');
+        foreach ([self::history_table(),self::documents_table(),self::worklog_table()] as $table) $wpdb->delete($table,['repair_id'=>$id],['%d']);
+        $deleted=$wpdb->delete(self::repairs_table(),['id'=>$id],['%d']);
+        if (!$deleted) wp_die('Ремонтът не беше изтрит: '.esc_html($wpdb->last_error));
+        wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','deleted'=>'1'],admin_url('admin.php'))); exit;
+    }
+    public static function admin_cleanup_repair_data() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        check_admin_referer('pcwork_cleanup_repair_data'); global $wpdb;
+        $repairs=self::repairs_table(); $counts=[];
+        foreach ([self::history_table(),self::documents_table(),self::worklog_table()] as $table) {
+            $counts[$table]=$wpdb->query("DELETE child FROM $table child LEFT JOIN $repairs parent ON parent.id=child.repair_id WHERE parent.id IS NULL");
+        }
+        update_option('pcwork_last_orphan_cleanup',['at'=>current_time('mysql'),'admin'=>get_current_user_id(),'counts'=>$counts],false);
+        wp_safe_redirect(add_query_arg(['page'=>'pcwork-repairs','cleaned'=>'1'],admin_url('admin.php'))); exit;
+    }
     public static function admin_download_repair_document() {
         if (!current_user_can('manage_options')) wp_die('Нямате права за изтегляне на този документ.');
         $doc_id = absint($_GET['document_id'] ?? 0);
@@ -322,6 +352,8 @@ final class PCWork_Mobile_Repairs_API {
         echo '<div class="wrap"><h1>Сервизни ремонти</h1><p>Централизирано управление на ремонтите, статуса, историята, документите и разпределението към техник.</p>';
         if (!empty($_GET['updated'])) echo '<div class="notice notice-success is-dismissible"><p>Промените по ремонта са записани.</p></div>';
         if (!empty($_GET['created'])) echo '<div class="notice notice-success is-dismissible"><p>Новият ремонт е създаден успешно.</p></div>';
+        if (!empty($_GET['deleted'])) echo '<div class="notice notice-success is-dismissible"><p>Ремонтът и свързаните записи са изтрити.</p></div>';
+        if (!empty($_GET['cleaned'])) echo '<div class="notice notice-success is-dismissible"><p>Почистването на осиротели записи приключи.</p></div>';
         if (!empty($_GET['new_repair'])) {
             self::render_admin_create_form();
             echo '</div>';
@@ -340,6 +372,7 @@ final class PCWork_Mobile_Repairs_API {
                 echo '<section class="postbox" style="padding:16px"><h3>Клиент и прием</h3><p><b>'.esc_html($repair->customer_name).'</b><br>'.esc_html($repair->customer_email).'<br>'.esc_html($repair->customer_phone).'</p><p>Обект: '.esc_html($repair->location_name).'</p><p>Сериен номер: '.esc_html($repair->serial_number ?: '—').'</p><p>Проблем: '.nl2br(esc_html($repair->problem_description)).'</p><p>Състояние: '.nl2br(esc_html($repair->external_condition)).'</p><p>Аксесоари: '.nl2br(esc_html($repair->accessories)).'</p><p>Бележки при прием: '.nl2br(esc_html($repair->intake_notes)).'</p></section>';
                 echo '<section class="postbox" style="padding:16px"><h3>Управление и разпределение</h3><form method="post" action="'.esc_url(admin_url('admin-post.php')).'"><input type="hidden" name="action" value="pcwork_update_repair"><input type="hidden" name="repair_id" value="'.(int)$id.'">';
                 wp_nonce_field('pcwork_update_repair');
+                echo '<p><label><b>Тип устройство</b></label><br><input name="device_type" value="'.esc_attr($repair->device_type).'" style="width:100%"></p><p><label><b>Модел</b></label><br><input name="device_model" value="'.esc_attr($repair->device_model).'" style="width:100%"></p><p><label><b>Сериен номер</b></label><br><input name="serial_number" value="'.esc_attr($repair->serial_number).'" style="width:100%"></p><p><label><b>Телефон на клиента</b></label><br><input name="customer_phone" value="'.esc_attr($repair->customer_phone).'" style="width:100%"></p><p><label><b>Описание на проблема</b></label><br><textarea name="problem_description" rows="4" style="width:100%">'.esc_textarea($repair->problem_description).'</textarea></p><p><label><b>Бележки при прием</b></label><br><textarea name="intake_notes" rows="3" style="width:100%">'.esc_textarea($repair->intake_notes).'</textarea></p>';
                 echo '<p><label for="pcw-status"><b>Статус</b></label><br><select id="pcw-status" name="status" style="width:100%">';
                 $statuses = ['received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'];
                 foreach ($statuses as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($repair->status,$key,false).'>'.esc_html($label).'</option>';
@@ -354,7 +387,7 @@ final class PCWork_Mobile_Repairs_API {
                 echo '</tbody></table><h2 style="margin-top:24px">Документи и протоколи</h2><table class="widefat striped"><thead><tr><th>Файл</th><th>Тип</th><th>Дата</th><th>Размер</th><th>Достъп</th></tr></thead><tbody>';
                 if (!$documents) echo '<tr><td colspan="5">Няма прикачени документи или протоколи.</td></tr>';
                 foreach ($documents as $doc) { $download = wp_nonce_url(add_query_arg(['action'=>'pcwork_download_repair_document','document_id'=>(int)$doc->id],admin_url('admin-post.php')), 'pcwork_download_document_' . (int)$doc->id); $file = '<a href="'.esc_url($download).'">'.esc_html($doc->original_name ?: 'Изтегли документ').'</a>'; $access = !empty($doc->storage_key) || !empty($doc->attachment_id) ? 'Защитено изтегляне' : 'Няма наличен файл'; echo '<tr><td>'.$file.'</td><td>'.esc_html($doc->kind).'</td><td>'.esc_html($doc->created_at).'</td><td>'.esc_html(size_format((int)$doc->file_size)).'</td><td>'.esc_html($access).'</td></tr>'; }
-                echo '</tbody></table>';
+                echo '</tbody></table><hr><h2>Изтриване на ремонт</h2><p class="description">Изтрива ремонта заедно с историята, документните записи и работния дневник. Необратимо действие.</p><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Сигурни ли сте, че искате да изтриете този ремонт и всички свързани записи?\')"><input type="hidden" name="action" value="pcwork_delete_repair"><input type="hidden" name="repair_id" value="'.(int)$id.'">'; wp_nonce_field('pcwork_delete_repair_'.$id); echo '<button class="button button-link-delete">Изтрий ремонта и свързаните записи</button></form>';
             }
         } else {
             $status = sanitize_key($_GET['status'] ?? '');
@@ -364,7 +397,8 @@ final class PCWork_Mobile_Repairs_API {
             if ($search !== '') { $like = '%' . $wpdb->esc_like($search) . '%'; $where .= ' AND (repair_number LIKE %s OR customer_name LIKE %s OR customer_email LIKE %s OR device_model LIKE %s)'; array_push($args,$like,$like,$like,$like); }
             $sql = "SELECT * FROM $table WHERE $where ORDER BY updated_at DESC LIMIT 100";
             $rows = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
-            echo '<p style="margin:18px 0"><a class="button button-primary" href="'.esc_url(add_query_arg(['page'=>'pcwork-repairs','new_repair'=>'1'], admin_url('admin.php'))).'">＋ Нов ремонт</a></p>';
+            echo '<p style="margin:18px 0"><a class="button button-primary" href="'.esc_url(add_query_arg(['page'=>'pcwork-repairs','new_repair'=>'1'], admin_url('admin.php'))).'">＋ Нов ремонт</a> ';
+            echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" style="display:inline-block;margin-left:8px" onsubmit="return confirm(\'Да се премахнат ли само осиротелите записи от историята, документите и работния дневник? Ремонтите и клиентите няма да бъдат изтрити.\')"><input type="hidden" name="action" value="pcwork_cleanup_repair_data">'; wp_nonce_field('pcwork_cleanup_repair_data'); echo '<button class="button">Почисти осиротели записи</button></form></p>';
             echo '<form method="get" style="display:flex;gap:8px;align-items:center;margin:16px 0"><input type="hidden" name="page" value="pcwork-repairs"><input type="search" name="s" value="'.esc_attr($search).'" placeholder="Номер, клиент, имейл или модел"><select name="status"><option value="">Всички статуси</option>';
             foreach (['requested'=>'Нова заявка','received'=>'Приет','diagnostics'=>'Диагностика','waiting_approval'=>'Очаква одобрение','in_repair'=>'В ремонт','ready'=>'Готов','completed'=>'Завършен','cancelled'=>'Отказан'] as $key=>$label) echo '<option value="'.esc_attr($key).'" '.selected($status,$key,false).'>'.esc_html($label).'</option>';
             echo '</select><button class="button">Филтрирай</button></form><table class="widefat striped"><thead><tr><th>Ремонт</th><th>Клиент</th><th>Устройство</th><th>Обект</th><th>Статус</th><th>Техник</th><th>Последна промяна</th></tr></thead><tbody>';
@@ -529,7 +563,7 @@ final class PCWork_Mobile_Repairs_API {
         $user_id=get_current_user_id();
         if (self::is_staff($user_id)) return new WP_Error('pcwork_customer_route_only','Служителите използват формата за прием на устройство.',['status'=>403]);
         $user=get_user_by('id',$user_id);
-        if (!$user || (!in_array('pcwork_customer',(array)$user->roles,true) && !in_array('subscriber',(array)$user->roles,true))) return new WP_Error('pcwork_customer_required','Необходим е клиентски профил.',['status'=>403]);
+        if (!$user || (!in_array('pcwork_customer',(array)$user->roles,true) && !in_array('subscriber',(array)$user->roles,true) && !in_array('customer',(array)$user->roles,true))) return new WP_Error('pcwork_customer_required','Необходим е клиентски профил.',['status'=>403]);
         $p=$request->get_json_params(); if (!is_array($p)) $p=[];
         $client_request_id=sanitize_text_field($p['client_request_id']??'');
         if ($client_request_id !== '') {
@@ -540,16 +574,27 @@ final class PCWork_Mobile_Repairs_API {
             }
         }
         $ip=defined('PCWORK_TRUSTED_PROXY_IPS') && is_array(PCWORK_TRUSTED_PROXY_IPS) && in_array(sanitize_text_field($_SERVER['REMOTE_ADDR']??'unknown'),PCWORK_TRUSTED_PROXY_IPS,true) ? sanitize_text_field($_SERVER['HTTP_CF_CONNECTING_IP']??$_SERVER['HTTP_X_REAL_IP']??'unknown') : sanitize_text_field($_SERVER['REMOTE_ADDR']??'unknown');
-        $ip_key='pcw_customer_req_ip_'.md5($ip); $user_key='pcw_customer_req_user_'.(int)$user_id;
-        if ((int)get_transient($user_key)>=3 || (int)get_transient($ip_key)>=10) return new WP_Error('pcwork_customer_request_limit','Достигнат е дневният лимит за заявки за ремонт.',['status'=>429]);
+        // A modest authenticated-user limit plus a much higher shared-IP ceiling.
+        // v2 keys intentionally reset the old overly restrictive 3/user + 10/IP counters
+        // once this release is deployed, without removing rate limiting altogether.
+        $ip_key='pcw_customer_req_ip_v2_'.md5($ip);
+        $user_key='pcw_customer_req_user_v2_'.(int)$user_id;
+        $user_daily_limit = 10;
+        // Shared/proxy egress IPs may represent many unrelated customers.
+        $ip_daily_limit = 1000;
+        if ((int)get_transient($user_key)>=$user_daily_limit || (int)get_transient($ip_key)>=$ip_daily_limit) {
+            return new WP_Error('pcwork_customer_request_limit','Достигнат е дневният лимит за заявки от този профил или мрежа. Опитайте отново утре.',['status'=>429]);
+        }
         $location=sanitize_key($p['location_code']??'');
         $active_locations=['sofia-lyulin','sofia-lyulin-2','sofia-simeonovsko','sofia-industrialna-11'];
         if (!in_array($location,$active_locations,true)) return new WP_Error('pcwork_location_unavailable','Избраният сервизен обект не приема заявки онлайн.',['status'=>400]);
         $type=sanitize_text_field($p['device_type']??''); $model=sanitize_text_field($p['device_model']??''); $problem=sanitize_textarea_field($p['problem_description']??'');
-        $meaningful_problem = preg_replace('/\s+/u', '', $problem);
-        $problem_chars = [];
-        $problem_length = (preg_match_all('/./us', (string)$meaningful_problem, $problem_chars) !== false) ? count($problem_chars[0]) : strlen((string)$meaningful_problem);
-        if ($type==='' || $model==='' || $problem_length<15) return new WP_Error('pcwork_request_fields','Попълнете тип устройство, модел и описание на проблема (поне 15 смислени символа).',['status'=>400]);
+        $allowed_types=['Лаптоп','Настолен компютър','PlayStation 5','PlayStation 4'];
+        if (strpos($type,'Друго: ')===0 && trim(substr($type,strlen('Друго: ')))!=='') { $type='Друго: '.sanitize_text_field(trim(substr($type,strlen('Друго: ')))); }
+        elseif (!in_array($type,$allowed_types,true)) return new WP_Error('pcwork_request_device_type','Изберете валиден тип устройство.',['status'=>400]);
+        $meaningful_problem=preg_replace('/\s+/u','',$problem);
+        $problem_length=function_exists('mb_strlen')?mb_strlen($meaningful_problem,'UTF-8'):(preg_match_all('/./us',$meaningful_problem,$problem_chars) ?: 0);
+        if ($model==='' || $problem_length<15) return new WP_Error('pcwork_request_fields','Попълнете марка и модел и опишете проблема по-подробно (поне 15 смислени символа).',['status'=>400]);
         $locations=['sofia-lyulin'=>'София, Люлин - 5','sofia-lyulin-2'=>'София, Люлин - 2','sofia-simeonovsko'=>'София, Симеоновско шосе','sofia-industrialna-11'=>'София, Индустриална 11'];
         $now=current_time('mysql'); $number='PCW-'.wp_date('ymd').'-'.strtoupper(wp_generate_password(6,false,false));
         $ok=$wpdb->insert(self::repairs_table(),[

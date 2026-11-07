@@ -57,9 +57,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   String? _pushStatusMessage;
   bool _checkingPushStatus = false;
   bool _pushRegistering = false;
+  final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 65;
+  static const int _currentBuildNumber = 66;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -295,8 +296,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
 
   Future<void> _requestSystemNotifications() async {
-    // Permission is independent from login. If already granted, do not show
-    // another prompt; if not determined, Firebase requests the OS permission.
+    // Ask Android for POST_NOTIFICATIONS at first launch, even before login
+    // and independently of Firebase token registration.
     await push.requestPermission();
   }
 
@@ -316,9 +317,19 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         await push.requestPermission();
         return;
       }
-      final registered = await push.register(bearer, onForeground: (title, body) {
+      final registered = await push.register(bearer, onForeground: (title, body, data) {
         if (!mounted) return;
-        _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
+        if ((data['event'] ?? '').toString() == 'marketing_campaign') {
+          unawaited(_showMarketingDialog(
+            title: title,
+            body: body,
+            imageUrl: (data['image'] ?? '').toString(),
+            targetUrl: (data['url'] ?? '').toString(),
+            campaignId: (data['campaign_id'] ?? '').toString(),
+          ));
+        } else {
+          _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
+        }
         if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
       }, onOpened: (data) async {
         if (!mounted) return;
@@ -330,15 +341,126 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _selectTab(1);
         }
       });
-      if (mounted) {
-        setState(() => _pushStatusMessage = registered
+      if (mounted) setState(() => _pushStatusMessage = registered
           ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
           : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
-      }
     } finally {
       _pushRegistering = false;
     }
   }
+
+
+  Future<void> _showMarketingDialog({
+    required String title,
+    required String body,
+    required String imageUrl,
+    required String targetUrl,
+    required String campaignId,
+  }) async {
+    if (!mounted) return;
+    final stableId = campaignId.trim().isNotEmpty
+        ? campaignId.trim()
+        : '${title.trim()}|${body.trim()}|${imageUrl.trim()}'.hashCode.toString();
+    if (!_marketingCampaignsHandled.add(stableId)) return;
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getStringList('pcwork_seen_marketing_campaigns') ?? <String>[];
+    if (seen.contains(stableId)) return;
+    seen.add(stableId);
+    await prefs.setStringList(
+      'pcwork_seen_marketing_campaigns',
+      seen.length > 50 ? seen.sublist(seen.length - 50) : seen,
+    );
+    if (!mounted || !context.mounted) return;
+    final image = Uri.tryParse(imageUrl.trim());
+    final parsedDestination = Uri.tryParse(targetUrl.trim());
+    final validImage = image != null && image.scheme == 'https' && image.host.isNotEmpty;
+    final destination = parsedDestination != null && parsedDestination.scheme == 'https' && parsedDestination.host.isNotEmpty
+        ? parsedDestination
+        : Uri.parse('https://pcwork-bg.com/');
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: isDarkTheme ? const Color(0xFF111D2B) : Colors.white,
+        surfaceTintColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 460, maxHeight: MediaQuery.of(dialogContext).size.height * .82),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Stack(children: [
+                  if (validImage)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 190,
+                      child: Image.network(
+                        image.toString(),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _marketingImageFallback(),
+                      ),
+                    )
+                  else
+                    _marketingImageFallback(),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: .58),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: tr('Затвори', 'Close'),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ]),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(title.isEmpty ? tr('Специално предложение от PCWork', 'Special offer from PCWork') : title,
+                      style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, height: 1.2, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+                    if (body.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(body, style: TextStyle(fontSize: 15, height: 1.5, color: isDarkTheme ? const Color(0xFFD2DCE8) : const Color(0xFF4B596B))),
+                    ],
+                    const SizedBox(height: 20),
+                    SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            Navigator.of(dialogContext).pop();
+                            await launchUrl(destination, mode: LaunchMode.externalApplication);
+                          },
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: Text(tr('Виж предложението', 'View offer')),
+                          style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                        ),
+                    ),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _marketingImageFallback() => Container(
+    height: 190,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(colors: [Color(0xFF102B3A), Color(0xFF4B3C85)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    ),
+    alignment: Alignment.center,
+    child: const Icon(Icons.campaign_rounded, size: 64, color: Color(0xFF21D4D8)),
+  );
 
   Future<void> _refreshAfterLeavingTab() async {
     if (_refreshingOnTabExit || signedInUser == null) return;
@@ -754,6 +876,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     String? selectedDeviceType;
     String? deviceError;
     String? problemError;
+    String? requestError;
     bool saving = false;
     final sheetHostContext = _navigatorKey.currentState?.overlay?.context;
     if (sheetHostContext == null || !sheetHostContext.mounted) return;
@@ -780,7 +903,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                   isExpanded: true,
                   decoration: InputDecoration(labelText: tr('Сервизен обект*','Service location*'), border: const OutlineInputBorder()),
                   items: locations.map((location) => DropdownMenuItem(value: location, child: Text(location.name))).toList(),
-                  onChanged: saving ? null : (value) => setSheet(() => selected = value),
+                  onChanged: saving ? null : (value) => setSheet(() { selected = value; requestError = null; }),
                 );
               },
             ),
@@ -790,26 +913,39 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               isExpanded: true,
               decoration: InputDecoration(labelText: tr('Тип устройство*','Device type*'), errorText: deviceError, border: const OutlineInputBorder()),
               items: const ['Лаптоп','Настолен компютър','PlayStation 5','PlayStation 4','Друго'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-              onChanged: saving ? null : (value) => setSheet(() { selectedDeviceType = value; deviceError = null; }),
+              onChanged: saving ? null : (value) => setSheet(() { selectedDeviceType = value; deviceError = null; requestError = null; }),
             ),
             if (selectedDeviceType == 'Друго') ...[
               const SizedBox(height: 12),
-              TextField(controller: otherDevice, enabled: !saving, decoration: InputDecoration(labelText: tr('Опишете устройството*','Specify the device*'), border: const OutlineInputBorder())),
+              TextField(controller: otherDevice, enabled: !saving, onChanged: (_) { if (requestError != null) setSheet(() => requestError = null); }, decoration: InputDecoration(labelText: tr('Опишете устройството*','Specify the device*'), border: const OutlineInputBorder())),
             ],
             const SizedBox(height: 12),
-            TextField(controller: model, enabled: !saving, decoration: InputDecoration(labelText: tr('Марка и модел*','Brand and model*'), border: const OutlineInputBorder())),
+            TextField(controller: model, enabled: !saving, onChanged: (_) { if (requestError != null) setSheet(() => requestError = null); }, decoration: InputDecoration(labelText: tr('Марка и модел*','Brand and model*'), border: const OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(controller: problem, enabled: !saving, minLines: 3, maxLines: 5, onChanged: (_) { if (problemError != null) setSheet(() => problemError = null); }, decoration: InputDecoration(labelText: tr('Описание на проблема*','Problem description*'), helperText: tr('Опишете симптомите и кога се появяват. Минимум 15 смислени символа.', 'Describe the symptoms and when they occur. At least 15 meaningful characters.'), errorText: problemError, border: const OutlineInputBorder())),
+            TextField(controller: problem, enabled: !saving, minLines: 3, maxLines: 5, onChanged: (_) { if (problemError != null || requestError != null) setSheet(() { problemError = null; requestError = null; }); }, decoration: InputDecoration(labelText: tr('Описание на проблема*','Problem description*'), helperText: tr('Опишете симптомите и кога се появяват. Минимум 15 смислени символа.', 'Describe the symptoms and when they occur. At least 15 meaningful characters.'), errorText: problemError, border: const OutlineInputBorder())),
           ])),
+          if (requestError != null) Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.red.withValues(alpha: .10), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withValues(alpha: .45))),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text(requestError!, style: const TextStyle(color: Colors.redAccent, fontSize: 13))),
+              ]),
+            ),
+          ),
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : () async {
             final meaningfulProblem = problem.text.trim().replaceAll(RegExp(r'\s+'), '');
             if (selectedDeviceType == null) { setSheet(() => deviceError = tr('Изберете тип устройство.', 'Choose a device type.')); return; }
             if (selectedDeviceType == 'Друго' && otherDevice.text.trim().isEmpty) { setSheet(() => deviceError = tr('Въведете какво е устройството.', 'Enter the device type.')); return; }
-            if (selected == null) { _message(tr('Изберете сервизен обект.', 'Choose a service location.')); return; }
-            if (model.text.trim().isEmpty) { _message(tr('Въведете марка и модел.', 'Enter brand and model.')); return; }
+            if (selected == null) { setSheet(() => requestError = tr('Изберете сервизен обект.', 'Choose a service location.')); return; }
+            if (model.text.trim().isEmpty) { setSheet(() => requestError = tr('Въведете марка и модел.', 'Enter brand and model.')); return; }
             if (meaningfulProblem.length < 15) { setSheet(() => problemError = tr('Моля, опишете проблема по-подробно (минимум 15 смислени символа).', 'Please describe the problem in more detail (at least 15 meaningful characters).')); return; }
-            setSheet(() => saving = true);
+            setSheet(() { saving = true; requestError = null; });
             try {
               final deviceType = selectedDeviceType == 'Друго' ? 'Друго: ${otherDevice.text.trim()}' : selectedDeviceType!;
               final created = await api.createCustomerRepairRequest(token, {
@@ -825,8 +961,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               }
             } catch (error) {
               if (ctx.mounted) {
-                setSheet(() => saving = false);
-                _message('${tr('Заявката не беше приета. Данните са запазени във формата. Причина:', 'The request was not accepted. Your entries remain in the form. Reason:')} $error');
+                setSheet(() {
+                  saving = false;
+                  requestError = '${tr('Заявката не беше приета. Данните са запазени във формата. Причина:', 'The request was not accepted. Your entries remain in the form. Reason:')} $error';
+                });
               }
             } finally {
               // Never leave the submit button spinning if a request fails or times out.

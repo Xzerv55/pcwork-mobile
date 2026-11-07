@@ -3,7 +3,7 @@ Contributors: pcwork
 Tags: repairs, mobile, authentication, integrations
 Requires at least: 6.0
 Requires PHP: 7.4
-Stable tag: 4.4.0
+Stable tag: 4.8.0
 License: GPLv2 or later
 
 Единен WordPress плъгин за PCWork Mobile: вход и профили, сервизни ремонти, документи, протоколи, административни интеграции, присъствие на екипа и заявки за отпуск.
@@ -64,9 +64,18 @@ License: GPLv2 or later
 * Preserve Firebase Service Account JSON exactly and validate private-key Base64 before OpenSSL parsing.
 * Add a signed payload query fallback for Apps Script requests when postData is missing.
 
-= 4.4.0 =
-* Add authenticated push diagnostics and fix Chatway Visitor Verification payload to the documented schema.
-* Queue Google Sheets synchronization and operational FCM delivery in WordPress Cron so external services do not block repair/order API responses.
-* Notify authorized staff about new customer repair requests and WooCommerce orders, independent of marketing consent.
-* Support customer, pcwork_customer and subscriber roles in the opt-in marketing audience.
-* Enforce a 15 meaningful-character minimum for customer repair problem descriptions.
+
+= 4.7.0 =
+* Preserve all v4.6.0 customer-management, access-control and repair-administration functionality.
+* Queue Google Sheets repair mirroring and transactional push delivery outside customer-facing REST requests.
+* Send staff alerts for new customer repair requests and WooCommerce orders independently of marketing consent.
+* Correct Chatway visitor identity bootstrap and populate name, email and phone after widget initialization.
+* Retain authenticated push diagnostics, explicit marketing consent and 15-character repair-description validation.
+
+= 4.8.0 =
+* Integrate marketing campaign creation and history into the Customers administration page as a dedicated tab.
+* Add administrator deletion for campaign history and cancellation of pending scheduled campaign events.
+* Add a Customers-area WooCommerce orders tab with permanent deletion through WooCommerce CRUD (HPOS compatible).
+* Keep the legacy marketing admin URL redirecting to the integrated Customers tab.
+* Include WooCommerce customer-role accounts in customer management.
+* Raise customer repair-request rate limits to 10 per account and 1000 per shared IP per day, using fresh versioned counters while retaining anti-abuse protection.

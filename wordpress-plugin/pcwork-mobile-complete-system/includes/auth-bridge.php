@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) exit;
 
 final class PCWork_Mobile_Auth_Bridge {
     const NS = 'pcwork/v1';
-    const TOKEN_TTL = 86400;
+    const TOKEN_TTL = 2592000;
     const OTP_TTL = 300;
     const OTP_RESEND_SECONDS = 60;
 
@@ -203,10 +203,29 @@ final class PCWork_Mobile_Auth_Bridge {
         $identifier=sanitize_text_field((string)($request->get_param('login') ?: $request->get_param('identifier') ?: $request->get_param('email') ?: $request->get_param('user_login')));
         $password=(string)$request->get_param('password');
         if ($identifier==='' || $password==='') return new WP_Error('pcwork_missing_credentials','Въведете данни за вход.',['status'=>400]);
-        $user=wp_authenticate($identifier,$password);
+        // WordPress password authentication remains mandatory. Email is normalized to login name.
+        $candidate = is_email($identifier) ? get_user_by('email', sanitize_email($identifier)) : get_user_by('login', $identifier);
+        $login_name = ($candidate instanceof WP_User) ? $candidate->user_login : $identifier;
+        $user=wp_authenticate($login_name,$password);
         if (is_wp_error($user) || !($user instanceof WP_User)) return new WP_Error('pcwork_bad_credentials','Невалидни данни за вход.',['status'=>401]);
-        if (in_array('pcwork_customer',(array)$user->roles,true)) return new WP_Error('pcwork_customer_use_otp','Клиентският вход е само с код по имейл.',['status'=>403]);
+        if (get_user_meta($user->ID, 'pcwork_account_blocked', true)) return new WP_Error('pcwork_account_blocked','Достъпът до профила е ограничен. Свържете се с администратора.',['status'=>403]);
+        $otp_bypass = get_user_meta($user->ID, 'pcwork_otp_bypass', true) === '1';
+        if ((in_array('pcwork_customer',(array)$user->roles,true) || in_array('subscriber',(array)$user->roles,true) || in_array('customer',(array)$user->roles,true)) && !$otp_bypass) return new WP_Error('pcwork_customer_use_otp','За този профил е задължителен вход с код по имейл.',['status'=>403]);
+        if (!in_array('pcwork_customer',(array)$user->roles,true) && !$otp_bypass && !user_can($user, 'read')) return new WP_Error('pcwork_bad_credentials','Невалидни данни за вход.',['status'=>401]);
         return self::response($user->ID);
+    }
+
+    /** Clear OTP counters for a user after an administrator-authorized action. */
+    public static function clear_user_rate_limits($user_id) {
+        $user = get_user_by('id', absint($user_id));
+        if (!$user) return false;
+        $email = strtolower(trim($user->user_email));
+        foreach (['email_15m','email_day','cooldown_60s'] as $kind_window) {
+            [$kind,$window] = explode('_', $kind_window, 2);
+            delete_transient(self::count_key($kind, $email, $window));
+        }
+        delete_transient(self::count_key('challenge', 'login|' . $email, 'otp'));
+        return true;
     }
     private static function profile_payload($user_id) {
         $u=get_user_by('id',$user_id);

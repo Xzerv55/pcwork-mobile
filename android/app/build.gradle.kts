@@ -31,7 +31,8 @@ android {
     defaultConfig {
         applicationId = "com.pcworkbg.pcwork_mobile"
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
+        // POST_NOTIFICATIONS requires Android 13+ runtime permission handling.
+        targetSdk = maxOf(flutter.targetSdkVersion, 33)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true

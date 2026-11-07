@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import '../firebase_options.dart';
 
 class PushNotificationService {
@@ -15,6 +16,7 @@ class PushNotificationService {
   static StreamSubscription<RemoteMessage>? _foregroundSubscription;
   static StreamSubscription<RemoteMessage>? _openedSubscription;
   static String? _activeBearerToken;
+  static const MethodChannel _androidNotificationChannel = MethodChannel('com.pcworkbg.pcwork_mobile/notifications');
 
   static Future<void> initialize() async {
     if (_initialized || !DefaultFirebaseOptions.isConfigured) return;
@@ -25,8 +27,14 @@ class PushNotificationService {
   /// Requests the operating-system notification permission independently
   /// of account login. Token registration is deferred until a user session exists.
   Future<bool> requestPermission() async {
-    if (!DefaultFirebaseOptions.isConfigured) return false;
     try {
+      if (Platform.isAndroid) {
+        // Native Android runtime request is deliberately independent from Firebase
+        // initialization, so POST_NOTIFICATIONS is still requested on first launch.
+        final granted = await _androidNotificationChannel.invokeMethod<bool>('requestNotificationPermission');
+        if (granted != true) return false;
+      }
+      if (!DefaultFirebaseOptions.isConfigured) return Platform.isAndroid;
       await initialize();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
@@ -39,25 +47,28 @@ class PushNotificationService {
       return settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
     } catch (_) {
-      return false;
+      // Fall back to Firebase's permission implementation if the native bridge
+      // is unavailable (for example on an older development build).
+      if (!DefaultFirebaseOptions.isConfigured) return false;
+      try {
+        await initialize();
+        final settings = await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true, provisional: false);
+        return settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional;
+      } catch (_) { return false; }
     }
   }
 
   Future<bool> register(String bearerToken,
-      {required void Function(String title, String body) onForeground,
+      {required void Function(String title, String body, Map<String, dynamic> data) onForeground,
       required void Function(Map<String, dynamic> data) onOpened}) async {
     if (!DefaultFirebaseOptions.isConfigured) return false;
     try {
       _activeBearerToken = bearerToken;
+      if (!await requestPermission()) return false;
       await initialize();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
-      var permission = await messaging.getNotificationSettings();
-      if (permission.authorizationStatus == AuthorizationStatus.notDetermined) {
-        permission = await messaging.requestPermission(
-          alert: true, badge: true, sound: true, provisional: false,
-        );
-      }
+      final permission = await messaging.getNotificationSettings();
       if (permission.authorizationStatus != AuthorizationStatus.authorized && permission.authorizationStatus != AuthorizationStatus.provisional) return false;
       if (Platform.isIOS) {
         // FCM token is issued after APNs registration is available.
@@ -83,6 +94,7 @@ class PushNotificationService {
         onForeground(
           message.notification?.title ?? 'PCWork',
           message.notification?.body ?? 'Имате ново известие за ремонта си.',
+          Map<String, dynamic>.from(message.data),
         );
       });
       await _openedSubscription?.cancel();
