@@ -4,7 +4,7 @@
 2. Качи подписания APK с име `PCWork-Mobile.apk`.
 3. Изчисли SHA-256 на APK файла (на Windows PowerShell: `Get-FileHash .\PCWork-Mobile.apk -Algorithm SHA256`).
 4. Качи `update.json` в същата папка. Използвай `update.json.example` като шаблон и замени стойностите:
-   - `version`: версията от `pubspec.yaml` (например `0.69.0`)
+   - `version`: версията от `pubspec.yaml` (например `0.70.0`)
    - `version_code`: Android build number (например `69`)
    - `apk_url`: HTTPS адресът на APK файла на `pcwork-bg.com`
    - `sha256`: 64-символната SHA-256 стойност от предишната стъпка

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:flutter/widgets.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
@@ -98,9 +99,11 @@ class PushNotificationService {
         );
       });
       await _openedSubscription?.cancel();
-      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) => onOpened(message.data));
+      _openedSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        _dispatchOpenedMessage(message, onOpened);
+      });
       final initial = await messaging.getInitialMessage();
-      if (initial != null) onOpened(initial.data);
+      if (initial != null) _dispatchOpenedMessage(initial, onOpened);
       return true;
     } catch (_) {
       // Missing Firebase/APNs configuration must not block login or app use.
@@ -108,6 +111,21 @@ class PushNotificationService {
     }
   }
 
+
+  void _dispatchOpenedMessage(RemoteMessage message, void Function(Map<String, dynamic>) onOpened) {
+    final data = Map<String, dynamic>.from(message.data);
+    final title = message.notification?.title ?? '';
+    final body = message.notification?.body ?? '';
+    if (title.isNotEmpty) data['_notification_title'] = title;
+    if (body.isNotEmpty) data['_notification_body'] = body;
+    // The OS launches the activity before Flutter has completed its first frame.
+    // Defer routing/display so the initial notification is not lost during startup.
+    unawaited(() async {
+      await WidgetsBinding.instance.endOfFrame;
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      onOpened(data);
+    }());
+  }
 
   Future<void> unregister(String bearerToken) async {
     if (!_initialized) return;

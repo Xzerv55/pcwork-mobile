@@ -58,10 +58,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _marketingPreferenceLoaded = false;
   String? _pushStatusMessage;
   bool _pushRegistering = false;
+  bool _pushDialogShowing = false;
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 69;
+  static const int _currentBuildNumber = 70;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
 
@@ -349,21 +350,32 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             campaignId: (data['campaign_id'] ?? '').toString(),
           ));
         } else {
-          _messengerKey.currentState?.showSnackBar(SnackBar(content: Text('$title — $body')));
+          unawaited(_showPushDialog(title: title, body: body, targetUrl: (data['url'] ?? '').toString()));
         }
         if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
       }, onOpened: (data) async {
         if (!mounted) return;
+        final title = (data['_notification_title'] ?? data['title'] ?? tr('Известие от PCWork', 'PCWork notification')).toString();
+        final body = (data['_notification_body'] ?? data['body'] ?? data['message'] ?? '').toString();
+        final isMarketing = (data['event'] ?? '').toString() == 'marketing_campaign';
         if ((data['screen'] ?? '').toString() == 'chat') {
           _selectTab(3);
-          return;
-        }
-        final target = (data['url'] ?? '').toString().trim();
-        final uri = Uri.tryParse(target);
-        if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
         } else {
           _selectTab(1);
+        }
+        await WidgetsBinding.instance.endOfFrame;
+        await Future<void>.delayed(const Duration(milliseconds: 650));
+        if (!mounted) return;
+        if (isMarketing) {
+          await _showMarketingDialog(
+            title: title,
+            body: body,
+            imageUrl: (data['image'] ?? '').toString(),
+            targetUrl: (data['url'] ?? '').toString(),
+            campaignId: (data['campaign_id'] ?? '').toString(),
+          );
+        } else {
+          await _showPushDialog(title: title, body: body, targetUrl: (data['url'] ?? '').toString());
         }
       });
       if (mounted) {
@@ -376,6 +388,57 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
+
+  Future<void> _showPushDialog({
+    required String title,
+    required String body,
+    String targetUrl = '',
+  }) async {
+    if (!mounted || _pushDialogShowing) return;
+    final context = _navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    _pushDialogShowing = true;
+    final uri = Uri.tryParse(targetUrl.trim());
+    final validTarget = uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: isDarkTheme ? const Color(0xFF111D2B) : Colors.white,
+          titlePadding: const EdgeInsets.fromLTRB(22, 18, 8, 8),
+          contentPadding: const EdgeInsets.fromLTRB(22, 8, 22, 18),
+          title: Row(children: [
+            const Icon(Icons.notifications_active_outlined, color: cyan),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title.trim().isEmpty ? tr('Известие от PCWork', 'PCWork notification') : title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))),
+            IconButton(
+              tooltip: tr('Затвори', 'Close'),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ]),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (body.trim().isNotEmpty) Text(body, style: const TextStyle(fontSize: 15, height: 1.45)),
+            if (validTarget) ...[
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                },
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: Text(tr('Отвори', 'Open')),
+              ),
+            ],
+          ]),
+        ),
+      );
+    } finally {
+      _pushDialogShowing = false;
+    }
+  }
 
   Future<void> _showMarketingDialog({
     required String title,
