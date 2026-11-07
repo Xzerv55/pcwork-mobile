@@ -38,6 +38,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool staffPreview = false;
   bool clientPreview = false;
   int tab = 0;
+  bool _showChatGreeting = true;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
   String apiUrl = defaultApi;
@@ -60,7 +61,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 68;
+  static const int _currentBuildNumber = 69;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
 
@@ -630,7 +631,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Обяви', 'Listings'), tr('Поддръжка', 'Support'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Обяви', 'Listings'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
@@ -710,7 +711,42 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
                 : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF7F9FC), Color(0xFFEEF2F7)]),
           ),
-          child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink())),
+          child: Stack(
+            children: [
+              Positioned.fill(child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink()))),
+              if (_showChatGreeting && tab != 3)
+                Positioned(
+                  right: 14,
+                  bottom: 16,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: MediaQuery.of(context).size.width < 338 ? MediaQuery.of(context).size.width - 28 : 310,
+                      padding: const EdgeInsets.fromLTRB(14, 11, 8, 11),
+                      decoration: BoxDecoration(
+                        color: isDarkTheme ? const Color(0xFF17283A) : Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: cyan.withValues(alpha: .65)),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 18, offset: const Offset(0, 7))],
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Container(width: 40, height: 40, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle), child: const Icon(Icons.chat_bubble_rounded, color: Color(0xFF061319))),
+                        const SizedBox(width: 10),
+                        Flexible(child: InkWell(
+                          onTap: () { setState(() => _showChatGreeting = false); _selectTab(3); },
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                            Text(tr('С какво да помогнем?', 'How can we help?'), style: TextStyle(fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+                            const SizedBox(height: 2),
+                            Text(tr('Натисни, за да отвориш чата', 'Tap to open chat'), style: TextStyle(fontSize: 11, color: isDarkTheme ? Colors.white70 : Colors.black54)),
+                          ]),
+                        )),
+                        IconButton(visualDensity: VisualDensity.compact, tooltip: tr('Затвори', 'Close'), onPressed: () => setState(() => _showChatGreeting = false), icon: const Icon(Icons.close_rounded, size: 18)),
+                      ]),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -751,7 +787,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Row(children: [
       Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => _selectTab(1))),
       const SizedBox(width: 12),
-      Expanded(child: _quickCard(Icons.support_agent_rounded, tr('Онлайн поддръжка', 'Live support'), () => _selectTab(3))),
+      Expanded(child: _quickCard(Icons.chat_bubble_outline_rounded, tr('Чат', 'Chat'), () => _selectTab(3))),
     ]),
     const SizedBox(height: 20),
     Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),

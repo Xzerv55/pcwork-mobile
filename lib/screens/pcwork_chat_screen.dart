@@ -30,6 +30,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
   int _lastId = 0;
   bool _loading = true;
   bool _sending = false;
+  bool _loadingMessages = false;
 
   String tr(String bg, String en) => widget.english ? en : bg;
 
@@ -53,7 +54,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
   void _startPolling() {
     _pollTimer?.cancel();
     if (widget.isActive && _token != null) {
-      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadMessages(silent: true));
+      _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) { if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true)); });
     }
   }
 
@@ -78,7 +79,9 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
 
   Future<void> _loadMessages({bool silent = false}) async {
     final token = _token;
-    if (token == null) return;
+    if (token == null || _loadingMessages) return;
+    _loadingMessages = true;
+    final wasNearBottom = !_scroll.hasClients || (_scroll.position.maxScrollExtent - _scroll.position.pixels) < 100;
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -89,15 +92,19 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
           _lastId = rows.fold<int>(_lastId, (v, row) => (int.tryParse('${row['id']}') ?? v) > v ? int.parse('${row['id']}') : v);
           _error = null;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
-        });
+        if (wasNearBottom) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          });
+        }
       } else if (!silent && mounted) {
         setState(() => _error = null);
       }
       if (mounted && _loading) setState(() => _loading = false);
     } catch (e) {
       if (mounted && !silent) setState(() { _error = '$e'; _loading = false; });
+    } finally {
+      _loadingMessages = false;
     }
   }
 
