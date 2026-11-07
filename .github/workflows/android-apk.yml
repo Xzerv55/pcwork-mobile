@@ -108,9 +108,9 @@ jobs:
           --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
 
       - name: Upload APK files
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
-          name: pcwork-android-v57-apks
+          name: pcwork-android-v60-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/app-*-release.apk

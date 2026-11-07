@@ -44,7 +44,7 @@ jobs:
           --dart-define=FIREBASE_IOS_API_KEY="$FIREBASE_IOS_API_KEY"
           --dart-define=FIREBASE_IOS_APP_ID="$FIREBASE_IOS_APP_ID"
           --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
-          name: pcwork-ios-v57-app-unsigned
+          name: pcwork-ios-v60-app-unsigned
           path: build/ios/iphoneos/Runner.app
