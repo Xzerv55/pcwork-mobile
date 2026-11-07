@@ -2,11 +2,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key, required this.api, required this.tokenProvider, required this.english});
+  const ShopScreen({super.key, required this.api, required this.tokenProvider, required this.profileProvider, required this.english});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
+  final Future<AuthUser?> Function() profileProvider;
   final bool english;
 
   @override
@@ -520,12 +522,20 @@ class _ShopScreenState extends State<ShopScreen> {
     }
     if (cart.isEmpty) return;
 
-    final name = TextEditingController();
-    final email = TextEditingController();
-    final phone = TextEditingController();
-    final address = TextEditingController();
-    final city = TextEditingController();
-    final postcode = TextEditingController();
+    AuthUser? profile;
+    try { profile = await widget.profileProvider(); } catch (_) {}
+    final billing = profile?.billing ?? const <String, dynamic>{};
+    final shipping = profile?.shipping ?? const <String, dynamic>{};
+    final name = TextEditingController(text: [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ').isNotEmpty ? [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ') : (profile?.name ?? ''));
+    final email = TextEditingController(text: profile?.email ?? '');
+    final phone = TextEditingController(text: (billing['phone'] ?? profile?.phone ?? '').toString());
+    final company = TextEditingController(text: (billing['company'] ?? '').toString());
+    final billingAddress = TextEditingController(text: (billing['address_1'] ?? '').toString());
+    final billingCity = TextEditingController(text: (billing['city'] ?? '').toString());
+    final billingPostcode = TextEditingController(text: (billing['postcode'] ?? '').toString());
+    final address = TextEditingController(text: (shipping['address_1'] ?? '').toString().isNotEmpty ? (shipping['address_1'] ?? '').toString() : (billing['address_1'] ?? '').toString());
+    final city = TextEditingController(text: (shipping['city'] ?? '').toString().isNotEmpty ? (shipping['city'] ?? '').toString() : (billing['city'] ?? '').toString());
+    final postcode = TextEditingController(text: (shipping['postcode'] ?? '').toString().isNotEmpty ? (shipping['postcode'] ?? '').toString() : (billing['postcode'] ?? '').toString());
     final formKey = GlobalKey<FormState>();
 
     final accepted = await showDialog<bool>(
@@ -542,11 +552,19 @@ class _ShopScreenState extends State<ShopScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _checkoutField(name, tr('Име и фамилия', 'Full name')),
-                  _checkoutField(email, 'Email', keyboard: TextInputType.emailAddress),
+                  TextFormField(controller: email, readOnly: true, decoration: InputDecoration(labelText: tr('Регистрационен имейл', 'Registration email'), helperText: tr('Имейлът е заключен към профила ви.', 'Email is locked to your account.'))),
                   _checkoutField(phone, tr('Телефон', 'Phone'), keyboard: TextInputType.phone),
+                  _checkoutField(company, tr('Фирма (по желание)', 'Company (optional)')),
+                  const Divider(height: 24),
+                  Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране', 'Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
+                  _checkoutField(billingAddress, tr('Адрес за фактуриране', 'Billing address')),
+                  _checkoutField(billingCity, tr('Град', 'City')),
+                  _checkoutField(billingPostcode, tr('Пощенски код', 'Postcode')),
+                  const Divider(height: 24),
+                  Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка', 'Shipping address'), style: const TextStyle(fontWeight: FontWeight.bold))),
                   _checkoutField(address, tr('Адрес за доставка', 'Delivery address')),
-                  _checkoutField(city, tr('Град', 'City')),
-                  _checkoutField(postcode, tr('Пощенски код', 'Postcode')),
+                  _checkoutField(city, tr('Град за доставка', 'Shipping city')),
+                  _checkoutField(postcode, tr('Пощенски код за доставка', 'Shipping postcode')),
                 ],
               ),
             ),
@@ -564,19 +582,22 @@ class _ShopScreenState extends State<ShopScreen> {
       ),
     );
 
-    if (!mounted || accepted != true) return;
+    if (!mounted || accepted != true) { for (final c in [name, email, phone, company, billingAddress, billingCity, billingPostcode, address, city, postcode]) { c.dispose(); } return; }
     setState(() => placingOrder = true);
+    final nameParts = name.text.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final firstName = nameParts.isEmpty ? '' : nameParts.first;
+    final lastName = nameParts.length > 1 ? nameParts.skip(1).join(' ') : '';
     try {
       final result = await widget.api.createShopOrder(
         token,
         items: cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList(),
         billing: {
-          'first_name': name.text.trim(), 'last_name': '', 'email': email.text.trim(),
-          'phone': phone.text.trim(), 'address_1': address.text.trim(), 'city': city.text.trim(),
-          'postcode': postcode.text.trim(), 'country': 'BG',
+          'first_name': firstName, 'last_name': lastName, 'company': company.text.trim(), 'email': profile?.email ?? email.text.trim(),
+          'phone': phone.text.trim(), 'address_1': billingAddress.text.trim(), 'city': billingCity.text.trim(),
+          'postcode': billingPostcode.text.trim(), 'country': 'BG',
         },
         shipping: {
-          'first_name': name.text.trim(), 'last_name': '', 'address_1': address.text.trim(),
+          'first_name': firstName, 'last_name': lastName, 'address_1': address.text.trim(),
           'city': city.text.trim(), 'postcode': postcode.text.trim(), 'country': 'BG',
         },
       );
@@ -590,6 +611,7 @@ class _ShopScreenState extends State<ShopScreen> {
       _message('$e');
     } finally {
       if (mounted) setState(() => placingOrder = false);
+      for (final c in [name, email, phone, company, billingAddress, billingCity, billingPostcode, address, city, postcode]) { c.dispose(); }
     }
   }
 

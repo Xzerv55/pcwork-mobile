@@ -12,6 +12,10 @@ final class PCWork_Admin_Integration_Settings {
         add_action('personal_options_update', [__CLASS__, 'save_marketing_profile_field']);
         add_action('edit_user_profile_update', [__CLASS__, 'save_marketing_profile_field']);
         add_action('pcwork_send_marketing_campaign', [__CLASS__, 'send_marketing_campaign'], 10, 1);
+        add_action('pcwork_fcm_token_maintenance', [__CLASS__, 'maintain_fcm_tokens']);
+        if (!wp_next_scheduled('pcwork_fcm_token_maintenance')) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', 'pcwork_fcm_token_maintenance');
+        }
         add_action('admin_init', [__CLASS__, 'register']);
         add_action('admin_init', [__CLASS__, 'maybe_encrypt_legacy_sheets_secret'], 20);
         add_action('admin_enqueue_scripts', [__CLASS__, 'styles']);
@@ -375,7 +379,9 @@ final class PCWork_Admin_Integration_Settings {
         if (strlen($token) < 40 || strlen($token) > 4096) return new WP_Error('pcwork_invalid_token','Невалиден FCM token.',['status'=>400]);
         if (!in_array($platform,['android','ios'],true)) return new WP_Error('pcwork_invalid_platform','platform трябва да е android или ios.',['status'=>400]);
         $user_id=get_current_user_id(); $tokens=get_user_meta($user_id,'pcwork_fcm_devices',true); if(!is_array($tokens)) $tokens=[];
-        $tokens[$token]=['platform'=>$platform,'updated_at'=>time()];
+        $now = time();
+        $previous = (isset($tokens[$token]) && is_array($tokens[$token])) ? $tokens[$token] : [];
+        $tokens[$token]=array_merge($previous, ['platform'=>$platform,'registered_at'=>(int)($previous['registered_at'] ?? $now),'last_seen'=>$now,'updated_at'=>$now]);
         if(count($tokens)>10) $tokens=array_slice($tokens,-10,null,true);
         update_user_meta($user_id,'pcwork_fcm_devices',$tokens);
         return rest_ensure_response(['registered'=>true]);
@@ -441,16 +447,81 @@ final class PCWork_Admin_Integration_Settings {
         $body=json_decode(wp_remote_retrieve_body($response),true); if(empty($body['access_token'])) return new WP_Error('pcwork_firebase_oauth','Google OAuth не върна access token. HTTP '.wp_remote_retrieve_response_code($response));
         set_transient('pcwork_fcm_access_token',['token'=>$body['access_token']],max(60,(int)($body['expires_in']??3600)-120)); return $body['access_token'];
     }
-    private static function send_fcm_message($device_token,$title,$body,$data=[]) {
+    private static function send_fcm_message($device_token,$title,$body,$data=[], $validate_only=false) {
         $s=self::get_settings(); $access=self::firebase_access_token($s); if(is_wp_error($access)) return $access;
         $url='https://fcm.googleapis.com/v1/projects/'.rawurlencode($s['firebase_project_id']).'/messages:send';
         $safe_data=['source'=>'pcwork']; foreach((array)$data as $key=>$value){ $key=sanitize_key((string)$key); if($key!=='') $safe_data[$key]=substr(sanitize_text_field((string)$value),0,500); }
         $notification=['title'=>$title,'body'=>$body]; if(!empty($data['image']))$notification['image']=$data['image'];
         $payload=['message'=>['token'=>$device_token,'notification'=>$notification,'data'=>$safe_data]];
+        if ($validate_only) $payload['validate_only'] = true; // Validate the registration without delivering a notification.
         $response=wp_remote_post($url,['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$access,'Content-Type'=>'application/json'],'body'=>wp_json_encode($payload)]);
         if(is_wp_error($response)) return $response; $code=wp_remote_retrieve_response_code($response);
-        if($code<200 || $code>=300) return new WP_Error('pcwork_fcm_send','FCM върна HTTP '.$code.': '.wp_strip_all_tags(wp_remote_retrieve_body($response)));
+        if($code<200 || $code>=300) return new WP_Error('pcwork_fcm_send','FCM върна HTTP '.$code.': '.wp_strip_all_tags(wp_remote_retrieve_body($response)), ['http_code'=>$code,'response_body'=>wp_remote_retrieve_body($response)]);
         return true;
+    }
+
+    /** Only the explicit FCM UNREGISTERED response proves that a token is dead. */
+    private static function is_permanently_unregistered_token($error) {
+        if (!is_wp_error($error)) return false;
+        $details = $error->get_error_data();
+        $raw = is_array($details) ? (string)($details['response_body'] ?? '') : '';
+        if ($raw === '') return false;
+        $json = json_decode($raw, true);
+        if (!is_array($json) || empty($json['error']['details']) || !is_array($json['error']['details'])) return false;
+        foreach ($json['error']['details'] as $detail) {
+            if (is_array($detail)
+                && ($detail['@type'] ?? '') === 'type.googleapis.com/google.firebase.fcm.v1.FcmError'
+                && ($detail['errorCode'] ?? '') === 'UNREGISTERED') return true;
+        }
+        return false;
+    }
+
+    /**
+     * Daily, low-volume maintenance. Only devices inactive for 90+ days are
+     * checked, in batches of 20. FCM validate_only never delivers a message.
+     * A token is deleted only when FCM explicitly answers UNREGISTERED.
+     */
+    public static function maintain_fcm_tokens() {
+        $settings = self::get_settings();
+        if (($settings['push_enabled'] ?? '0') !== '1' || empty($settings['firebase_project_id']) || empty($settings['firebase_service_account_json'])) return;
+        $users = get_users(['fields'=>'ID', 'number'=>-1, 'meta_key'=>'pcwork_fcm_devices']);
+        if (!$users) return;
+        $cursor = max(0, (int)get_option('pcwork_fcm_maintenance_cursor', 0));
+        if ($cursor >= count($users)) $cursor = 0;
+        $checked = 0; $visited = 0; $now = time();
+        for ($i=$cursor; $i<count($users) && $checked<20; $i++) {
+            $visited = $i + 1;
+            $user_id = (int)$users[$i];
+            $devices = get_user_meta($user_id, 'pcwork_fcm_devices', true);
+            if (!is_array($devices) || !$devices) continue;
+            $changed = false;
+            foreach ($devices as $token=>$meta) {
+                if (!is_array($meta)) $meta = [];
+                $last_seen = (int)($meta['last_seen'] ?? $meta['updated_at'] ?? 0);
+                $last_checked = (int)($meta['last_checked_at'] ?? 0);
+                if (!$last_seen || $last_seen > ($now - 90 * DAY_IN_SECONDS) || $last_checked > ($now - 30 * DAY_IN_SECONDS)) continue;
+                $checked++;
+                $result = self::send_fcm_message((string)$token, '', '', [], true);
+                if (is_wp_error($result)) {
+                    if (self::is_permanently_unregistered_token($result)) {
+                        unset($devices[$token]);
+                        $changed = true;
+                        continue;
+                    }
+                    // Network, quota, credentials and ambiguous errors never delete or mark a token as checked.
+                } else {
+                    $meta['last_checked_at'] = $now;
+                    $meta['last_validated_at'] = $now;
+                }
+                $devices[$token] = $meta;
+                $changed = true;
+            }
+            if ($changed) {
+                if ($devices) update_user_meta($user_id, 'pcwork_fcm_devices', $devices);
+                else delete_user_meta($user_id, 'pcwork_fcm_devices');
+            }
+        }
+        update_option('pcwork_fcm_maintenance_cursor', ($visited >= count($users)) ? 0 : $visited, false);
     }
 
     /**
@@ -487,7 +558,7 @@ final class PCWork_Admin_Integration_Settings {
             ]);
             if (is_wp_error($result)) {
                 // Remove tokens rejected as unregistered/invalid by FCM.
-                if (strpos($result->get_error_message(),'HTTP 404')!==false || strpos($result->get_error_message(),'UNREGISTERED')!==false) $invalid[]=$token;
+                if (self::is_permanently_unregistered_token($result)) $invalid[]=$token;
             } else $sent++;
         }
         foreach($invalid as $token) unset($devices[$token]);
@@ -526,7 +597,7 @@ final class PCWork_Admin_Integration_Settings {
             ]);
             if (is_wp_error($result)) {
                 $message = $result->get_error_message();
-                if (strpos($message, 'HTTP 404') !== false || strpos($message, 'UNREGISTERED') !== false) $invalid[] = $token;
+                if (self::is_permanently_unregistered_token($result)) $invalid[] = $token;
             } else {
                 $sent++;
             }
@@ -594,12 +665,14 @@ final class PCWork_Admin_Integration_Settings {
         $args=['fields'=>['ID'],'number'=>-1,'meta_key'=>'pcwork_marketing_opt_in','meta_value'=>'1'];
         if(($c['audience']??'all')==='customers')$args['role']='customer';
         $users=get_users($args);
-        foreach($users as $u){$devices=get_user_meta($u->ID,'pcwork_fcm_devices',true);if(!is_array($devices))continue;
+        foreach($users as $u){$devices=get_user_meta($u->ID,'pcwork_fcm_devices',true);if(!is_array($devices))continue; $invalid=[];
             foreach($devices as $token=>$meta){if(isset($seen[$token]))continue;$seen[$token]=true;
                 $data=['event'=>'marketing_campaign','campaign_id'=>$id];if(!empty($c['url']))$data['url']=$c['url'];if(!empty($c['image']))$data['image']=$c['image'];
                 $result=self::send_fcm_message($token,$c['title'],$c['body'],$data);
-                if(is_wp_error($result))$failed++;else $sent++;
+                if(is_wp_error($result)){ $failed++; if(self::is_permanently_unregistered_token($result)) $invalid[]=$token; } else $sent++;
             }
+            foreach($invalid as $dead_token) unset($devices[$dead_token]);
+            if($invalid) update_user_meta($u->ID, 'pcwork_fcm_devices', $devices);
         }
         $history[$id]['sent']=$sent;$history[$id]['failed']=$failed;$history[$id]['status']='sent';$history[$id]['sent_at']=current_time('mysql');update_option('pcwork_marketing_campaigns',$history,false);
     }

@@ -9,6 +9,8 @@ class AuthUser {
     required this.name,
     required this.email,
     this.phone = '',
+    this.billing = const {},
+    this.shipping = const {},
     this.roles = const [],
   });
 
@@ -16,6 +18,8 @@ class AuthUser {
   final String name;
   final String email;
   final String phone;
+  final Map<String, dynamic> billing;
+  final Map<String, dynamic> shipping;
   final List<String> roles;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -33,6 +37,8 @@ class AuthUser {
       name: (json['name'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
       phone: (json['phone'] ?? '').toString(),
+      billing: json['billing'] is Map ? Map<String, dynamic>.from(json['billing']) : const {},
+      shipping: json['shipping'] is Map ? Map<String, dynamic>.from(json['shipping']) : const {},
       roles: roles,
     );
   }
@@ -173,13 +179,13 @@ class AuthService {
     return user;
   }
 
-  Future<AuthUser> updateProfile({required String name, required String phone}) async {
+  Future<AuthUser> updateProfile({required String name, required String phone, Map<String, String> billing = const {}, Map<String, String> shipping = const {}}) async {
     final accessToken = await token;
     if (accessToken == null || accessToken.isEmpty) throw const FormatException('Няма активна сесия. Влез отново.');
     final response = await http.patch(
       _uri('auth/profile'),
       headers: {'Authorization': 'Bearer $accessToken', 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json'},
-      body: jsonEncode({'name': name.trim(), 'phone': phone.trim()}),
+      body: jsonEncode({'name': name.trim(), 'phone': phone.trim(), 'billing': billing, 'shipping': shipping}),
     ).timeout(const Duration(seconds: 20));
     final decoded = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(_message(decoded, response.statusCode));

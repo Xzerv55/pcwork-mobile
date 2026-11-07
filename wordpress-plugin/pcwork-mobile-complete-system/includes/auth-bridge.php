@@ -208,9 +208,24 @@ final class PCWork_Mobile_Auth_Bridge {
         if (in_array('pcwork_customer',(array)$user->roles,true)) return new WP_Error('pcwork_customer_use_otp','Клиентският вход е само с код по имейл.',['status'=>403]);
         return self::response($user->ID);
     }
+    private static function profile_payload($user_id) {
+        $u=get_user_by('id',$user_id);
+        $billing=[]; $shipping=[];
+        $keys=['first_name','last_name','company','address_1','address_2','city','state','postcode','country','email','phone'];
+        foreach($keys as $key) {
+            $billing[$key]=(string)get_user_meta($user_id,'billing_'.$key,true);
+            $shipping[$key]=(string)get_user_meta($user_id,'shipping_'.$key,true);
+        }
+        if (!$billing['email']) $billing['email']=$u->user_email;
+        if (!$billing['first_name'] && $u->first_name) $billing['first_name']=$u->first_name;
+        if (!$billing['last_name'] && $u->last_name) $billing['last_name']=$u->last_name;
+        if (!$billing['phone']) $billing['phone']=(string)get_user_meta($user_id,'pcwork_phone',true);
+        if (!$shipping['first_name']) $shipping['first_name']=$billing['first_name'];
+        if (!$shipping['last_name']) $shipping['last_name']=$billing['last_name'];
+        return ['id'=>(int)$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'phone'=>(string)get_user_meta($user_id,'pcwork_phone',true),'billing'=>$billing,'shipping'=>$shipping,'email_verified'=>(bool)get_user_meta($user_id,'pcwork_email_verified',true),'roles'=>array_values((array)$u->roles)];
+    }
     public static function me() {
-        $u=wp_get_current_user();
-        return rest_ensure_response(['id'=>(int)$u->ID,'name'=>$u->display_name,'email'=>$u->user_email,'phone'=>(string)get_user_meta($u->ID,'pcwork_phone',true),'email_verified'=>(bool)get_user_meta($u->ID,'pcwork_email_verified',true),'roles'=>array_values((array)$u->roles)]);
+        return rest_ensure_response(self::profile_payload(get_current_user_id()));
     }
     public static function update_profile($request) {
         $user_id=get_current_user_id(); $name=sanitize_text_field((string)$request->get_param('name')); $phone=sanitize_text_field((string)$request->get_param('phone'));
@@ -218,7 +233,16 @@ final class PCWork_Mobile_Auth_Bridge {
         $updated=wp_update_user(['ID'=>$user_id,'display_name'=>$name]);
         if (is_wp_error($updated)) return $updated;
         update_user_meta($user_id,'pcwork_phone',$phone);
-        return self::me();
+        $billing=$request->get_param('billing'); $shipping=$request->get_param('shipping');
+        $keys=['first_name','last_name','company','address_1','address_2','city','state','postcode','country'];
+        foreach(['billing'=>$billing,'shipping'=>$shipping] as $kind=>$address) {
+            if (!is_array($address)) continue;
+            foreach($keys as $key) if (array_key_exists($key,$address)) update_user_meta($user_id,$kind.'_'.$key,sanitize_text_field((string)$address[$key]));
+        }
+        // Registration email is intentionally immutable through this endpoint.
+        update_user_meta($user_id,'billing_email',get_userdata($user_id)->user_email);
+        if (class_exists('WC_Customer')) { $customer=new WC_Customer($user_id); $customer->set_first_name(sanitize_text_field((string)($billing['first_name'] ?? ''))); $customer->set_last_name(sanitize_text_field((string)($billing['last_name'] ?? ''))); $customer->set_billing_phone($phone); $customer->save(); }
+        return rest_ensure_response(self::profile_payload($user_id));
     }
 }
 PCWork_Mobile_Auth_Bridge::init();

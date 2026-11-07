@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:app_settings/app_settings.dart';
 import 'package:flutter/services.dart';
 import 'services/api_service.dart';
 import 'services/auth_service.dart';
@@ -32,6 +34,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool english = false;
   bool isDarkTheme = true;
   bool staffPreview = false;
+  bool clientPreview = false;
   int tab = 0;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
@@ -56,6 +59,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
   ApiService get api => ApiService(baseUrl: apiUrl, userId: signedInUser?.id ?? 0);
   String tr(String bg, String en) => english ? en : bg;
+  bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
+  bool get isStaffAccount => signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false;
+  bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
+  bool get showClientPreview => isAdministrator && clientPreview;
+  bool get canSeeStaffUi => (isStaffAccount && !showClientPreview) || showStaffPreview;
 
   @override
   void initState() {
@@ -112,6 +120,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       english = prefs.getBool('pcwork_english') ?? false;
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
+      clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty ? null : ServiceLocation(
         name: prefs.getString('pcwork_selected_location_name') ?? '',
@@ -166,7 +175,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_syncOfflineQueue());
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncOfflineQueue());
+      // Re-check FCM registration when the app returns from system settings.
+      if (signedInUser != null) unawaited(_retryPushRegistration());
+    }
   }
 
   void _startOfflineSync(String token) {
@@ -201,6 +214,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     _offlineSyncTimer?.cancel();
     repairSearch.dispose();
     super.dispose();
+  }
+
+
+  Future<void> _retryPushRegistration() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('pcwork_push_consent_choice') != 'yes' || !mounted) return;
+    await _enablePush();
   }
 
   Future<void> _enablePush([String? knownToken]) async {
@@ -281,7 +301,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     return SafeArea(
       top: false,
       child: Container(
-        height: 70,
+        height: 78,
         decoration: BoxDecoration(
           color: isDarkTheme ? const Color(0xFF0E1724) : Colors.white,
         ),
@@ -299,43 +319,36 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                   hoverColor: Colors.transparent,
                   onTap: () => _selectTab(index),
                   child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          width: 64,
-                          height: 32,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: selected ? cyan.withValues(alpha: .16) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Icon(
-                            selected ? selectedIcons[index] : icons[index],
-                            size: 29,
-                            color: selected ? selectedColor : mutedColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              labels[index],
-                              maxLines: 1,
-                              style: TextStyle(
-                                fontSize: 11,
-                                height: 1.15,
-                                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                                color: selected ? selectedColor : mutedColor,
-                              ),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      width: double.infinity,
+                      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
+                      padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: selected ? cyan.withValues(alpha: .17) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(selected ? selectedIcons[index] : icons[index],
+                            size: 34, color: selected ? selectedColor : mutedColor),
+                          const SizedBox(height: 2),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 1),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(labels[index], maxLines: 1,
+                                style: TextStyle(fontSize: 11.5, height: 1.1,
+                                  decoration: TextDecoration.none,
+                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                                  color: selected ? selectedColor : mutedColor)),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -351,8 +364,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     switch (index) {
       case 0: return _home();
       case 1: return _repairs();
-      case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, english: english);
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english);
+      case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, profileProvider: () async => (await auth.me()), english: english);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
@@ -452,25 +465,26 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]),
+        color: isDarkTheme ? null : Colors.white,
+        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]) : null,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFF2B7180).withValues(alpha: .55)),
-        boxShadow: [BoxShadow(color: cyan.withValues(alpha: .10), blurRadius: 30, spreadRadius: -8, offset: const Offset(0, 12))],
+        border: Border.all(color: isDarkTheme ? const Color(0xFF2B7180).withValues(alpha: .55) : const Color(0xFF26364A).withValues(alpha: .45)),
+        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 24, spreadRadius: -9, offset: const Offset(0, 9))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(width: 52, height: 52, padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(16)), child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PCWORK SERVICE', style: TextStyle(color: cyan.withValues(alpha: .95), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
-            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
+            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
           ])),
-          const Icon(Icons.auto_awesome_rounded, color: Color(0xFFB49BFF), size: 23),
+          Icon(Icons.auto_awesome_rounded, color: isDarkTheme ? const Color(0xFFB49BFF) : const Color(0xFF7952C7), size: 23),
         ]),
         const SizedBox(height: 23),
-        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: const TextStyle(fontSize: 25, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.5)),
+        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 25, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
         const SizedBox(height: 9),
-        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: const TextStyle(color: Color(0xFFC3D1E0), fontSize: 13)),
+        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: TextStyle(color: isDarkTheme ? const Color(0xFFC3D1E0) : const Color(0xFF68778B), fontSize: 13)),
         const SizedBox(height: 20),
         SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
@@ -494,23 +508,25 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Row(children: [
       Expanded(child: _contactCard(Icons.facebook, 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(Icons.music_note_rounded, 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      Expanded(child: _contactCard(FontAwesomeIcons.tiktok, 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
-    const SizedBox(height: 21),
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-      Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
-    ]),
-    const SizedBox(height: 7),
-    Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
-      Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
-      const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
-      IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
-    ]))),
+    if (signedInUser != null && canSeeStaffUi) ...[
+      const SizedBox(height: 21),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
+      ]),
+      const SizedBox(height: 7),
+      Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
+        Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
+        const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
+        IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
+      ]))),
+    ],
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
-    _infoTile(Icons.verified_user_outlined, tr('Гаранция и условия на сервиза', 'Warranty and service terms'), _showWarrantyTerms),
+    _infoTile(Icons.verified_user_outlined, tr('Общи условия GDPR', 'GDPR terms'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
   ]);
 
@@ -566,7 +582,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ListView(padding: const EdgeInsets.all(16), children: [
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          if (!signedInUser!.roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role))) ...[
+          if (!canSeeStaffUi) ...[
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showCustomerRepairRequest, icon: const Icon(Icons.add_circle_outline), label: Text(tr('Нова заявка за ремонт','New repair request')))),
             const SizedBox(height: 10),
           ],
@@ -755,9 +771,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (r == null) return SizedBox(height: 220, child: Center(child: Text(tr('Няма данни за този ремонт.', 'No repair details were returned.'))));
       final currentUser = signedInUser;
       final roles = currentUser?.roles ?? const <String>[];
-      final isStaff = roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role));
+      final isStaff = (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && !showClientPreview) || showStaffPreview;
       return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
-        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: roles.any((role) => ['administrator','pcwork_staff','shop_manager'].contains(role))))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
+        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (isStaff && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
     }));
   }
 
@@ -811,7 +827,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(height: 6),
         Text(tr('Известия за ремонтите и важни сервизни съобщения се управляват от разрешението на телефона.', 'Repair updates and important service messages are controlled by your phone notification permission.'), style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: () async { final bearer = await auth.token; if (bearer != null) await _enablePush(bearer); }, icon: const Icon(Icons.notifications), label: Text(tr('Настрой известията', 'Set up notifications'))),
+        OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
         const Divider(),
         SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
       ]))),
@@ -824,7 +840,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(height: 10),
       Text(tr('Потвърждението и входът са само с еднократен код по имейл. Не използваме SMS или Viber.', 'Verification and sign-in use one-time email codes only. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
-    if (signedInUser != null && signedInUser!.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r))) ...[
+    if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 16),
       FilledButton.icon(onPressed: _openStaffDashboard, icon: const Icon(Icons.dashboard_outlined), label: Text(tr('Отвори служебното табло', 'Open staff dashboard'))),
       const SizedBox(height: 8),
@@ -840,23 +856,59 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (user == null) return;
     final name = TextEditingController(text: user.name);
     final phone = TextEditingController(text: user.phone);
+    final email = TextEditingController(text: user.email);
+    final b = user.billing; final sh = user.shipping;
+    final first = TextEditingController(text: (b['first_name'] ?? user.name).toString());
+    final last = TextEditingController(text: (b['last_name'] ?? '').toString());
+    final company = TextEditingController(text: (b['company'] ?? '').toString());
+    final address = TextEditingController(text: (b['address_1'] ?? '').toString());
+    final address2 = TextEditingController(text: (b['address_2'] ?? '').toString());
+    final city = TextEditingController(text: (b['city'] ?? '').toString());
+    final postcode = TextEditingController(text: (b['postcode'] ?? '').toString());
+    final shipAddress = TextEditingController(text: (sh['address_1'] ?? '').toString());
+    final shipCity = TextEditingController(text: (sh['city'] ?? '').toString());
+    final shipPostcode = TextEditingController(text: (sh['postcode'] ?? '').toString());
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: Text(tr('Редакция на профила','Edit profile')),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
+      content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: email, readOnly: true, decoration: InputDecoration(labelText: tr('Регистрационен имейл (не може да се променя)','Registration email (cannot be changed)'), helperText: tr('Имейлът удостоверява профила ви.','This email identifies your account.'))),
+        const SizedBox(height: 12),
         TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: tr('Име и фамилия','Full name'))),
         const SizedBox(height: 12),
         TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('Телефон','Phone'))),
-      ]),
+        const Divider(height: 28), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране','Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
+        TextField(controller: first, decoration: InputDecoration(labelText: tr('Собствено име','First name'))),
+        TextField(controller: last, decoration: InputDecoration(labelText: tr('Фамилия','Last name'))),
+        TextField(controller: company, decoration: InputDecoration(labelText: tr('Фирма (по желание)','Company (optional)'))),
+        TextField(controller: address, decoration: InputDecoration(labelText: tr('Адрес','Address'))),
+        TextField(controller: address2, decoration: InputDecoration(labelText: tr('Допълнение към адреса','Address line 2'))),
+        TextField(controller: city, decoration: InputDecoration(labelText: tr('Град','City'))),
+        TextField(controller: postcode, decoration: InputDecoration(labelText: tr('Пощенски код','Postcode'))),
+        const Divider(height: 28), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка (ако е различен)','Shipping address (if different)'), style: const TextStyle(fontWeight: FontWeight.bold))),
+        TextField(controller: shipAddress, decoration: InputDecoration(labelText: tr('Адрес за доставка','Shipping address'))),
+        TextField(controller: shipCity, decoration: InputDecoration(labelText: tr('Град за доставка','Shipping city'))),
+        TextField(controller: shipPostcode, decoration: InputDecoration(labelText: tr('Пощенски код за доставка','Shipping postcode'))),
+      ]))),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx,false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: () => Navigator.pop(ctx,true), child: Text(tr('Запази','Save')))],
     ));
     if (ok == true) {
       try {
-        final updated = await auth.updateProfile(name: name.text, phone: phone.text);
+        final updated = await auth.updateProfile(name: name.text, phone: phone.text,
+          billing: {'first_name': first.text, 'last_name': last.text, 'company': company.text, 'address_1': address.text, 'address_2': address2.text, 'city': city.text, 'postcode': postcode.text, 'country': 'BG'},
+          shipping: {'first_name': first.text, 'last_name': last.text, 'address_1': shipAddress.text, 'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG'});
         if (mounted) setState(() => signedInUser = updated);
-        _message(tr('Профилът е обновен.','Profile updated.'));
+        _message(tr('Профилът е обновен. Регистрационният имейл не е променян.','Profile updated. Registration email was not changed.'));
       } catch (error) { _message('${tr('Неуспешно обновяване:','Update failed:')} $error'); }
     }
-    name.dispose(); phone.dispose();
+    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipAddress, shipCity, shipPostcode]) { c.dispose(); }
+  }
+
+  Future<void> _openNotificationSettings() async {
+    try {
+      await AppSettings.openAppSettings(type: AppSettingsType.notification);
+    } catch (_) {
+      try { await AppSettings.openAppSettings(); } catch (e) { _message('${tr('Неуспешно отваряне на настройките:','Could not open settings:')} $e'); }
+    }
   }
 
   Future<void> _openStaffDashboard() async {
@@ -1092,7 +1144,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 );
               },
             ),
-            if (signedInUser?.roles.any((role) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(role)) ?? false)
+            if (canSeeStaffUi)
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
@@ -1166,7 +1218,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       builder: (sheetContext) => SizedBox(
         height: MediaQuery.of(sheetContext).size.height * .78,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1205,6 +1257,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                           'No active service locations. Check the WordPress plugin.')));
                     }
                     return ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 8),
                       itemCount: rows.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 9),
                       itemBuilder: (_, i) {
@@ -1299,141 +1352,60 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: const Icon(Icons.home_repair_service_rounded, size: 48, color: cyan),
   );
 
-  Future<void> _showFcmDeviceToken() async {
-    try {
-      final token = await push.getDeviceToken().timeout(const Duration(seconds: 25));
-      if (!mounted) return;
-      await showDialog<void>(
-        context: _navigatorKey.currentContext!,
-        useRootNavigator: true,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(tr('FCM token на това устройство', 'This device FCM token')),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SelectableText(token, style: const TextStyle(fontSize: 12)),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext, rootNavigator: true).pop(), child: Text(tr('Затвори', 'Close'))),
-            FilledButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: token));
-                if (dialogContext.mounted) Navigator.of(dialogContext, rootNavigator: true).pop();
-                _message(tr('FCM token е копиран. Постави го в WordPress → Маркетинг и Push → Тестов FCM device token.',
-                    'FCM token copied. Paste it into WordPress → Marketing & Push → Test FCM device token.'));
-              },
-              icon: const Icon(Icons.copy),
-              label: Text(tr('Копирай token', 'Copy token')),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        _message('${tr('FCM token не може да бъде получен:', 'Could not retrieve FCM token:')} $e');
-      }
-    }
-  }
-
   void _showSettings() {
     if (_settingsOpen) return;
     _settingsOpen = true;
     final controller = TextEditingController(text: apiUrl);
     var draftStaffPreview = staffPreview;
+    var draftClientPreview = clientPreview;
     var draftDarkTheme = isDarkTheme;
-    var draftEnglish = english;
+    Timer? apiSaveTimer;
+    bool savingApi = false;
+    Future<void> saveTheme(bool value, void Function(void Function()) setSheetState) async {
+      setSheetState(() => draftDarkTheme = value);
+      if (mounted) setState(() => isDarkTheme = value);
+      await _savePreference('pcwork_dark_theme', value);
+    }
+    Future<void> savePreview(bool value, void Function(void Function()) setSheetState) async {
+      if (!isAdministrator) return;
+      setSheetState(() { draftStaffPreview = value; if (value) draftClientPreview = false; });
+      if (mounted) setState(() { staffPreview = value; if (value) clientPreview = false; });
+      await _savePreference('pcwork_staff_preview', value);
+      if (value) await _savePreference('pcwork_client_preview', false);
+    }
+    Future<void> saveApi(String value, BuildContext sheetContext) async {
+      if (!isAdministrator || savingApi) return;
+      final cleaned = value.trim().replaceFirst(RegExp(r'/+$'), '');
+      final parsed = Uri.tryParse(cleaned);
+      if (parsed == null || parsed.host.isEmpty || parsed.scheme != 'https') return;
+      savingApi = true;
+      try { await _saveApiUrl(cleaned); unawaited(_checkApi(silent: true)); if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text(tr('API адресът е запазен.','API address saved.')))); }
+      catch (e) { if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text('$e'))); }
+      finally { savingApi = false; }
+    }
     showModalBottomSheet<void>(
-      context: _navigatorKey.currentContext!,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(22, 18, 22, MediaQuery.of(sheetContext).viewInsets.bottom + 18),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.tune_rounded, color: cyan),
-                  const SizedBox(width: 9),
-                  Expanded(child: Text(tr('Настройки на приложението', 'Application settings'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
-                  IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close)),
-                ]),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.url,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'WordPress API URL', hintText: 'https://pcwork-bg.com', prefixIcon: Icon(Icons.link), border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(tr('Преглед като служител', 'Staff preview mode')),
-                  subtitle: Text(tr('Само визуален режим. Не предоставя служебни права.', 'Visual preview only. Does not grant staff permissions.')),
-                  value: draftStaffPreview,
-                  onChanged: (v) => setSheetState(() => draftStaffPreview = v),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined),
-                  title: Text(tr('Тъмна тема', 'Dark theme')),
-                  subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')),
-                  value: draftDarkTheme,
-                  onChanged: (v) => setSheetState(() => draftDarkTheme = v),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(tr('Английски език', 'English language')),
-                  subtitle: Text(tr('Изключено: Български', 'Off: Bulgarian')),
-                  value: draftEnglish,
-                  onChanged: (v) => setSheetState(() => draftEnglish = v),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async { Navigator.pop(sheetContext); await Future<void>.delayed(Duration.zero); if (mounted) _showFcmDeviceToken(); },
-                    icon: const Icon(Icons.notifications_active_outlined),
-                    label: Text(tr('Покажи / копирай FCM token', 'Show / copy FCM token')),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      try {
-                        await _saveApiUrl(controller.text);
-                        setState(() { staffPreview = draftStaffPreview; isDarkTheme = draftDarkTheme; english = draftEnglish; });
-                        await _savePreference('pcwork_staff_preview', draftStaffPreview);
-                        await _savePreference('pcwork_dark_theme', draftDarkTheme);
-                        await _savePreference('pcwork_english', draftEnglish);
-                        if (sheetContext.mounted) Navigator.pop(sheetContext);
-                        await _checkApi();
-                      } catch (e) {
-                        if (sheetContext.mounted) ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(content: Text('$e')));
-                      }
-                    },
-                    icon: const Icon(Icons.save_outlined),
-                    label: Text(tr('Запази настройките', 'Save settings')),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: () => setSheetState(() => controller.text = defaultApi),
-                    icon: const Icon(Icons.restart_alt),
-                    label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).whenComplete(() { _settingsOpen = false; controller.dispose(); });
+      context: _navigatorKey.currentContext!, isScrollControlled: true, useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(builder: (sheetContext, setSheetState) => Padding(
+        padding: EdgeInsets.fromLTRB(22, 18, 22, MediaQuery.of(sheetContext).viewInsets.bottom + 18),
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [const Icon(Icons.tune_rounded, color: cyan), const SizedBox(width: 9), Expanded(child: Text(tr('Настройки на приложението', 'Application settings'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close))]),
+          const SizedBox(height: 12),
+          if (isAdministrator) ...[
+            TextField(controller: controller, keyboardType: TextInputType.url, autocorrect: false,
+              onChanged: (value) { apiSaveTimer?.cancel(); apiSaveTimer = Timer(const Duration(milliseconds: 800), () => saveApi(value, sheetContext)); },
+              onSubmitted: (value) { apiSaveTimer?.cancel(); saveApi(value, sheetContext); },
+              decoration: const InputDecoration(labelText: 'WordPress API URL', hintText: 'https://pcwork-bg.com', prefixIcon: Icon(Icons.link), border: OutlineInputBorder())),
+            const SizedBox(height: 6),
+            Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () { controller.text = defaultApi; apiSaveTimer?.cancel(); saveApi(defaultApi, sheetContext); }, icon: const Icon(Icons.restart_alt), label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')))),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като служител', 'Preview as employee')), subtitle: Text(tr('Само визуализация. Не променя ролята или сървърните права.', 'Visual preview only. Does not change role or server permissions.')), value: draftStaffPreview, onChanged: (v) => savePreview(v, setSheetState)),
+            SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като клиент', 'Preview as customer')), subtitle: Text(tr('Скрива служебните екрани само за визуална проверка.', 'Hides staff screens for visual review only.')), value: draftClientPreview, onChanged: (v) async { setSheetState(() { draftClientPreview = v; if (v) draftStaffPreview = false; }); if (mounted) setState(() { clientPreview = v; if (v) staffPreview = false; }); await _savePreference('pcwork_client_preview', v); if (v) await _savePreference('pcwork_staff_preview', false); }),
+          ],
+          SwitchListTile(contentPadding: EdgeInsets.zero, secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined), title: Text(tr('Тъмна тема', 'Dark theme')), subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')), value: draftDarkTheme, onChanged: (v) => saveTheme(v, setSheetState)),
+          const SizedBox(height: 8),
+          Text(tr('Промените се запазват автоматично.', 'Changes are saved automatically.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54, fontSize: 12)),
+        ])),
+      )),
+    ).whenComplete(() { apiSaveTimer?.cancel(); _settingsOpen = false; controller.dispose(); });
   }
 
   void _message(String value) { if (!mounted) return; _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(value))); }

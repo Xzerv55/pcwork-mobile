@@ -31,6 +31,7 @@ class PushNotificationService {
       _activeBearerToken = bearerToken;
       await initialize();
       final messaging = FirebaseMessaging.instance;
+      await messaging.setAutoInitEnabled(true);
       final permission = await messaging.requestPermission(
         alert: true, badge: true, sound: true,
         provisional: false,
@@ -72,49 +73,6 @@ class PushNotificationService {
     }
   }
 
-
-  /// Requests notification permission and returns this installation's FCM token.
-  /// The token is shown only inside the app so an administrator can copy it
-  /// into the WordPress test-token field.
-  Future<String> getDeviceToken() async {
-    if (!DefaultFirebaseOptions.isConfigured) {
-      throw Exception('Firebase не е конфигуриран в тази компилация. За Android провери дали android/app/google-services.json е наличен в GitHub и съдържа клиент за com.pcworkbg.pcwork_mobile. След това стартирай нова компилация от GitHub Actions.');
-    }
-    try {
-      await initialize().timeout(const Duration(seconds: 15));
-      final messaging = FirebaseMessaging.instance;
-      await messaging.setAutoInitEnabled(true);
-      final permission = await messaging.requestPermission(
-        alert: true, badge: true, sound: true, provisional: false,
-      ).timeout(const Duration(seconds: 15));
-      if (permission.authorizationStatus == AuthorizationStatus.denied) {
-        throw Exception('Разрешението за известия е отказано. Разреши известията за PCWork от настройките на телефона и опитай отново.');
-      }
-      if (Platform.isIOS) {
-        String? apnsToken;
-        for (var attempt = 0; attempt < 20 && apnsToken == null; attempt++) {
-          apnsToken = await messaging.getAPNSToken();
-          if (apnsToken == null) await Future<void>.delayed(const Duration(milliseconds: 500));
-        }
-        if (apnsToken == null) {
-          throw Exception('Липсва APNs token. Провери Apple Push Notifications настройките във Firebase.');
-        }
-      }
-      String? token;
-      for (var attempt = 0; attempt < 3 && (token == null || token.isEmpty); attempt++) {
-        token = await messaging.getToken().timeout(const Duration(seconds: 15));
-        if (token == null || token.isEmpty) await Future<void>.delayed(const Duration(seconds: 2));
-      }
-      if (token == null || token.isEmpty) {
-        throw Exception('Firebase не върна FCM token. Провери google-services.json, package name com.pcworkbg.pcwork_mobile и интернет връзката.');
-      }
-      return token;
-    } on PlatformException catch (error) {
-      throw Exception('Firebase Messaging (${error.code}): ${error.message ?? error.details ?? 'неизвестна грешка'}');
-    } on TimeoutException {
-      throw Exception('Firebase не отговори навреме. Провери интернет връзката и опитай отново.');
-    }
-  }
 
   Future<void> unregister(String bearerToken) async {
     if (!_initialized) return;

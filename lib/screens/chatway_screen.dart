@@ -6,11 +6,12 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../services/api_service.dart';
 
 class ChatwayScreen extends StatefulWidget {
-  const ChatwayScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english});
+  const ChatwayScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final int sessionKey;
   final bool english;
+  final bool isDarkTheme;
 
   @override
   State<ChatwayScreen> createState() => _ChatwayScreenState();
@@ -36,7 +37,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
   @override
   void didUpdateWidget(covariant ChatwayScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.sessionKey != widget.sessionKey) {
+    if (oldWidget.sessionKey != widget.sessionKey || oldWidget.isDarkTheme != widget.isDarkTheme) {
       _reload();
     }
   }
@@ -67,7 +68,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
     });
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF0B1220))
+      ..setBackgroundColor(widget.isDarkTheme ? const Color(0xFF0B1220) : const Color(0xFFF3F6FA))
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (value) {
           if (mounted) setState(() => _progress = value);
@@ -181,9 +182,9 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: const Color(0xFF151F2E),
+            color: widget.isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: const Color(0xFF26374B)),
+            border: Border.all(color: widget.isDarkTheme ? const Color(0xFF26374B) : const Color(0xFFD9E1EA)),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
@@ -196,10 +197,10 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
             ),
             const SizedBox(height: 18),
             Text(title, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: widget.isDarkTheme ? Colors.white : const Color(0xFF172033))),
             const SizedBox(height: 10),
             Text(message, textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF9AAABD), height: 1.5)),
+                style: TextStyle(color: widget.isDarkTheme ? const Color(0xFF9AAABD) : const Color(0xFF68778B), height: 1.5)),
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: _reload,

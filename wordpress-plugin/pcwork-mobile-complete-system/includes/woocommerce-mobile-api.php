@@ -150,6 +150,14 @@ final class PCWork_WooCommerce_Mobile_API {
             $billing=self::clean_address((array)$request->get_param('billing'));
             $shipping=self::clean_address((array)$request->get_param('shipping'));
             if (empty($billing['first_name']) || !is_email($billing['email']) || empty($billing['phone']) || empty($billing['address_1']) || empty($billing['city'])) throw new Exception('Моля, попълнете коректно данните за контакт и доставка.');
+            // Persist checkout details to the customer's WooCommerce profile for future orders.
+            $profile_keys=['first_name','last_name','company','address_1','address_2','city','state','postcode','country','phone'];
+            foreach($profile_keys as $key) {
+                update_user_meta($user_id,'billing_'.$key,$billing[$key] ?? '');
+                update_user_meta($user_id,'shipping_'.$key,($shipping[$key] ?? '') !== '' ? $shipping[$key] : ($billing[$key] ?? ''));
+            }
+            update_user_meta($user_id,'billing_email',get_userdata($user_id)->user_email); // Registration email remains authoritative.
+            update_user_meta($user_id,'pcwork_phone',$billing['phone']);
             $order->set_address($billing,'billing'); $order->set_address($shipping ?: $billing,'shipping');
             if ($needs_shipping) self::add_shipping_rate($order,$shipping,$shipping_contents,$shipping_cost,$user_id);
             $order->update_meta_data('_pcwork_mobile_order','yes');
