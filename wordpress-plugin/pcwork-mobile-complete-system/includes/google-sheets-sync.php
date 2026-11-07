@@ -155,10 +155,12 @@ final class PCWork_Google_Sheets_Sync {
         $code = (int) wp_remote_retrieve_response_code($response);
         $raw_body = (string) wp_remote_retrieve_body($response);
         $response_body = json_decode($raw_body, true);
-        if ($code < 200 || $code >= 300 || !is_array($response_body) || empty($response_body['ok'])) {
+        $verified = is_array($response_body) && !empty($response_body['ok'])
+            && is_array($response_body['result'] ?? null) && !empty($response_body['result']['verified']);
+        if ($code < 200 || $code >= 300 || !$verified) {
             $excerpt = trim(wp_strip_all_tags($raw_body));
             if (function_exists('mb_substr')) $excerpt = mb_substr($excerpt, 0, 400); else $excerpt = substr($excerpt, 0, 400);
-            error_log('PCWork Sheets sync failed (HTTP ' . $code . '): ' . ($excerpt !== '' ? $excerpt : '[empty response]'));
+            error_log('PCWork Sheets sync failed or was not read-back verified (HTTP ' . $code . '): ' . ($excerpt !== '' ? $excerpt : '[empty response]'));
         }
     }
 }

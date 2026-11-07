@@ -19,11 +19,11 @@ final class PCWork_Admin_Integration_Settings {
             wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', 'pcwork_fcm_token_maintenance');
         }
         add_action('admin_init', [__CLASS__, 'register']);
+        add_action('admin_init', [__CLASS__, 'remove_chatway_legacy_settings'], 30);
         add_action('admin_init', [__CLASS__, 'maybe_encrypt_legacy_sheets_secret'], 20);
         add_action('admin_enqueue_scripts', [__CLASS__, 'styles']);
         add_action('admin_footer', [__CLASS__, 'admin_script']);
         add_action('rest_api_init', [__CLASS__, 'rest_routes']);
-        add_action('template_redirect', [__CLASS__, 'render_mobile_chat_page'], 0);
         add_action('wp_ajax_pcwork_test_integration', [__CLASS__, 'ajax_test_integration']);
         // Repair module should fire this action whenever a repair status changes.
         add_action('pcwork_repair_status_changed', [__CLASS__, 'on_repair_status_changed'], 10, 4);
@@ -34,6 +34,8 @@ final class PCWork_Admin_Integration_Settings {
         add_action('pcwork_repair_worklog_added', [__CLASS__, 'on_repair_worklog_added'], 10, 4);
         add_action('woocommerce_new_order', [__CLASS__, 'on_woocommerce_new_order'], 20, 1);
         add_action('pcwork_customer_repair_requested', [__CLASS__, 'on_customer_repair_requested'], 10, 4);
+        add_action('pcwork_chat_message_created', [__CLASS__, 'on_chat_message_created'], 10, 3);
+        add_action('pcwork_chat_push_async', [__CLASS__, 'deliver_chat_notification'], 10, 3);
     }
 
     public static function defaults() {
@@ -41,12 +43,21 @@ final class PCWork_Admin_Integration_Settings {
             'site_url' => home_url(),
             'woocommerce_enabled' => '1', 'woocommerce_consumer_key' => '', 'woocommerce_consumer_secret' => '',
             'bookly_enabled' => '1', 'bookly_api_url' => '', 'bookly_api_key' => '', 'bookly_booking_page_url' => '', 'bookly_shortcode' => '[bookly-form]',
-            'chatway_enabled' => '1', 'chatway_widget_id' => '', 'chatway_installation_id' => '', 'chatway_verification_enabled' => '0', 'chatway_verification_secret' => '', 'chatway_verification_identifier' => 'id',
             'shoplentor_enabled' => '1',
             'sheets_enabled' => '0', 'sheets_webhook_url' => '', 'sheets_webhook_secret' => '',
             'push_enabled' => '0', 'push_provider' => 'firebase', 'firebase_project_id' => '', 'firebase_service_account_json' => '', 'firebase_test_device_token' => '',
             'app_environment' => 'staging', 'app_latest_version' => '', 'app_version_code' => '0', 'app_apk_url' => '', 'app_release_notes' => '', 'support_email' => get_option('admin_email'), 'support_phone' => '',
         ];
+    }
+
+    public static function remove_chatway_legacy_settings() {
+        $stored = get_option(self::OPTION, []);
+        if (!is_array($stored)) return;
+        $changed = false;
+        foreach (['chatway_enabled','chatway_widget_id','chatway_installation_id','chatway_verification_enabled','chatway_verification_secret','chatway_verification_identifier'] as $key) {
+            if (array_key_exists($key, $stored)) { unset($stored[$key]); $changed = true; }
+        }
+        if ($changed) update_option(self::OPTION, $stored, false);
     }
 
     public static function get_settings() {
@@ -117,9 +128,9 @@ final class PCWork_Admin_Integration_Settings {
         delete_transient('pcwork_fcm_access_token');
         $old = self::get_settings();
         $out = self::defaults();
-        $checkboxes = ['woocommerce_enabled','bookly_enabled','chatway_enabled','chatway_verification_enabled','shoplentor_enabled','sheets_enabled','push_enabled'];
+        $checkboxes = ['woocommerce_enabled','bookly_enabled','shoplentor_enabled','sheets_enabled','push_enabled'];
         foreach ($checkboxes as $key) $out[$key] = array_key_exists($key, $input) ? (!empty($input[$key]) ? '1' : '0') : ($old[$key] ?? ($out[$key] ?? '0'));
-        $text = ['site_url','bookly_api_url','bookly_booking_page_url','bookly_shortcode','chatway_widget_id','chatway_installation_id','firebase_project_id','firebase_test_device_token','support_email','support_phone','app_latest_version'];
+        $text = ['site_url','bookly_api_url','bookly_booking_page_url','bookly_shortcode','firebase_project_id','firebase_test_device_token','support_email','support_phone','app_latest_version'];
         foreach ($text as $key) {
             $value = isset($input[$key]) ? wp_unslash($input[$key]) : ($old[$key] ?? '');
             $out[$key] = $key === 'support_email' ? sanitize_email($value) : (in_array($key, ['site_url','bookly_api_url','app_apk_url'], true) ? esc_url_raw($value) : sanitize_text_field($value));
@@ -128,7 +139,7 @@ final class PCWork_Admin_Integration_Settings {
         $out['app_apk_url'] = esc_url_raw((string)($input['app_apk_url'] ?? ($old['app_apk_url'] ?? '')));
         if ($out['app_apk_url'] !== '' && strtolower((string)wp_parse_url($out['app_apk_url'], PHP_URL_SCHEME)) !== 'https') $out['app_apk_url'] = '';
         $out['app_release_notes'] = sanitize_textarea_field((string)($input['app_release_notes'] ?? ($old['app_release_notes'] ?? '')));
-        $secrets = ['woocommerce_consumer_key','woocommerce_consumer_secret','bookly_api_key','sheets_webhook_url','sheets_webhook_secret','firebase_service_account_json','chatway_verification_secret'];
+        $secrets = ['woocommerce_consumer_key','woocommerce_consumer_secret','bookly_api_key','sheets_webhook_url','sheets_webhook_secret','firebase_service_account_json'];
         foreach ($secrets as $key) {
             $value = isset($input[$key]) ? trim((string) $input[$key]) : ''; // Settings API has already unslashed POST values.
             // Firebase Service Account е структуриран JSON: не го прекарваме
@@ -155,8 +166,6 @@ final class PCWork_Admin_Integration_Settings {
         }
         // Only the Google Sheets HMAC secret is encrypted at rest.
         $out['sheets_webhook_secret'] = self::encrypt_sheets_secret($out['sheets_webhook_secret']);
-        $identifier = $input['chatway_verification_identifier'] ?? ($old['chatway_verification_identifier'] ?? 'id');
-        $out['chatway_verification_identifier'] = in_array($identifier, ['id','email'], true) ? $identifier : 'id';
         $provider = $input['push_provider'] ?? ($old['push_provider'] ?? 'firebase');
         $out['push_provider'] = in_array($provider, ['firebase'], true) ? $provider : 'firebase';
         $environment = $input['app_environment'] ?? ($old['app_environment'] ?? 'staging');
@@ -204,13 +213,12 @@ final class PCWork_Admin_Integration_Settings {
 
         self::card_start('WooCommerce','Продукти, услуги, поръчки и клиентски профили.'); self::toggle('woocommerce_enabled','Активирай интеграцията'); self::field('woocommerce_consumer_key','Consumer Key (по избор за външен REST API)','password'); self::field('woocommerce_consumer_secret','Consumer Secret (по избор за външен REST API)','password'); echo '<p class="description">Мобилният магазин v32 използва защитения сървърен WooCommerce API и не изисква Consumer Key/Secret в приложението. Ключовете са нужни само за външни REST API интеграции и допълнителния тест.</p>';  echo '<button type="button" class="button pcw-test" data-integration="woocommerce">Провери връзката</button><span class="pcw-result" id="pcw-result-woocommerce"></span>'; echo '</section>'; 
         self::card_start('Bookly','Резервиране на часове и графици.'); self::toggle('bookly_enabled','Активирай интеграцията'); self::field('bookly_api_url','API адрес / endpoint','url','https://...'); self::field('bookly_api_key','API ключ (само ако използваш отделен Bookly REST API add-on)','password'); self::field('bookly_booking_page_url','Страница за резервации в сайта','url','https://pcwork-bg.com/rezervirane/','Това е страницата, в която е поставена стандартната Bookly форма. Приложението ще я отваря в защитен WebView/браузър.'); self::field('bookly_shortcode','Bookly shortcode','text','[bookly-form]','Стандартен shortcode за Bookly. Не се изпълнява от приложението; служи за проверка/документация.'); echo '<button type="button" class="button pcw-test" data-integration="bookly">Провери Bookly</button><span class="pcw-result" id="pcw-result-bookly"></span>'; echo '</section>'; 
-        self::card_start('Chatway Live Chat','Вграден клиентски чат с опционална сигурна идентификация на влезлите клиенти.'); self::toggle('chatway_enabled','Показвай Chatway в приложението'); self::field('chatway_installation_id','Chatway Installation ID','text','например AbCdEf123456','Вземи ID от кода за инсталиране. Въведи само стойността след id=, не API ключ.'); self::toggle('chatway_verification_enabled','Включи Visitor Verification за влезли клиенти'); echo '<label for="chatway_verification_identifier">Идентификатор за проверка</label><select id="chatway_verification_identifier" name="'.self::OPTION.'[chatway_verification_identifier]"><option value="id" '.selected(self::get_settings()['chatway_verification_identifier'],'id',false).'>WordPress User ID (препоръчително)</option><option value="email" '.selected(self::get_settings()['chatway_verification_identifier'],'email',false).'>Имейл адрес</option></select>'; self::field('chatway_verification_secret','Chatway Visitor Verification Security Key','password','','Копирай ключа от Chatway → Settings → Visitors Verification. Избраният идентификатор трябва да съвпада с Chatway; при смяна от User ID към Email ID или обратно генерирай нов ключ. Ключът остава само на сървъра и никога не се изпраща към приложението.'); self::field('chatway_widget_id','Widget ID (за бъдеща API синхронизация)'); echo '<button type="button" class="button pcw-test" data-integration="chatway">Провери настройката</button><span class="pcw-result" id="pcw-result-chatway"></span>'; echo '</section>';
         self::card_start('ShopLentor Pro','WooCommerce изгледи и продуктови секции.'); self::toggle('shoplentor_enabled','Използвай ShopLentor съдържание'); echo '</section>';
         self::card_start('Google Sheets – ремонти','Синхронизация на ремонтите към частен Google Sheet чрез Apps Script webhook.'); self::toggle('sheets_enabled','Активирай синхронизацията'); self::field('sheets_webhook_url','Apps Script Web App URL','password'); self::field('sheets_webhook_secret','HMAC Secret','password'); echo '<button type="button" class="button pcw-test" data-integration="sheets">Провери връзката</button><span class="pcw-result" id="pcw-result-sheets"></span>'; echo '</section>'; 
         self::card_start('Push известия','Настройки за Firebase Cloud Messaging (FCM).'); self::toggle('push_enabled','Активирай push известията'); echo '<label for="push_provider">Доставчик</label><select id="push_provider" name="'.self::OPTION.'[push_provider]"><option value="firebase">Firebase Cloud Messaging</option></select>'; self::field('firebase_project_id','Firebase Project ID'); self::field('firebase_service_account_json','Service Account JSON','textarea','','Поставя се само в защитената администраторска среда. Не използвай клиентски Firebase ключ тук.'); self::field('firebase_test_device_token','Тестов FCM device token','password','','Въведи FCM registration token от тестово устройство, запази настройките и изпрати тестово известие.'); echo '<button type="button" class="button pcw-test" data-integration="firebase">Изпрати тестово известие</button><span class="pcw-result" id="pcw-result-firebase"></span>'; echo '</section>';
         self::card_start('Регистрация на устройства','Мобилното приложение трябва да изпраща FCM token след вход. Токенът се свързва с потребителския WordPress профил.'); echo '<p>REST endpoints: <code>POST /wp-json/pcwork/v1/push/register</code> и <code>POST /wp-json/pcwork/v1/push/unregister</code>. Приложението ги извиква с персонален Bearer токен след вход; endpoint-ите използват същата проверка като останалия мобилен API.</p><p><strong>Автоматични известия:</strong> ремонтният модул трябва да извика <code>do_action(\'pcwork_repair_status_changed\', $repair_id, $customer_user_id, $status, $repair_number);</code>. Налични шаблони: received, diagnostics, waiting_approval, in_repair, ready, completed, cancelled.</p></section>';
         echo '</div><noscript><p>JavaScript е изключен. За запис използвайте бутона по-долу.</p>'; submit_button('Запази настройките','primary large','submit',true,['class'=>'pcw-save']); echo '</noscript></form>';
-        echo '<p class="description">Chatway е вградено в приложението чрез официалния widget и защитена HTTPS WebView страница. WooCommerce и Google Sheets имат отделни проверки; Bookly, ShopLentor и Firebase използват съответните си конфигурации и адаптери.</p></div>'; 
+        echo '<p class="description">PCWork Chat е собствена система, вградена в приложението и управлявана от менюто „Чат“. WooCommerce и Google Sheets имат отделни проверки; Bookly, ShopLentor и Firebase използват съответните си конфигурации и адаптери.</p></div>'; 
     }
 
 
@@ -263,13 +271,6 @@ final class PCWork_Admin_Integration_Settings {
             if ($code >= 200 && $code < 300) wp_send_json_success(['message'=>'Bookly е открит и страницата за резервации отговаря. HTTP '.$code.'.']);
             wp_send_json_error(['message'=>'Страницата за резервации върна HTTP '.$code.'.']);
         }
-        if ($integration === 'chatway') {
-            if (($s['chatway_enabled'] ?? '0') !== '1') wp_send_json_error(['message'=>'Chatway интеграцията е изключена.']);
-            $id = sanitize_text_field((string)($s['chatway_installation_id'] ?? ''));
-            if (!preg_match('/^[A-Za-z0-9_-]{6,100}$/', $id)) wp_send_json_error(['message'=>'Въведи валиден Installation ID и запази настройките.']);
-            $verification = !empty($s['chatway_verification_enabled']) && !empty($s['chatway_verification_secret']);
-            wp_send_json_success(['message'=>'Installation ID е с коректен формат.'.($verification ? ' Visitor Verification е конфигуриран със сървърен ключ.' : ' Чатът ще работи без свързване на историята с профила, докато не включиш Visitor Verification.')]);
-        }
         if ($integration === 'firebase') {
             if (($s['push_enabled'] ?? '0') !== '1') wp_send_json_error(['message'=>'Push известията са изключени.']);
             if (empty($s['firebase_project_id']) || empty($s['firebase_service_account_json']) || empty($s['firebase_test_device_token'])) wp_send_json_error(['message'=>'Попълни Project ID, Service Account JSON и тестов device token, след което запази.']);
@@ -293,7 +294,9 @@ final class PCWork_Admin_Integration_Settings {
             $raw_body = (string) wp_remote_retrieve_body($response);
             $decoded = json_decode($raw_body, true);
             if ($code >= 200 && $code < 300 && is_array($decoded) && !empty($decoded['ok'])) {
-                wp_send_json_success(['message' => 'Google Apps Script потвърди връзката. HTTP ' . $code . '.']);
+                $result = is_array($decoded['result'] ?? null) ? $decoded['result'] : [];
+                if (empty($result['write_verified'])) wp_send_json_error(['message'=>'Apps Script прие връзката, но не потвърди реален запис в таблицата. Провери достъпа на Service Account/Google акаунта и Spreadsheet ID.']);
+                wp_send_json_success(['message' => 'Google Sheets: връзката и реалният тестов запис са успешни. Таблица: ' . sanitize_text_field((string)($result['spreadsheet_title'] ?? 'потвърдена')) . '; лист: ' . sanitize_text_field((string)($result['sheet_name'] ?? 'потвърден')) . '; HTTP ' . $code . '.']);
             }
             if ($code >= 200 && $code < 300 && is_array($decoded) && array_key_exists('ok', $decoded) && !$decoded['ok']) {
                 $reason = sanitize_text_field((string)($decoded['error'] ?? 'unknown_error'));
@@ -310,8 +313,6 @@ final class PCWork_Admin_Integration_Settings {
         register_rest_route('pcwork/v1','/admin/integrations/status',[ 'methods'=>'GET', 'permission_callback'=>function(){ return current_user_can('manage_options'); }, 'callback'=>[__CLASS__,'status'] ]);
         register_rest_route('pcwork/v1','/booking/config',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'booking_config'] ]);
         register_rest_route('pcwork/v1','/app/update',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'app_update_info'] ]);
-        register_rest_route('pcwork/v1','/chatway/config',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'chatway_config'] ]);
-        register_rest_route('pcwork/v1','/chatway/session',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'chatway_session'] ]);
         register_rest_route('pcwork/v1','/push/register',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'register_device'] ]);
         register_rest_route('pcwork/v1','/push/unregister',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'unregister_device'] ]);
         register_rest_route('pcwork/v1','/push/preferences',[ 'methods'=>'GET', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'get_marketing_preferences'] ]);
@@ -319,121 +320,33 @@ final class PCWork_Admin_Integration_Settings {
         register_rest_route('pcwork/v1','/push/status',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'push_device_status'] ]);
     }
 
-    public static function chatway_config(WP_REST_Request $request) {
-        $s = self::get_settings();
-        $installation_id = sanitize_text_field((string)($s['chatway_installation_id'] ?? ''));
-        if (($s['chatway_enabled'] ?? '0') !== '1' || !preg_match('/^[A-Za-z0-9_-]{6,100}$/', $installation_id)) {
-            return rest_ensure_response(['enabled' => false, 'provider' => 'chatway']);
-        }
-        $theme = $request->get_param('theme') === 'light' ? 'light' : 'dark';
-        return rest_ensure_response(['enabled' => true, 'provider' => 'chatway', 'chat_url' => add_query_arg(['pcwork_mobile_chat' => '1', 'pcw_theme' => $theme], home_url('/'))]);
-    }
-
-    /** Creates a short-lived, single-use launch ticket; the app never receives the Chatway verification secret. */
-    public static function chatway_session(WP_REST_Request $request) {
-        $s = self::get_settings();
-        $installation_id = sanitize_text_field((string)($s['chatway_installation_id'] ?? ''));
-        if (($s['chatway_enabled'] ?? '0') !== '1' || !preg_match('/^[A-Za-z0-9_-]{6,100}$/', $installation_id)) {
-            return new WP_Error('pcwork_chatway_disabled', 'Chatway не е конфигуриран.', ['status'=>503]);
-        }
-        $user_id = get_current_user_id();
-        if (!$user_id || !get_user_by('id', $user_id)) return new WP_Error('pcwork_chatway_auth', 'Необходим е активен клиентски профил.', ['status'=>401]);
-        try { $ticket = bin2hex(random_bytes(32)); }
-        catch (Exception $e) { return new WP_Error('pcwork_chatway_ticket', 'Неуспешно създаване на защитена чат сесия.', ['status'=>500]); }
-        $theme = $request->get_param('theme') === 'light' ? 'light' : 'dark';
-        set_transient('pcw_chatway_launch_' . hash('sha256', $ticket), ['user_id'=>(int)$user_id, 'created'=>time()], 180);
-        return rest_ensure_response(['enabled'=>true, 'provider'=>'chatway', 'chat_url'=>add_query_arg(['pcwork_mobile_chat'=>'1','pcw_chat_ticket'=>$ticket,'pcw_theme'=>$theme], home_url('/')), 'expires_in'=>180]);
-    }
-
-    /** Dedicated Chatway page. A one-time ticket binds the WebView to the authenticated WordPress user. */
-    public static function render_mobile_chat_page() {
-        if (!isset($_GET['pcwork_mobile_chat'])) return;
-        $s = self::get_settings();
-        $installation_id = sanitize_text_field((string)($s['chatway_installation_id'] ?? ''));
-        $user_id = 0;
-        $ticket = isset($_GET['pcw_chat_ticket']) ? sanitize_text_field(wp_unslash($_GET['pcw_chat_ticket'])) : '';
-        if ($ticket !== '' && preg_match('/^[a-f0-9]{64}$/', $ticket)) {
-            $transient_key = 'pcw_chatway_launch_' . hash('sha256', $ticket);
-            $launch = get_transient($transient_key);
-            delete_transient($transient_key);
-            if (is_array($launch) && !empty($launch['user_id']) && (time() - (int)($launch['created'] ?? 0)) <= 180) {
-                $candidate = (int)$launch['user_id'];
-                if (get_user_by('id', $candidate)) $user_id = $candidate;
-            }
-        }
-        $valid = ($s['chatway_enabled'] ?? '0') === '1' && preg_match('/^[A-Za-z0-9_-]{6,100}$/', $installation_id);
-        if (!$valid || ($ticket !== '' && !$user_id)) {
-            status_header($valid ? 403 : 503);
-            nocache_headers();
-            header('Content-Type: text/html; charset=utf-8');
-            echo '<!doctype html><html lang="bg"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PCWork Chat</title><body style="margin:0;background:#0a101a;color:#e8f1fa;font:16px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:420px;padding:28px;text-align:center"><h2>PCWork поддръжка</h2><p>'.esc_html($valid ? 'Защитената чат сесия е изтекла. Върнете се в приложението и отворете чата отново.' : 'Chatway все още не е конфигуриран. Моля, опитайте отново по-късно.').'</p></main></body></html>';
-            exit;
-        }
-
-        $identity_script = '';
-        $visitor_script = '';
-        if ($user_id) {
-            $visitor = get_user_by('id', $user_id);
-            if ($visitor) {
-                $first_name = trim((string)get_user_meta($visitor->ID, 'first_name', true));
-                $last_name = trim((string)get_user_meta($visitor->ID, 'last_name', true));
-                $visitor_name = trim($first_name . ' ' . $last_name);
-                if ($visitor_name === '') $visitor_name = (string)$visitor->display_name;
-                $visitor_email = (string)$visitor->user_email;
-                $visitor_phone = trim((string)get_user_meta($visitor->ID, 'pcwork_phone', true));
-                if ($visitor_phone === '') $visitor_phone = trim((string)get_user_meta($visitor->ID, 'billing_phone', true));
-                if ($visitor_phone === '') $visitor_phone = trim((string)get_user_meta($visitor->ID, 'shipping_phone', true));
-                $visitor_script = '<script>window.pcwChatwayVisitor = '.wp_json_encode(['name'=>$visitor_name,'email'=>$visitor_email,'phone'=>$visitor_phone], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT).';</script>';
-            }
-        }
-        if ($user_id && !empty($s['chatway_verification_enabled']) && !empty($s['chatway_verification_secret'])) {
-            $user = get_user_by('id', $user_id);
-            if ($user) {
-                $identifier_type = in_array(($s['chatway_verification_identifier'] ?? 'id'), ['id','email'], true) ? $s['chatway_verification_identifier'] : 'id';
-                $email = (string)$user->user_email;
-                $visitor_id = $identifier_type === 'email' ? $email : (string)$user->ID;
-                $first_name = trim((string)get_user_meta($user->ID, 'first_name', true));
-                $last_name = trim((string)get_user_meta($user->ID, 'last_name', true));
-                $name = trim($first_name . ' ' . $last_name);
-                if ($name === '') $name = (string)$user->display_name;
-                $phone = trim((string)get_user_meta($user->ID, 'pcwork_phone', true));
-                if ($phone === '') $phone = trim((string)get_user_meta($user->ID, 'billing_phone', true));
-                if ($phone === '') $phone = trim((string)get_user_meta($user->ID, 'shipping_phone', true));
-                // Chatway requires the HMAC of the exact selected identifier and
-                // visitor.data.id/email. The secret never leaves WordPress.
-                $hmac_base = $identifier_type === 'email' ? $email : $visitor_id;
-                $hmac = hash_hmac('sha256', $hmac_base, (string)$s['chatway_verification_secret']);
-                $identity = [
-                    'visitor'=>[
-                        'hmac'=>$hmac,
-                        'data'=>[
-                            'id'=>$visitor_id,
-                            'email'=>$email,
-                            'site_url'=>home_url(),
-                        ],
-                    ],
-                    'tags'=>[],
-                    'customFields'=>$phone !== '' ? [['name'=>'phone','value'=>$phone]] : [],
-                ];
-                $identity_script = '<script>window.chatwaySettings = '.wp_json_encode($identity, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT).';</script>';
-            }
-        }
-
-        $script = 'https://cdn.chatway.app/widget.js?id=' . rawurlencode($installation_id);
-        nocache_headers();
-        header('Content-Type: text/html; charset=utf-8');
-        header('X-Content-Type-Options: nosniff');
-        header('Referrer-Policy: no-referrer');
-        $light_theme = isset($_GET['pcw_theme']) && sanitize_key(wp_unslash($_GET['pcw_theme'])) === 'light';
-        $page_bg = $light_theme ? '#f3f6fa' : '#0a101a';
-        $page_text = $light_theme ? '#172033' : '#eaf4ff';
-        $muted_text = $light_theme ? '#68778b' : '#9fb0c4';
-        $heading_text = $light_theme ? '#172033' : '#ffffff';
-        echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="'.esc_attr($page_bg).'"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:'.esc_attr($page_bg).';color:'.esc_attr($page_text).';font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:'.esc_attr($muted_text).'}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:'.esc_attr($heading_text).';font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.$visitor_script.'<script>(function(){var v=window.pcwChatwayVisitor||{},opened=false,identityApplied=false,tries=0;function applyIdentity(){if(!window.$chatway)return false;var hasIdentity=!!(v.name||v.email||v.phone),updateReady=typeof window.$chatway.updateChatwayCustomData==="function";if(hasIdentity&&!updateReady)return false;if(!identityApplied&&updateReady){function update(key,value){if(!value)return;try{window.$chatway.updateChatwayCustomData(key,value);}catch(e){}}update("name",v.name);update("email",v.email);update("phone",v.phone);identityApplied=true;}if((!hasIdentity||identityApplied)&&!opened&&typeof window.$chatway.openChatwayWidget==="function"){try{window.$chatway.openChatwayWidget();opened=true;}catch(e){return false;}}return opened;}window.$chatwayOnLoad=function(){applyIdentity();};window.addEventListener("chatwayLoaded",applyIdentity);var timer=setInterval(function(){tries++;applyIdentity();if(opened||tries>160)clearInterval(timer);},250);})();</script><script id="chatway" async src="'.esc_url($script).'"></script></body></html>';
-        exit;
-    }
-
     public static function app_update_info() {
+        // Prefer the owner's static manifest: /wp-content/uploads/pcwork-mobile/update.json.
+        // Fall back to the existing Integration settings so current installations keep working.
+        $uploads = wp_upload_dir();
+        $manifest_file = trailingslashit($uploads['basedir']) . 'pcwork-mobile/update.json';
+        if (is_readable($manifest_file)) {
+            $raw = file_get_contents($manifest_file);
+            $manifest = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($manifest)) {
+                $version = sanitize_text_field((string)($manifest['version'] ?? ''));
+                $version_code = absint($manifest['version_code'] ?? 0);
+                $url = esc_url_raw((string)($manifest['apk_url'] ?? ''));
+                $sha256 = strtolower(sanitize_text_field((string)($manifest['sha256'] ?? '')));
+                $enabled = $version !== '' && $version_code > 0 && $url !== ''
+                    && strtolower((string)wp_parse_url($url, PHP_URL_SCHEME)) === 'https'
+                    && preg_match('/^[a-f0-9]{64}$/', $sha256);
+                return rest_ensure_response([
+                    'enabled' => $enabled,
+                    'version' => $version,
+                    'version_code' => $version_code,
+                    'apk_url' => $enabled ? $url : '',
+                    'sha256' => $enabled ? $sha256 : '',
+                    'release_notes' => sanitize_textarea_field((string)($manifest['release_notes'] ?? '')),
+                    'mandatory' => !empty($manifest['mandatory']),
+                ]);
+            }
+        }
         $s = self::get_settings();
         $url = esc_url_raw((string)($s['app_apk_url'] ?? ''));
         $enabled = !empty($s['app_latest_version']) && (int)($s['app_version_code'] ?? 0) > 0
@@ -443,7 +356,9 @@ final class PCWork_Admin_Integration_Settings {
             'version' => sanitize_text_field((string)($s['app_latest_version'] ?? '')),
             'version_code' => (int)($s['app_version_code'] ?? 0),
             'apk_url' => $enabled ? $url : '',
+            'sha256' => '',
             'release_notes' => sanitize_textarea_field((string)($s['app_release_notes'] ?? '')),
+            'mandatory' => false,
         ]);
     }
 
@@ -581,6 +496,50 @@ final class PCWork_Admin_Integration_Settings {
         $body=json_decode(wp_remote_retrieve_body($response),true); if(empty($body['access_token'])) return new WP_Error('pcwork_firebase_oauth','Google OAuth не върна access token. HTTP '.wp_remote_retrieve_response_code($response));
         set_transient('pcwork_fcm_access_token',['token'=>$body['access_token']],max(60,(int)($body['expires_in']??3600)-120)); return $body['access_token'];
     }
+    /** Send a low-payload chat notification to the user's registered FCM devices. */
+    private static function send_chat_push_to_user($user_id, $title, $body) {
+        $settings = self::get_settings();
+        if (($settings['push_enabled'] ?? '0') !== '1') return;
+        $devices = get_user_meta((int)$user_id, 'pcwork_fcm_devices', true);
+        if (!is_array($devices) || !$devices) return;
+        $sent = 0;
+        foreach ($devices as $token => $meta) {
+            if (!is_string($token) || $token === '' || $sent >= 3) continue;
+            $result = self::send_fcm_message($token, $title, $body, ['screen'=>'chat']);
+            if (!is_wp_error($result)) $sent++;
+            elseif (self::is_permanently_unregistered_token($result)) {
+                unset($devices[$token]);
+                update_user_meta((int)$user_id, 'pcwork_fcm_devices', $devices);
+            }
+        }
+    }
+
+    public static function on_chat_message_created($customer_user_id, $sender_type, $message_id = 0) {
+        $customer_user_id = absint($customer_user_id);
+        $message_id = absint($message_id);
+        if (!$customer_user_id) return;
+        // FCM network calls run in WP-Cron, never inside the customer-facing chat request.
+        $scheduled = wp_schedule_single_event(time() + 1, 'pcwork_chat_push_async', [$customer_user_id, sanitize_key((string)$sender_type), $message_id], true);
+        if (is_wp_error($scheduled)) {
+            error_log('PCWork Chat: could not queue push notification: ' . $scheduled->get_error_message());
+            return;
+        }
+        if (function_exists('spawn_cron')) spawn_cron(time() + 2);
+    }
+
+    public static function deliver_chat_notification($customer_user_id, $sender_type, $message_id = 0) {
+        $customer_user_id = absint($customer_user_id);
+        if (!$customer_user_id) return;
+        if ($sender_type === 'admin') {
+            self::send_chat_push_to_user($customer_user_id, 'PCWork – нов отговор', 'Екипът на PCWork отговори в чата.');
+            return;
+        }
+        $admins = get_users(['role__in'=>['administrator','shop_manager','pcwork_staff'], 'fields'=>'ID', 'number'=>10]);
+        foreach ((array)$admins as $admin_id) {
+            self::send_chat_push_to_user((int)$admin_id, 'PCWork – ново съобщение', 'Клиент изпрати ново съобщение в чата.');
+        }
+    }
+
     private static function send_fcm_message($device_token,$title,$body,$data=[], $validate_only=false) {
         $s=self::get_settings(); $access=self::firebase_access_token($s); if(is_wp_error($access)) return $access;
         $url='https://fcm.googleapis.com/v1/projects/'.rawurlencode($s['firebase_project_id']).'/messages:send';
@@ -942,9 +901,9 @@ public static function send_repair_status_push($repair_id, $customer_user_id, $s
     }
 
     public static function status() {
-        $s=self::get_settings(); $keys=['woocommerce_enabled','bookly_enabled','chatway_enabled','shoplentor_enabled','sheets_enabled','push_enabled']; $out=[];
+        $s=self::get_settings(); $keys=['woocommerce_enabled','bookly_enabled','shoplentor_enabled','sheets_enabled','push_enabled']; $out=[];
         foreach($keys as $k) $out[$k]=($s[$k]??'0')==='1';
-        $out['configured']=['woocommerce'=>!empty($s['woocommerce_consumer_key'])&&!empty($s['woocommerce_consumer_secret']),'bookly'=>!empty($s['bookly_booking_page_url']),'chatway'=>!empty($s['chatway_installation_id']),'sheets'=>!empty($s['sheets_webhook_url'])&&!empty($s['sheets_webhook_secret']),'firebase'=>!empty($s['firebase_project_id'])&&!empty($s['firebase_service_account_json'])];
+        $out['configured']=['woocommerce'=>!empty($s['woocommerce_consumer_key'])&&!empty($s['woocommerce_consumer_secret']),'bookly'=>!empty($s['bookly_booking_page_url']),'sheets'=>!empty($s['sheets_webhook_url'])&&!empty($s['sheets_webhook_secret']),'firebase'=>!empty($s['firebase_project_id'])&&!empty($s['firebase_service_account_json'])];
         return rest_ensure_response($out);
     }
 }

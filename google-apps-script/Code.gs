@@ -10,7 +10,7 @@
  * POST payload is a URL-encoded `payload` field containing exact JSON.
  * HMAC-SHA256 covers timestamp + "." + nonce + "." + exact JSON payload.
  */
-var PCWORK_SECURITY_VERSION = '2.6.0';
+var PCWORK_SECURITY_VERSION = '2.7.0';
 var PCWORK_MAX_BODY_BYTES = 65536;
 var PCWORK_MAX_CLOCK_SKEW_SECONDS = 300;
 var PCWORK_NONCE_TTL_SECONDS = 600;
@@ -96,8 +96,9 @@ function doPost(e) {
 
     var eventName = String(payload.event || '');
     if (eventName === 'pcwork.integration.ping') {
-      console.info('[PCWork Security] authenticated ping accepted ' + requestId);
-      return pcwJson_({ok: true, event: eventName, version: PCWORK_SECURITY_VERSION, request_id: requestId});
+      var probe = pcwVerifySheetWrite_(props, requestId);
+      console.info('[PCWork Security] spreadsheet write probe completed ' + requestId + '; verified=' + probe.write_verified);
+      return pcwJson_({ok: true, event: eventName, version: PCWORK_SECURITY_VERSION, request_id: requestId, result: probe});
     }
     if (eventName === 'pcwork.repair.upsert') {
       var result = pcwUpsertRepair_(payload, props);
@@ -109,6 +110,50 @@ function doPost(e) {
     console.error('[PCWork Security] request failed ' + requestId + ': ' + String(err && err.message ? err.message : err));
     return pcwFail_('internal_error', requestId);
   }
+}
+
+
+/**
+ * Verifies actual Spreadsheet access and write permission. The probe is removed
+ * immediately after read-back, so it does not leave test rows in the customer's sheet.
+ */
+function pcwVerifySheetWrite_(props, requestId) {
+  var spreadsheetId = props.getProperty('PCWORK_SPREADSHEET_ID');
+  if (!spreadsheetId) throw new Error('missing_spreadsheet_id');
+  var targetName = props.getProperty('PCWORK_SHEET_NAME') || 'Repairs';
+  var spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+  var target = spreadsheet.getSheetByName(targetName);
+  if (!target) {
+    target = spreadsheet.insertSheet(targetName);
+    target.getRange(1, 1, 1, PCWORK_HEADERS.length).setValues([PCWORK_HEADERS]);
+    target.setFrozenRows(1);
+  } else if (target.getLastRow() === 0) {
+    target.getRange(1, 1, 1, PCWORK_HEADERS.length).setValues([PCWORK_HEADERS]);
+    target.setFrozenRows(1);
+  }
+
+  // Test writes in a disposable sheet so the health check never inserts/deletes
+  // a row in the real Repairs sheet or races with a customer edit.
+  var probeName = '_PCW_TEST_' + String(requestId).replace(/[^A-Za-z0-9]/g, '').substring(0, 18);
+  var probe = null;
+  var verified = false;
+  try {
+    probe = spreadsheet.insertSheet(probeName);
+    var marker = 'PCWORK_WRITE_TEST_' + String(requestId);
+    probe.getRange(1, 1).setValue(marker);
+    SpreadsheetApp.flush();
+    verified = String(probe.getRange(1, 1).getValue()) === marker;
+  } finally {
+    if (probe) spreadsheet.deleteSheet(probe);
+    SpreadsheetApp.flush();
+  }
+  if (!verified) throw new Error('spreadsheet_write_verification_failed');
+  return {
+    write_verified: true,
+    spreadsheet_title: spreadsheet.getName(),
+    sheet_name: target.getName(),
+    probe_removed: true
+  };
 }
 
 function pcwUpsertRepair_(payload, props) {
@@ -139,17 +184,23 @@ function pcwUpsertRepair_(payload, props) {
   var lastRow = sheet.getLastRow();
   var targetRow = 0;
   if (lastRow >= 2) {
-    var ids = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
-    for (var i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]) === repairId) { targetRow = i + 2; break; }
-    }
+    var match = sheet.getRange(2, 1, lastRow - 1, 1)
+      .createTextFinder(repairId)
+      .matchEntireCell(true)
+      .findNext();
+    if (match) targetRow = match.getRow();
   }
   if (targetRow) {
     sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
-    return {action: 'updated', repair_id: repairId};
+    SpreadsheetApp.flush();
+    if (String(sheet.getRange(targetRow, 1).getDisplayValue()) !== repairId) throw new Error('repair_update_readback_failed');
+    return {action: 'updated', repair_id: repairId, verified: true, row: targetRow};
   }
   sheet.appendRow(row);
-  return {action: 'inserted', repair_id: repairId};
+  SpreadsheetApp.flush();
+  var insertedRow = sheet.getLastRow();
+  if (String(sheet.getRange(insertedRow, 1).getDisplayValue()) !== repairId) throw new Error('repair_insert_readback_failed');
+  return {action: 'inserted', repair_id: repairId, verified: true, row: insertedRow};
 }
 
 function pcwFormValue_(formBody, wantedName) {

@@ -7,6 +7,7 @@ final class PCWork_Mobile_Customer_Management {
         add_action('admin_post_pcwork_customer_save', [__CLASS__, 'save']);
         add_action('admin_post_pcwork_customer_delete', [__CLASS__, 'delete']);
         add_action('admin_post_pcwork_order_delete', [__CLASS__, 'delete_order']);
+        add_action('admin_post_pcwork_orders_bulk_delete', [__CLASS__, 'bulk_delete_orders']);
     }
     public static function menu() {
         add_submenu_page('pcwork-mobile','Клиенти','Клиенти','manage_options','pcwork-customers',[__CLASS__,'render']);
@@ -63,7 +64,7 @@ final class PCWork_Mobile_Customer_Management {
     }
     public static function delete_order() {
         if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
-        $order_id = absint($_POST['order_id'] ?? 0);
+        $order_id = absint($_REQUEST['order_id'] ?? 0);
         check_admin_referer('pcwork_order_delete_' . $order_id);
         if (!function_exists('wc_get_order')) wp_die('WooCommerce не е активен.');
         $order = wc_get_order($order_id);
@@ -74,16 +75,37 @@ final class PCWork_Mobile_Customer_Management {
         exit;
     }
 
+    public static function bulk_delete_orders() {
+        if (!current_user_can('manage_options')) wp_die('Нямате права за тази операция.');
+        check_admin_referer('pcwork_orders_bulk_delete');
+        if (!function_exists('wc_get_order')) wp_die('WooCommerce не е активен.');
+        $ids = isset($_POST['order_ids']) && is_array($_POST['order_ids']) ? array_slice(array_unique(array_filter(array_map('absint', $_POST['order_ids']))), 0, 100) : [];
+        if (!$ids) {
+            wp_safe_redirect(admin_url('admin.php?page=pcwork-customers&tab=orders&bulk_deleted=0'));
+            exit;
+        }
+        $deleted = 0; $failed = 0;
+        foreach ($ids as $id) {
+            $order = wc_get_order($id);
+            if ($order && $order->delete(true)) $deleted++; else $failed++;
+        }
+        wp_safe_redirect(add_query_arg(['page'=>'pcwork-customers','tab'=>'orders','bulk_deleted'=>$deleted,'bulk_failed'=>$failed], admin_url('admin.php')));
+        exit;
+    }
+
     private static function render_orders() {
         if (!function_exists('wc_get_orders')) {
             echo '<div class="notice notice-warning inline"><p>WooCommerce не е активен. Поръчките не могат да бъдат показани.</p></div>';
             return;
         }
         if (!empty($_GET['order_deleted'])) echo '<div class="notice notice-success inline"><p>Поръчката е изтрита окончателно.</p></div>';
+        if (isset($_GET['bulk_deleted'])) echo '<div class="notice notice-success inline"><p>Изтрити поръчки: '.absint($_GET['bulk_deleted']).'. Неуспешни: '.absint($_GET['bulk_failed'] ?? 0).'.</p></div>';
         echo '<h2>WooCommerce поръчки</h2><p class="description">Показани са последните 100 поръчки. Изтриването е окончателно и се извършва през WooCommerce CRUD, включително при HPOS.</p>';
         $orders = wc_get_orders(['limit'=>100,'orderby'=>'date','order'=>'DESC','status'=>array_keys(wc_get_order_statuses()),'return'=>'objects']);
-        echo '<table class="widefat striped"><thead><tr><th>Поръчка</th><th>Дата</th><th>Клиент</th><th>Имейл</th><th>Статус</th><th>Общо</th><th>Действие</th></tr></thead><tbody>';
-        if (!$orders) echo '<tr><td colspan="7">Няма намерени поръчки.</td></tr>';
+        echo '<form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Сигурни ли сте, че искате окончателно да изтриете избраните поръчки?\')"><input type="hidden" name="action" value="pcwork_orders_bulk_delete">';
+        wp_nonce_field('pcwork_orders_bulk_delete');
+        echo '<p><button type="submit" class="button button-link-delete">Изтрий избраните</button></p><table class="widefat striped"><thead><tr><th><input type="checkbox" onclick="document.querySelectorAll(\'.pcw-order-select\').forEach(function(c){c.checked=this.checked}.bind(this))"></th><th>Поръчка</th><th>Дата</th><th>Клиент</th><th>Имейл</th><th>Статус</th><th>Общо</th><th>Действие</th></tr></thead><tbody>';
+        if (!$orders) echo '<tr><td colspan="8">Няма намерени поръчки.</td></tr>';
         foreach ($orders as $order) {
             if (!$order) continue;
             $id = (int)$order->get_id();
@@ -91,11 +113,12 @@ final class PCWork_Mobile_Customer_Management {
             if ($customer === '') $customer = '—';
             $date = $order->get_date_created();
             $date_text = $date ? wc_format_datetime($date, 'd.m.Y H:i') : '—';
-            echo '<tr><td><strong>#'.esc_html($order->get_order_number()).'</strong><br><small>ID: '.$id.'</small></td><td>'.esc_html($date_text).'</td><td>'.esc_html($customer).'</td><td>'.esc_html($order->get_billing_email()).'</td><td>'.esc_html(wc_get_order_status_name($order->get_status())).'</td><td>'.wp_kses_post($order->get_formatted_order_total()).'</td><td><form method="post" action="'.esc_url(admin_url('admin-post.php')).'" onsubmit="return confirm(\'Сигурни ли сте, че искате окончателно да изтриете тази WooCommerce поръчка? Действието не може да бъде отменено.\')"><input type="hidden" name="action" value="pcwork_order_delete"><input type="hidden" name="order_id" value="'.$id.'">';
-            wp_nonce_field('pcwork_order_delete_' . $id);
-            echo '<button type="submit" class="button button-link-delete">Изтрий</button></form></td></tr>';
+            $edit_url = get_edit_post_link($id, 'raw');
+            if (!$edit_url) $edit_url = admin_url('admin.php?page=wc-orders&action=edit&id='.$id);
+            $delete_url = wp_nonce_url(add_query_arg(['action'=>'pcwork_order_delete','order_id'=>$id], admin_url('admin-post.php')), 'pcwork_order_delete_' . $id);
+            echo '<tr><td><input class="pcw-order-select" type="checkbox" name="order_ids[]" value="'.$id.'"></td><td><strong>#'.esc_html($order->get_order_number()).'</strong><br><small>ID: '.$id.'</small></td><td>'.esc_html($date_text).'</td><td>'.esc_html($customer).'</td><td>'.esc_html($order->get_billing_email()).'</td><td>'.esc_html(wc_get_order_status_name($order->get_status())).'</td><td>'.wp_kses_post($order->get_formatted_order_total()).'</td><td><a class="button button-small" href="'.esc_url($edit_url).'">Редактирай</a> <a class="button button-link-delete" href="'.esc_url($delete_url).'" onclick="return confirm(\'Сигурни ли сте, че искате окончателно да изтриете тази WooCommerce поръчка? Действието не може да бъде отменено.\')">Изтрий</a></td></tr>';
         }
-        echo '</tbody></table>';
+        echo '</tbody></table></form>';
     }
 
     public static function render() {

@@ -33,6 +33,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   bool english = false;
+  String languageMode = 'auto';
   bool isDarkTheme = true;
   bool staffPreview = false;
   bool clientPreview = false;
@@ -60,7 +61,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 66;
+  static const int _currentBuildNumber = 68;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
 
@@ -211,9 +212,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
+    final storedLanguageMode = prefs.getString('pcwork_language_mode');
+    final fallbackLanguageMode = prefs.getBool('pcwork_english') == true ? 'en' : 'auto';
+    final resolvedLanguageMode = ['auto', 'bg', 'en'].contains(storedLanguageMode) ? storedLanguageMode! : fallbackLanguageMode;
     setState(() {
       apiUrl = prefs.getString('pcwork_api_url') ?? defaultApi;
-      english = prefs.getBool('pcwork_english') ?? false;
+      languageMode = resolvedLanguageMode;
+      final systemEnglish = WidgetsBinding.instance.platformDispatcher.locale.languageCode.toLowerCase() == 'en';
+      english = languageMode == 'auto' ? systemEnglish : languageMode == 'en';
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
@@ -351,6 +357,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
       }, onOpened: (data) async {
         if (!mounted) return;
+        if ((data['screen'] ?? '').toString() == 'chat') {
+          _selectTab(3);
+          return;
+        }
         final target = (data['url'] ?? '').toString().trim();
         final uri = Uri.tryParse(target);
         if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
@@ -359,11 +369,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _selectTab(1);
         }
       });
-      if (mounted) {
-        setState(() => _pushStatusMessage = registered
-            ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-            : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
-      }
+      if (mounted) setState(() => _pushStatusMessage = registered
+          ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
+          : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
     } finally {
       _pushRegistering = false;
     }
@@ -615,7 +623,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       case 0: return _home();
       case 1: return _repairs();
       case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, profileProvider: () async => (await auth.me()), english: english);
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
@@ -624,7 +632,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Магазин', 'Shop'), tr('Поддръжка', 'Support'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Обяви', 'Listings'), tr('Поддръжка', 'Support'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
@@ -695,7 +703,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
           ]),
           actions: [
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.language_rounded, color: isDarkTheme ? Colors.white70 : const Color(0xFF68778B))),
             IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
           ],
         ),
@@ -1140,7 +1147,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
     if (signedInUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
-      const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.join(', ')))),
+      const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.any((r) => ['pcwork_customer','customer','subscriber'].contains(r)) ? tr('Потребител', 'Customer') : signedInUser!.roles.join(', ')))),
       const SizedBox(height: 12),
       Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [const Icon(Icons.notifications_active_outlined, color: cyan), const SizedBox(width: 10), Expanded(child: Text(tr('Известия от PCWork', 'PCWork notifications'), style: const TextStyle(fontWeight: FontWeight.bold)))]),
@@ -1149,7 +1156,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
         const SizedBox(height: 6),
-        OutlinedButton.icon(onPressed: _checkingPushStatus ? null : () => _checkNotificationStatus(showMessage: true), icon: _checkingPushStatus ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.fact_check_outlined), label: Text(tr('Провери статуса на известията', 'Check notification status'))),
         if (_pushStatusMessage != null) Padding(padding: const EdgeInsets.only(top:6), child: Text(_pushStatusMessage!, style: const TextStyle(fontSize:11))),
         const Divider(),
         SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
@@ -1654,10 +1660,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                           ),
                           child: Column(children: [
                             SizedBox(
-                              height: 104,
+                              height: 128,
                               width: double.infinity,
                               child: item.imageUrl.isNotEmpty
-                                  ? Image.network(item.imageUrl, fit: BoxFit.cover,
+                                  ? Image.network(item.imageUrl, fit: BoxFit.contain,
                                       errorBuilder: (_, __, ___) => _locationImageFallback())
                                   : _locationImageFallback(),
                             ),
@@ -1742,6 +1748,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     var draftStaffPreview = staffPreview;
     var draftClientPreview = clientPreview;
     var draftDarkTheme = isDarkTheme;
+    var draftLanguageMode = languageMode;
     Timer? apiSaveTimer;
     bool savingApi = false;
     Future<void> saveTheme(bool value, void Function(void Function()) setSheetState) async {
@@ -1784,6 +1791,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като клиент', 'Preview as customer')), subtitle: Text(tr('Скрива служебните екрани само за визуална проверка.', 'Hides staff screens for visual review only.')), value: draftClientPreview, onChanged: (v) async { setSheetState(() { draftClientPreview = v; if (v) draftStaffPreview = false; }); if (mounted) setState(() { clientPreview = v; if (v) staffPreview = false; }); await _savePreference('pcwork_client_preview', v); if (v) await _savePreference('pcwork_staff_preview', false); }),
           ],
           SwitchListTile(contentPadding: EdgeInsets.zero, secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined), title: Text(tr('Тъмна тема', 'Dark theme')), subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')), value: draftDarkTheme, onChanged: (v) => saveTheme(v, setSheetState)),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: draftLanguageMode,
+            decoration: InputDecoration(labelText: tr('Език', 'Language'), prefixIcon: const Icon(Icons.translate_rounded)),
+            items: [
+              DropdownMenuItem(value: 'auto', child: Text(tr('Автоматично (системен език)', 'Automatic (system language)'))),
+              DropdownMenuItem(value: 'bg', child: Text(tr('Български', 'Bulgarian'))),
+              DropdownMenuItem(value: 'en', child: Text(tr('Английски', 'English'))),
+            ],
+            onChanged: (value) async {
+              if (value == null) return;
+              setSheetState(() => draftLanguageMode = value);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('pcwork_language_mode', value);
+              if (!mounted) return;
+              setState(() {
+                languageMode = value;
+                english = value == 'auto'
+                    ? WidgetsBinding.instance.platformDispatcher.locale.languageCode.toLowerCase() == 'en'
+                    : value == 'en';
+              });
+            },
+          ),
           const SizedBox(height: 8),
           Text(tr('Промените се запазват автоматично.', 'Changes are saved automatically.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54, fontSize: 12)),
         ])),

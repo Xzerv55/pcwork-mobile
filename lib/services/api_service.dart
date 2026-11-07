@@ -502,28 +502,33 @@ class ApiService {
   }
 
 
-  Future<Uri?> getChatwayUrl({String? token, bool isDarkTheme = true}) async {
-    final authenticated = token != null && token.trim().isNotEmpty;
-    final response = authenticated
-        ? await http.post(_uri('chatway/session'),
-            headers: {'Authorization': 'Bearer ${token.trim()}', 'Content-Type': 'application/json'},
-            body: jsonEncode(<String, dynamic>{'theme': isDarkTheme ? 'dark' : 'light'})).timeout(const Duration(seconds: 15))
-        : await http.get(_uri('chatway/config').replace(queryParameters: {'theme': isDarkTheme ? 'dark' : 'light'})).timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200) {
-      final decoded = _decodeResponse(response);
+  Future<Map<String, dynamic>> getChatMessages(String token, {int afterId = 0}) async {
+    final response = await http.get(
+      _uri('chat/messages').replace(queryParameters: {'after_id': '$afterId'}),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] as Map : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор от чата.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<void> sendChatMessage(String token, {String message = '', String? imageBase64, String? imageMime}) async {
+    final payload = <String, dynamic>{'message': message};
+    if (imageBase64 != null && imageBase64.isNotEmpty) {
+      payload['image_base64'] = imageBase64;
+      payload['image_mime'] = imageMime ?? 'image/jpeg';
+    }
+    final response = await http.post(
+      _uri('chat/messages'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    ).timeout(const Duration(seconds: 30));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_responseMessage(decoded, response.statusCode));
     }
-    final decoded = _decodeResponse(response);
-    if (decoded is! Map) return null;
-    final data = decoded['data'] is Map ? decoded['data'] as Map : decoded;
-    if (data['enabled'] != true) return null;
-    final raw = data['chat_url'];
-    if (raw is! String || raw.isEmpty) return null;
-    final uri = Uri.tryParse(raw);
-    final apiHost = Uri.tryParse(baseUrl.trim())?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
-    final chatHost = uri?.host.toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
-    if (uri == null || uri.scheme != 'https' || apiHost == null || chatHost != apiHost) return null;
-    return uri;
   }
 
   Future<Uri?> getBookingUrl() async {

@@ -1,37 +1,20 @@
-# PCWork Mobile v66
+# PCWork Mobile v68 source
 
-Проектът съдържа Flutter приложението, Android/iOS конфигурацията, GitHub Actions workflow и единния WordPress плъгин v4.8.0.
+Source baseline: v67. This release increments the Android/iOS app version to 0.68.0+68.
 
-## Компилация
+## Main changes
+- First-party PCWork Chat replaces the external Chatway WebView.
+- The chat uses authenticated WordPress REST endpoints and polls only while its tab is active (10-second interval).
+- Text and image messages are supported; images are compressed on-device and capped at 5 MB.
+- Chat notifications use the existing Firebase Cloud Messaging integration when push is enabled.
+- Shop navigation is labelled Обяви / Listings.
+- Language is automatic from the device locale by default, with Bulgarian and English overrides in Settings.
+- Customer account role label is localized as Потребител / Customer.
+- Removed the notification status check button from the profile.
+- Service-location images are shown in a taller contain-fit area to avoid cropping.
 
-1. Настройте четирите GitHub Actions Secrets за постоянно подписване според `SIGNING_SETUP_BG.md`.
-2. Поставете реалния Firebase Android `google-services.json` в `android/app/` (не качвайте Service Account JSON в приложението).
-3. Стартирайте GitHub Actions → PCWork Android APK → Run workflow.
-4. Изтеглете артефакта `pcwork-android-v66-apks`.
+## Build
+Run `flutter pub get`, `flutter analyze`, then use the existing GitHub Actions release workflow. The real `google-services.json` and signing credentials must remain in protected GitHub secrets/environment. This source archive intentionally contains only `google-services.json.example`.
 
-Release APK се подписва само с постоянния release keystore. Ако липсват secrets, release компилацията спира, вместо да използва временен Debug сертификат.
-
-## Основни поправки v66
-
-- Работещо отваряне на редакцията на профила; регистрационният имейл остава заключен.
-- Системно искане на Android POST_NOTIFICATIONS при първо стартиране, независимо от Firebase; автоматична FCM регистрация след вход.
-- Автоматично обновяване на профил, ремонти и маркетингово съгласие при напускане на раздел.
-- Chatway Visitor Verification и по-надеждно подаване на име, имейл и телефон от WordPress профила.
-- Клиентските заявки за ремонт вече не чакат синхронно Google Sheets или FCM мрежови операции; те се изпълняват чрез WordPress Cron.
-- Ограничението за клиентски заявки е коригирано до 10 заявки на профил и 1000 от една мрежа за 24 часа; старите блокиращи броячи вече не важат.
-- Грешките при подаване се показват вътре във формата, а не зад нея, като въведените данни остават запазени.
-- Рекламните push съобщения при отворено приложение вече се показват като голям централен прозорец с изображение, текст, CTA бутон и X; показването се ограничава до веднъж на кампания.
-- Запазени са оперативните push известия за нова заявка и нова WooCommerce поръчка, отделно от маркетинговото съгласие.
-
-## WordPress
-
-В администрацията „Клиенти“ вече съдържа раздели за рекламни кампании и WooCommerce поръчки с администраторско изтриване.
-
-Единният плъгин е в `wordpress-plugin/pcwork-mobile-complete-system/`. За отделно инсталиране използвайте ZIP архива на плъгина. Направете резервно копие и тествайте първо в staging.
-
-## Бележки
-
-- Android application ID: `com.pcworkbg.pcwork_mobile`.
-- Версия: `0.66.0+66`.
-- Не включвайте `.jks`, пароли, GitHub Secrets или Firebase Service Account private key в Git репозитория.
-- Flutter SDK не е наличен в средата, в която е подготвен архивът; окончателният `flutter analyze` и Android build трябва да се потвърдят от GitHub Actions.
+## Server
+Install the unified WordPress plugin v5.0.0 from the separate plugin archive. The app requires that plugin version for the `/chat/messages` REST API.
