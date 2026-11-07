@@ -501,14 +501,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 8),
     Row(children: [
-      Expanded(child: _contactCard(Icon(Icons.call_rounded, color: const Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
+      Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: const Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(Icon(Icons.chat_rounded, color: const Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
+      Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: const Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
     ]),
     Row(children: [
-      Expanded(child: _contactCard(Icon(Icons.facebook, color: const Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
+      Expanded(child: _contactCard(const Icon(Icons.facebook, color: const Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(FaIcon(FontAwesomeIcons.tiktok, color: const Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: const Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 21),
