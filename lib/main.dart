@@ -56,7 +56,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _marketingOptIn = false;
   bool _marketingPreferenceLoaded = false;
   String? _pushStatusMessage;
-  bool _checkingPushStatus = false;
   bool _pushRegistering = false;
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
@@ -188,7 +187,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (mounted) setState(() => _pushStatusMessage = tr('Влезте в профила си, за да проверите регистрацията на устройството.', 'Sign in to check device registration.'));
       return;
     }
-    if (mounted) setState(() => _checkingPushStatus = true);
     try {
       final status = await push.getDiagnostics(bearer);
       final permission = (status['permission'] ?? 'unknown').toString();
@@ -204,8 +202,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } catch (e) {
       if (mounted) setState(() => _pushStatusMessage = '${tr('Проверката не успя:', 'Status check failed:')} $e');
       if (showMessage) _message('${tr('Проверката не успя:', 'Status check failed:')} $e');
-    } finally {
-      if (mounted) setState(() => _checkingPushStatus = false);
     }
   }
 
@@ -369,9 +365,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _selectTab(1);
         }
       });
-      if (mounted) setState(() => _pushStatusMessage = registered
-          ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-          : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
+      if (mounted) {
+        setState(() => _pushStatusMessage = registered
+            ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
+            : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
+      }
     } finally {
       _pushRegistering = false;
     }
@@ -1793,7 +1791,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           SwitchListTile(contentPadding: EdgeInsets.zero, secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined), title: Text(tr('Тъмна тема', 'Dark theme')), subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')), value: draftDarkTheme, onChanged: (v) => saveTheme(v, setSheetState)),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: draftLanguageMode,
+            initialValue: draftLanguageMode,
             decoration: InputDecoration(labelText: tr('Език', 'Language'), prefixIcon: const Icon(Icons.translate_rounded)),
             items: [
               DropdownMenuItem(value: 'auto', child: Text(tr('Автоматично (системен език)', 'Automatic (system language)'))),
