@@ -762,6 +762,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final navigator = _navigatorKey.currentState;
     final sheetHostContext = navigator?.overlay?.context;
     if (sheetHostContext == null) return;
+    if (!sheetHostContext.mounted) return;
     // Start the request immediately, but show the form first so the user never
     // sees a dead button while the service-location API is loading.
     Future<List<ServiceLocation>> locationsFuture = api.getLocations();
