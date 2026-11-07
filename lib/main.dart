@@ -375,9 +375,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         _selectTab(1);
       }
     });
-    if (mounted) setState(() => _pushStatusMessage = registered
-        ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-        : tr('Регистрацията за push не е потвърдена. Провери разрешението и Firebase настройките.', 'Push registration was not confirmed. Check permission and Firebase settings.'));
+    if (mounted) {
+      setState(() => _pushStatusMessage = registered
+          ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
+          : tr('Регистрацията за push не е потвърдена. Провери разрешението и Firebase настройките.', 'Push registration was not confirmed. Check permission and Firebase settings.'));
+    }
   }
 
   void _selectTab(int index) {
@@ -755,7 +757,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _showCustomerRepairRequest() async {
     final token = await auth.token;
+    if (!mounted) return;
     if (token == null) { _message(tr('Влезте в клиентския профил.','Sign in to your customer account.')); return; }
+    final navigator = _navigatorKey.currentState;
+    final sheetHostContext = navigator?.overlay?.context;
+    if (sheetHostContext == null) return;
     // Start the request immediately, but show the form first so the user never
     // sees a dead button while the service-location API is loading.
     Future<List<ServiceLocation>> locationsFuture = api.getLocations();
@@ -769,7 +775,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     String? problemError;
     bool saving = false;
     await showModalBottomSheet<void>(
-      context: _navigatorKey.currentState!.overlay!.context,
+      context: sheetHostContext,
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(builder: (ctx, setSheet) => Padding(
         padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18),
@@ -787,7 +793,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 if (locations.isEmpty) return Text(tr('В момента няма обекти, които приемат онлайн заявки.', 'No service locations are currently accepting online requests.'));
                 selected ??= locations.first;
                 return DropdownButtonFormField<ServiceLocation>(
-                  value: locations.any((location) => location.code == selected?.code) ? selected : locations.first,
+                  initialValue: locations.any((location) => location.code == selected?.code) ? selected : locations.first,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: tr('Сервизен обект*','Service location*'), border: const OutlineInputBorder()),
                   items: locations.map((location) => DropdownMenuItem(value: location, child: Text(location.name))).toList(),
@@ -797,7 +803,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: selectedDeviceType,
+              initialValue: selectedDeviceType,
               isExpanded: true,
               decoration: InputDecoration(labelText: tr('Тип устройство*','Device type*'), errorText: deviceError, border: const OutlineInputBorder()),
               items: const ['Лаптоп','Настолен компютър','PlayStation 5','PlayStation 4','Друго'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
@@ -1234,13 +1240,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         }, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save), label: Text(saving ? tr('Записване…', 'Saving…') : tr('Създай сервизен протокол', 'Create repair record')))),
       ])));
     }));
-  }
-
-  Future<void> _refreshProfile() async {
-    setState(() => authBusy = true);
-    try { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; repairsFuture = _loadRepairsFuture(); }); }
-    catch (e) { _message('$e'); if (mounted) setState(() => signedInUser = null); }
-    finally { if (mounted) setState(() => authBusy = false); }
   }
 
   Future<void> _logout() async {
