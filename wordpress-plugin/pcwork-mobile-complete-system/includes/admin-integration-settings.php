@@ -38,7 +38,7 @@ final class PCWork_Admin_Integration_Settings {
             'shoplentor_enabled' => '1',
             'sheets_enabled' => '0', 'sheets_webhook_url' => '', 'sheets_webhook_secret' => '',
             'push_enabled' => '0', 'push_provider' => 'firebase', 'firebase_project_id' => '', 'firebase_service_account_json' => '', 'firebase_test_device_token' => '',
-            'app_environment' => 'staging', 'support_email' => get_option('admin_email'), 'support_phone' => '',
+            'app_environment' => 'staging', 'app_latest_version' => '', 'app_version_code' => '0', 'app_apk_url' => '', 'app_release_notes' => '', 'support_email' => get_option('admin_email'), 'support_phone' => '',
         ];
     }
 
@@ -105,11 +105,15 @@ final class PCWork_Admin_Integration_Settings {
         $out = self::defaults();
         $checkboxes = ['woocommerce_enabled','bookly_enabled','chatway_enabled','chatway_verification_enabled','shoplentor_enabled','sheets_enabled','push_enabled'];
         foreach ($checkboxes as $key) $out[$key] = array_key_exists($key, $input) ? (!empty($input[$key]) ? '1' : '0') : ($old[$key] ?? ($out[$key] ?? '0'));
-        $text = ['site_url','bookly_api_url','bookly_booking_page_url','bookly_shortcode','chatway_widget_id','chatway_installation_id','firebase_project_id','firebase_test_device_token','support_email','support_phone'];
+        $text = ['site_url','bookly_api_url','bookly_booking_page_url','bookly_shortcode','chatway_widget_id','chatway_installation_id','firebase_project_id','firebase_test_device_token','support_email','support_phone','app_latest_version'];
         foreach ($text as $key) {
             $value = isset($input[$key]) ? wp_unslash($input[$key]) : ($old[$key] ?? '');
-            $out[$key] = $key === 'support_email' ? sanitize_email($value) : ($key === 'site_url' || $key === 'bookly_api_url' ? esc_url_raw($value) : sanitize_text_field($value));
+            $out[$key] = $key === 'support_email' ? sanitize_email($value) : (in_array($key, ['site_url','bookly_api_url','app_apk_url'], true) ? esc_url_raw($value) : sanitize_text_field($value));
         }
+        $out['app_version_code'] = (string)max(0, absint($input['app_version_code'] ?? ($old['app_version_code'] ?? 0)));
+        $out['app_apk_url'] = esc_url_raw((string)($input['app_apk_url'] ?? ($old['app_apk_url'] ?? '')));
+        if ($out['app_apk_url'] !== '' && strtolower((string)wp_parse_url($out['app_apk_url'], PHP_URL_SCHEME)) !== 'https') $out['app_apk_url'] = '';
+        $out['app_release_notes'] = sanitize_textarea_field((string)($input['app_release_notes'] ?? ($old['app_release_notes'] ?? '')));
         $secrets = ['woocommerce_consumer_key','woocommerce_consumer_secret','bookly_api_key','sheets_webhook_url','sheets_webhook_secret','firebase_service_account_json','chatway_verification_secret'];
         foreach ($secrets as $key) {
             $value = isset($input[$key]) ? trim((string) $input[$key]) : ''; // Settings API has already unslashed POST values.
@@ -169,11 +173,18 @@ final class PCWork_Admin_Integration_Settings {
         echo '<div class="wrap pcw-wrap"><div class="pcw-hero"><h1>⚙ PCWork – настройки и интеграции</h1><p>Централно място за свързване на сайта, резервациите, чата, магазина, Google Sheets и push известията.</p></div>';
         if (!class_exists('WooCommerce')) echo '<div class="notice notice-warning"><p>WooCommerce не е активен или не е открит. Настройките могат да бъдат въведени предварително.</p></div>';
         echo '<div class="pcw-note"><strong>Сигурност:</strong> Google Sheets HMAC Secret се съхранява криптирано в базата данни чрез AES-256-GCM и WordPress salts (когато OpenSSL е наличен). Пази wp-config.php и не сменяй AUTH_KEY/SECURE_AUTH_KEY без предварително да запазиш HMAC Secret. Използвай HTTPS, ограничен администраторски достъп и резервни копия. Празно поле запазва текущата стойност.</div>'; 
-        echo '<form method="post" action="options.php">'; settings_fields(self::GROUP); echo '<div class="pcw-grid">';
+        if (isset($_GET['settings-updated']) && sanitize_text_field(wp_unslash($_GET['settings-updated'])) === 'true') echo '<div class="notice notice-success is-dismissible"><p>Настройките са записани автоматично.</p></div>';
+        echo '<form id="pcw-integrations-form" method="post" action="options.php">'; settings_fields(self::GROUP); echo '<p id="pcw-autosave-status" class="description" aria-live="polite">Промените се записват автоматично при излизане от полето.</p><div class="pcw-grid">';
         self::card_start('Основни настройки','Адрес и среда на приложението.');
         self::field('site_url','WordPress сайт','url');
         echo '<label for="app_environment">Среда</label><select id="app_environment" name="'.self::OPTION.'[app_environment]"><option value="staging" '.selected(self::get_settings()['app_environment'],'staging',false).'>Тестова (Staging)</option><option value="production" '.selected(self::get_settings()['app_environment'],'production',false).'>Работна (Production)</option></select>';
         self::field('support_email','Имейл за поддръжка','email'); self::field('support_phone','Телефон за поддръжка'); echo '</section>';
+        self::card_start('Актуализации на мобилното приложение','Публичен манифест за проверка на нова версия. Качи подписания APK на HTTPS адрес и въведи същия versionCode като в pubspec.yaml.');
+        self::field('app_latest_version','Последна версия','text','0.62.0');
+        self::field('app_version_code','Android versionCode','number','62');
+        self::field('app_apk_url','HTTPS адрес на APK','url','https://pcwork-bg.com/.../app-release.apk');
+        self::field('app_release_notes','Бележки към версията','textarea','Кратко описание на промените.');
+        echo '<p class="description">Приложението проверява този манифест и показва бутон за изтегляне. Android изисква потребителско потвърждение при инсталиране; тихо инсталиране не се извършва.</p></section>';
 
         self::card_start('Имейл – кодове за регистрация','Проверка на изпращането на кодове за регистрация и вход. Изпраща тестово писмо до административния имейл на WordPress.'); echo '<p>Кодовете се изпращат чрез wp_mail(). За надеждна доставка настрой SMTP с потвърден адрес на домейна и SPF/DKIM записи. След тест провери и папката Спам.</p><button type="button" class="button pcw-test" data-integration="email">Изпрати тестов имейл</button><span class="pcw-result" id="pcw-result-email"></span></section>';
 
@@ -184,7 +195,7 @@ final class PCWork_Admin_Integration_Settings {
         self::card_start('Google Sheets – ремонти','Синхронизация на ремонтите към частен Google Sheet чрез Apps Script webhook.'); self::toggle('sheets_enabled','Активирай синхронизацията'); self::field('sheets_webhook_url','Apps Script Web App URL','password'); self::field('sheets_webhook_secret','HMAC Secret','password'); echo '<button type="button" class="button pcw-test" data-integration="sheets">Провери връзката</button><span class="pcw-result" id="pcw-result-sheets"></span>'; echo '</section>'; 
         self::card_start('Push известия','Настройки за Firebase Cloud Messaging (FCM).'); self::toggle('push_enabled','Активирай push известията'); echo '<label for="push_provider">Доставчик</label><select id="push_provider" name="'.self::OPTION.'[push_provider]"><option value="firebase">Firebase Cloud Messaging</option></select>'; self::field('firebase_project_id','Firebase Project ID'); self::field('firebase_service_account_json','Service Account JSON','textarea','','Поставя се само в защитената администраторска среда. Не използвай клиентски Firebase ключ тук.'); self::field('firebase_test_device_token','Тестов FCM device token','password','','Въведи FCM registration token от тестово устройство, запази настройките и изпрати тестово известие.'); echo '<button type="button" class="button pcw-test" data-integration="firebase">Изпрати тестово известие</button><span class="pcw-result" id="pcw-result-firebase"></span>'; echo '</section>';
         self::card_start('Регистрация на устройства','Мобилното приложение трябва да изпраща FCM token след вход. Токенът се свързва с потребителския WordPress профил.'); echo '<p>REST endpoints: <code>POST /wp-json/pcwork/v1/push/register</code> и <code>POST /wp-json/pcwork/v1/push/unregister</code>. Приложението ги извиква с персонален Bearer токен след вход; endpoint-ите използват същата проверка като останалия мобилен API.</p><p><strong>Автоматични известия:</strong> ремонтният модул трябва да извика <code>do_action(\'pcwork_repair_status_changed\', $repair_id, $customer_user_id, $status, $repair_number);</code>. Налични шаблони: received, diagnostics, waiting_approval, in_repair, ready, completed, cancelled.</p></section>';
-        echo '</div>'; submit_button('Запази настройките','primary large','submit',true,['class'=>'pcw-save']); echo '</form>';
+        echo '</div><noscript><p>JavaScript е изключен. За запис използвайте бутона по-долу.</p>'; submit_button('Запази настройките','primary large','submit',true,['class'=>'pcw-save']); echo '</noscript></form>';
         echo '<p class="description">Chatway е вградено в приложението чрез официалния widget и защитена HTTPS WebView страница. WooCommerce и Google Sheets имат отделни проверки; Bookly, ShopLentor и Firebase използват съответните си конфигурации и адаптери.</p></div>'; 
     }
 
@@ -193,7 +204,7 @@ final class PCWork_Admin_Integration_Settings {
         $screen = function_exists('get_current_screen') ? get_current_screen() : null;
         if (!$screen || strpos($screen->id, 'pcwork-integrations') === false) return;
         $nonce = wp_create_nonce('pcwork_test_integration');
-        echo '<script>(function(){document.querySelectorAll(".pcw-test").forEach(function(btn){btn.addEventListener("click",function(){var type=btn.dataset.integration;var out=document.getElementById("pcw-result-"+type);btn.disabled=true;out.className="pcw-result";out.textContent="Проверка...";var data=new URLSearchParams();data.append("action","pcwork_test_integration");data.append("nonce","'.esc_js($nonce).'");data.append("integration",type);fetch(ajaxurl,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},body:data.toString(),credentials:"same-origin"}).then(function(r){return r.json()}).then(function(r){out.textContent=r.data&&r.data.message?r.data.message:"Няма подробности";out.className="pcw-result "+(r.success?"ok":"err")}).catch(function(){out.textContent="Грешка при заявката";out.className="pcw-result err"}).finally(function(){btn.disabled=false})})})})();</script>';
+        echo '<script>(function(){document.querySelectorAll(".pcw-test").forEach(function(btn){btn.addEventListener("click",function(){var type=btn.dataset.integration;var out=document.getElementById("pcw-result-"+type);btn.disabled=true;out.className="pcw-result";out.textContent="Проверка...";var data=new URLSearchParams();data.append("action","pcwork_test_integration");data.append("nonce","'.esc_js($nonce).'");data.append("integration",type);fetch(ajaxurl,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},body:data.toString(),credentials:"same-origin"}).then(function(r){return r.json()}).then(function(r){out.textContent=r.data&&r.data.message?r.data.message:"Няма подробности";out.className="pcw-result "+(r.success?"ok":"err")}).catch(function(){out.textContent="Грешка при заявката";out.className="pcw-result err"}).finally(function(){btn.disabled=false})})});var form=document.getElementById("pcw-integrations-form");var status=document.getElementById("pcw-autosave-status");var timer=null;if(form){form.addEventListener("change",function(event){if(event.target&&event.target.closest("button"))return;if(status)status.textContent="Промяната се записва…";clearTimeout(timer);timer=setTimeout(function(){if(status)status.textContent="Записване…";if(form.requestSubmit)form.requestSubmit();else form.submit()},650)})}})();</script>';
     }
 
     public static function ajax_test_integration() {
@@ -284,6 +295,7 @@ final class PCWork_Admin_Integration_Settings {
     public static function rest_routes() {
         register_rest_route('pcwork/v1','/admin/integrations/status',[ 'methods'=>'GET', 'permission_callback'=>function(){ return current_user_can('manage_options'); }, 'callback'=>[__CLASS__,'status'] ]);
         register_rest_route('pcwork/v1','/booking/config',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'booking_config'] ]);
+        register_rest_route('pcwork/v1','/app/update',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'app_update_info'] ]);
         register_rest_route('pcwork/v1','/chatway/config',[ 'methods'=>'GET', 'permission_callback'=>'__return_true', 'callback'=>[__CLASS__,'chatway_config'] ]);
         register_rest_route('pcwork/v1','/chatway/session',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'chatway_session'] ]);
         register_rest_route('pcwork/v1','/push/register',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'register_device'] ]);
@@ -375,6 +387,20 @@ final class PCWork_Admin_Integration_Settings {
         $heading_text = $light_theme ? '#172033' : '#ffffff';
         echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="'.esc_attr($page_bg).'"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:'.esc_attr($page_bg).';color:'.esc_attr($page_text).';font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:'.esc_attr($muted_text).'}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:'.esc_attr($heading_text).';font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.'<script id="chatway" async src="'.esc_url($script).'"></script><script>window.addEventListener("load",function(){var tries=0;var timer=setInterval(function(){tries++;if(window.$chatway&&typeof window.$chatway.openChatwayWidget==="function"){clearInterval(timer);window.$chatway.openChatwayWidget();}if(tries>40)clearInterval(timer);},250);});</script></body></html>';
         exit;
+    }
+
+    public static function app_update_info() {
+        $s = self::get_settings();
+        $url = esc_url_raw((string)($s['app_apk_url'] ?? ''));
+        $enabled = !empty($s['app_latest_version']) && (int)($s['app_version_code'] ?? 0) > 0
+            && $url !== '' && strtolower((string)wp_parse_url($url, PHP_URL_SCHEME)) === 'https';
+        return rest_ensure_response([
+            'enabled' => $enabled,
+            'version' => sanitize_text_field((string)($s['app_latest_version'] ?? '')),
+            'version_code' => (int)($s['app_version_code'] ?? 0),
+            'apk_url' => $enabled ? $url : '',
+            'release_notes' => sanitize_textarea_field((string)($s['app_release_notes'] ?? '')),
+        ]);
     }
 
     public static function booking_config() {

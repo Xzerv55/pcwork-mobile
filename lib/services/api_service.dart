@@ -76,6 +76,19 @@ class ApiService {
     return Uri.parse('$base/wp-json/pcwork/v1/$path');
   }
 
+  /// Public release manifest configured by a PCWork administrator in WordPress.
+  /// Only HTTPS APK links are accepted by the app before they are opened.
+  Future<Map<String, dynamic>?> getAppUpdateInfo() async {
+    final response = await http.get(_uri('app/update'), headers: const {'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : null;
+    if (data is! Map || data['enabled'] != true) return null;
+    final url = Uri.tryParse((data['apk_url'] ?? '').toString());
+    if (url == null || url.scheme != 'https' || url.host.isEmpty) return null;
+    return Map<String, dynamic>.from(data);
+  }
+
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
     final params = <String, String>{'per_page': '20'};
     if (search.isNotEmpty) params['search'] = search;

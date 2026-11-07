@@ -55,6 +55,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _marketingOptIn = false;
   bool _marketingPreferenceLoaded = false;
   bool _pushConsentDialogOpen = false;
+  Map<String, dynamic>? _appUpdateInfo;
+  static const int _currentBuildNumber = 62;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -80,6 +82,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     // Restore the account immediately; the status check runs independently.
     unawaited(_checkApi(silent: true));
     await _restoreSession();
+    unawaited(_checkForAppUpdate());
   }
 
   Future<void> _restoreSession() async {
@@ -87,6 +90,43 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       unawaited(_loadMarketingPreference(t));
       unawaited(_enablePush(t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    try {
+      final info = await api.getAppUpdateInfo();
+      if (!mounted) return;
+      final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
+      setState(() => _appUpdateInfo = availableBuild > _currentBuildNumber ? info : null);
+    } catch (_) {
+      // Update checks are optional and must never block app startup.
+    }
+  }
+
+  Widget _appUpdateBanner() {
+    final info = _appUpdateInfo;
+    if (info == null) return const SizedBox.shrink();
+    final version = (info['version'] ?? '').toString();
+    final notes = (info['release_notes'] ?? '').toString().trim();
+    final url = Uri.tryParse((info['apk_url'] ?? '').toString());
+    return Card(
+      color: isDarkTheme ? const Color(0xFF163342) : const Color(0xFFE5F7F7),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [const Icon(Icons.system_update_alt_rounded, color: cyan), const SizedBox(width: 9), Expanded(child: Text(tr('Налична е нова версия', 'A new version is available'), style: const TextStyle(fontWeight: FontWeight.w800)))]),
+          if (version.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 5), child: Text('PCWork Mobile $version')),
+          if (notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 7), child: Text(notes, maxLines: 4, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDarkTheme ? Colors.white70 : Colors.black54))),
+          const SizedBox(height: 10),
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: url != null && url.scheme == 'https' ? () => launchUrl(url, mode: LaunchMode.externalApplication) : null,
+            icon: const Icon(Icons.download_rounded),
+            label: Text(tr('Изтегли актуализацията', 'Download update')),
+          )),
+          Text(tr('Инсталирането се потвърждава от Android. Не се извършва тиха инсталация.', 'Android will ask you to confirm installation. Silent installation is not performed.'), style: TextStyle(fontSize: 11, color: isDarkTheme ? Colors.white54 : Colors.black54)),
+        ]),
+      ),
+    );
   }
 
   Future<void> _loadMarketingPreference(String bearer) async {
@@ -224,11 +264,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     await _enablePush();
   }
 
-  Future<void> _enablePush([String? knownToken]) async {
+  Future<void> _enablePush([String? knownToken], {bool forcePrompt = false}) async {
     final bearer = knownToken ?? await auth.token;
     if (bearer == null || bearer.isEmpty || !mounted || _pushConsentDialogOpen) return;
     final prefs = await SharedPreferences.getInstance();
     final choice = prefs.getString('pcwork_push_consent_choice');
+    if (choice == 'no' && !forcePrompt) return;
     if (choice != 'yes') {
       if (!mounted) return;
       _pushConsentDialogOpen = true;
@@ -446,7 +487,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
           ]),
           actions: [
-            IconButton(tooltip: tr('Език', 'Language'), onPressed: () { setState(() => english = !english); _savePreference('pcwork_english', english); }, icon: const Icon(Icons.language_rounded)),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.language_rounded, color: isDarkTheme ? Colors.white70 : const Color(0xFF68778B))),
             IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
           ],
         ),
@@ -490,6 +531,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
+    if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
     const SizedBox(height: 22),
     if (signedInUser == null) _homeSignInCard() else _homeAccountDashboard(),
     const SizedBox(height: 8),
@@ -829,10 +871,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         Text(tr('Известия за ремонтите и важни сервизни съобщения се управляват от разрешението на телефона.', 'Repair updates and important service messages are controlled by your phone notification permission.'), style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
+        const SizedBox(height: 6),
+        TextButton.icon(onPressed: () async { final prefs = await SharedPreferences.getInstance(); await prefs.setString('pcwork_push_consent_choice', 'yes'); if (mounted) await _enablePush(forcePrompt: true); }, icon: const Icon(Icons.notifications_active_outlined), label: Text(tr('Активирай / повтори настройката на известията', 'Enable / retry notifications'))),
         const Divider(),
         SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
       ]))),
-      const SizedBox(height: 12), FilledButton.icon(onPressed: _refreshProfile, icon: const Icon(Icons.refresh), label: Text(tr('Обнови профила', 'Refresh profile'))),
+      const SizedBox(height: 12), OutlinedButton.icon(onPressed: authBusy ? null : _refreshProfile, icon: const Icon(Icons.cloud_sync_outlined), label: Text(tr('Презареди данните от сървъра', 'Reload data from server'))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
       const SizedBox(height: 18),
@@ -862,7 +906,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final name = TextEditingController(text: user.name);
     final phone = TextEditingController(text: user.phone);
     final email = TextEditingController(text: user.email);
-    final b = user.billing; final sh = user.shipping;
+    final b = user.billing;
+    final sh = user.shipping;
     final first = TextEditingController(text: (b['first_name'] ?? user.name).toString());
     final last = TextEditingController(text: (b['last_name'] ?? '').toString());
     final company = TextEditingController(text: (b['company'] ?? '').toString());
@@ -873,49 +918,126 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final shipFirst = TextEditingController(text: (sh['first_name'] ?? first.text).toString());
     final shipLast = TextEditingController(text: (sh['last_name'] ?? last.text).toString());
     final shipAddress = TextEditingController(text: (sh['address_1'] ?? '').toString());
+    final shipAddress2 = TextEditingController(text: (sh['address_2'] ?? '').toString());
     final shipCity = TextEditingController(text: (sh['city'] ?? '').toString());
     final shipPostcode = TextEditingController(text: (sh['postcode'] ?? '').toString());
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-      title: Text(tr('Редакция на профила','Edit profile')),
-      content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: email, readOnly: true, decoration: InputDecoration(labelText: tr('Регистрационен имейл (не може да се променя)','Registration email (cannot be changed)'), helperText: tr('Имейлът удостоверява профила ви.','This email identifies your account.'))),
-        const SizedBox(height: 12),
-        TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: InputDecoration(labelText: tr('Име и фамилия','Full name'))),
-        const SizedBox(height: 12),
-        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: tr('Телефон','Phone'))),
-        const Divider(height: 28), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране','Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
-        TextField(controller: first, decoration: InputDecoration(labelText: tr('Собствено име','First name'))),
-        TextField(controller: last, decoration: InputDecoration(labelText: tr('Фамилия','Last name'))),
-        TextField(controller: company, decoration: InputDecoration(labelText: tr('Фирма (по желание)','Company (optional)'))),
-        TextField(controller: address, decoration: InputDecoration(labelText: tr('Адрес','Address'))),
-        TextField(controller: address2, decoration: InputDecoration(labelText: tr('Допълнение към адреса','Address line 2'))),
-        TextField(controller: city, decoration: InputDecoration(labelText: tr('Град','City'))),
-        TextField(controller: postcode, decoration: InputDecoration(labelText: tr('Пощенски код','Postcode'))),
-        const Divider(height: 28), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка (ако е различен)','Shipping address (if different)'), style: const TextStyle(fontWeight: FontWeight.bold))),
-        TextField(controller: shipFirst, decoration: InputDecoration(labelText: tr('Име за доставка','Shipping first name'))),
-        TextField(controller: shipLast, decoration: InputDecoration(labelText: tr('Фамилия за доставка','Shipping last name'))),
-        TextField(controller: shipAddress, decoration: InputDecoration(labelText: tr('Адрес за доставка','Shipping address'))),
-        TextField(controller: shipCity, decoration: InputDecoration(labelText: tr('Град за доставка','Shipping city'))),
-        TextField(controller: shipPostcode, decoration: InputDecoration(labelText: tr('Пощенски код за доставка','Shipping postcode'))),
-      ]))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx,false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: () => Navigator.pop(ctx,true), child: Text(tr('Запази','Save')))],
-    ));
-    if (ok == true && mounted) {
+
+    Timer? saveTimer;
+    var dirty = false;
+    var saving = false;
+    var revision = 0;
+    var saveMessage = tr('Промените се записват автоматично.', 'Changes are saved automatically.');
+    var saveError = false;
+    late void Function(void Function()) setDialogState;
+
+    Future<bool> saveProfile() async {
+      if (saving) return false;
+      if (!dirty) return true;
       if (name.text.trim().length < 2 || phone.text.trim().length < 6) {
-        _message(tr('Въведете име и валиден телефон (поне 6 символа).', 'Enter a name and a valid phone number (at least 6 characters).'));
-      } else {
-        try {
-          final updated = await auth.updateProfile(name: name.text, phone: phone.text,
-            billing: {'first_name': first.text, 'last_name': last.text, 'company': company.text, 'address_1': address.text, 'address_2': address2.text, 'city': city.text, 'postcode': postcode.text, 'country': 'BG'},
-            shipping: {'first_name': shipFirst.text, 'last_name': shipLast.text, 'address_1': shipAddress.text, 'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG'});
-          if (mounted) setState(() => signedInUser = updated);
-          _message(tr('Профилът е обновен. Регистрационният имейл не е променян.','Profile updated. Registration email was not changed.'));
-        } catch (error) {
-          _message('${tr('Неуспешно обновяване:','Update failed:')} $error');
+        setDialogState(() { saveMessage = tr('Въведете име и валиден телефон (поне 6 символа).', 'Enter a name and a valid phone number (at least 6 characters).'); saveError = true; });
+        return false;
+      }
+      saving = true;
+      dirty = false;
+      final savingRevision = revision;
+      var saveFailed = false;
+      setDialogState(() { saveMessage = tr('Записване…', 'Saving…'); saveError = false; });
+      try {
+        final updated = await auth.updateProfile(
+          name: name.text,
+          phone: phone.text,
+          billing: {
+            'first_name': first.text, 'last_name': last.text, 'company': company.text,
+            'address_1': address.text, 'address_2': address2.text, 'city': city.text,
+            'postcode': postcode.text, 'country': 'BG', 'phone': phone.text,
+          },
+          shipping: {
+            'first_name': shipFirst.text, 'last_name': shipLast.text,
+            'address_1': shipAddress.text, 'address_2': shipAddress2.text,
+            'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG',
+          },
+        );
+        if (mounted) setState(() => signedInUser = updated);
+        if (revision == savingRevision) {
+          setDialogState(() { saveMessage = tr('Всички промени са записани.', 'All changes saved.'); saveError = false; });
+        } else {
+          dirty = true;
+        }
+      } catch (error) {
+        dirty = true;
+        saveFailed = true;
+        setDialogState(() { saveMessage = '${tr('Грешка при запис: ', 'Save error: ')}$error'; saveError = true; });
+      } finally {
+        saving = false;
+        if (dirty && revision != savingRevision && !saveFailed) {
+          saveTimer?.cancel();
+          saveTimer = Timer(const Duration(milliseconds: 500), () => saveProfile());
         }
       }
+      return !dirty && !saveError;
     }
-    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipFirst, shipLast, shipAddress, shipCity, shipPostcode]) { c.dispose(); }
+
+    void markChanged() {
+      revision++;
+      dirty = true;
+      setDialogState(() { saveMessage = tr('Има незаписани промени…', 'Changes pending…'); saveError = false; });
+      saveTimer?.cancel();
+      saveTimer = Timer(const Duration(milliseconds: 900), () => saveProfile());
+    }
+
+    final closed = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(
+      builder: (ctx, updateDialog) {
+        setDialogState = updateDialog;
+        Widget field(TextEditingController controller, String label, {TextInputType? keyboardType, bool locked = false}) => Padding(
+          padding: const EdgeInsets.only(bottom: 9),
+          child: TextField(controller: controller, readOnly: locked, keyboardType: keyboardType,
+            onChanged: locked ? null : (_) => markChanged(),
+            decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true)),
+        );
+        return AlertDialog(
+          title: Text(tr('Редакция на профила', 'Edit profile')),
+          content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            field(email, tr('Регистрационен имейл (заключен)', 'Registration email (locked)'), locked: true),
+            Align(alignment: Alignment.centerLeft, child: Text(tr('Имейлът е идентификатор на профила и не може да се променя от тази форма.', 'This email identifies your account and cannot be changed here.'), style: const TextStyle(fontSize: 11, color: Colors.grey))),
+            const SizedBox(height: 12),
+            field(name, tr('Име и фамилия', 'Full name')),
+            field(phone, tr('Телефон', 'Phone'), keyboardType: TextInputType.phone),
+            const Divider(height: 25), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране', 'Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
+            field(first, tr('Собствено име', 'First name')),
+            field(last, tr('Фамилия', 'Last name')),
+            field(company, tr('Фирма (по желание)', 'Company (optional)')),
+            field(address, tr('Адрес', 'Address')),
+            field(address2, tr('Допълнение към адреса', 'Address line 2')),
+            field(city, tr('Град', 'City')),
+            field(postcode, tr('Пощенски код', 'Postcode')),
+            const Divider(height: 25), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка (ако е различен)', 'Shipping address (if different)'), style: const TextStyle(fontWeight: FontWeight.bold))),
+            field(shipFirst, tr('Име за доставка', 'Shipping first name')),
+            field(shipLast, tr('Фамилия за доставка', 'Shipping last name')),
+            field(shipAddress, tr('Адрес за доставка', 'Shipping address')),
+            field(shipAddress2, tr('Допълнение към адреса за доставка', 'Shipping address line 2')),
+            field(shipCity, tr('Град за доставка', 'Shipping city')),
+            field(shipPostcode, tr('Пощенски код за доставка', 'Shipping postcode')),
+            const SizedBox(height: 8),
+            Row(children: [Icon(saveError ? Icons.error_outline : Icons.cloud_done_outlined, size: 17, color: saveError ? Colors.redAccent : cyan), const SizedBox(width: 7), Expanded(child: Text(saveMessage, style: TextStyle(fontSize: 12, color: saveError ? Colors.redAccent : (isDarkTheme ? Colors.white60 : Colors.black54))))]),
+          ]))),
+          actions: [
+            TextButton(onPressed: saving ? null : () async {
+              saveTimer?.cancel();
+              if (dirty) {
+                final ok = await saveProfile();
+                if (!ok || dirty || !dialogContext.mounted) return;
+              }
+              if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+            }, child: Text(tr('Готово', 'Done'))),
+          ],
+        );
+      },
+    ));
+    saveTimer?.cancel();
+    if (closed == true && mounted && dirty) {
+      await saveProfile();
+    }
+    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipFirst, shipLast, shipAddress, shipAddress2, shipCity, shipPostcode]) { c.dispose(); }
   }
 
   Future<void> _openNotificationSettings() async {

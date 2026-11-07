@@ -456,7 +456,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   final product = cartProducts[entry.key] ?? {'name': 'Product', 'price': '0'};
                   final cartImage = (product['image'] ?? '').toString();
                   return ListTile(
-                    leading: cartImage.isEmpty ? const SizedBox(width: 48, height: 48, child: Icon(Icons.devices_other)) : ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: Image.network(cartImage, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other)))),
+                    leading: cartImage.isEmpty ? const SizedBox(width: 48, height: 48, child: Icon(Icons.devices_other)) : ClipRRect(borderRadius: BorderRadius.circular(8), child: Container(width: 48, height: 48, color: Colors.transparent, alignment: Alignment.center, child: Image.network(cartImage, fit: BoxFit.contain, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other)))),
                     title: Text('${product['name']}'),
                     subtitle: Text('${product['variation_label'] ?? ''} ${product['price']} × ${entry.value}'),
                     trailing: Row(
