@@ -439,7 +439,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       home: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 36, height: 36, fit: BoxFit.contain)),
+            Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 36, height: 36, fit: BoxFit.contain)),
             const SizedBox(width: 10), const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
             const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
@@ -503,12 +503,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Row(children: [
       Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: const Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: const Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
+      Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
     ]),
     Row(children: [
-      Expanded(child: _contactCard(const Icon(Icons.facebook, color: const Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
+      Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: const Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 21),
