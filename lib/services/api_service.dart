@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -90,6 +93,25 @@ class ApiService {
     final url = Uri.tryParse((data['apk_url'] ?? '').toString());
     if (url == null || url.scheme != 'https' || url.host.isEmpty) return null;
     return Map<String, dynamic>.from(data);
+  }
+
+  Future<String> downloadAndVerifyUpdate(Map<String, dynamic> info) async {
+    final url = Uri.tryParse((info['apk_url'] ?? '').toString());
+    if (url == null || url.scheme != 'https' || url.host != 'pcwork-bg.com' && url.host != 'www.pcwork-bg.com') {
+      throw Exception('Невалиден HTTPS адрес за актуализация.');
+    }
+    final expected = (info['sha256'] ?? '').toString().toLowerCase();
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(expected)) {
+      throw Exception('Липсва валидна SHA-256 контролна сума в update.json.');
+    }
+    final response = await http.get(url).timeout(const Duration(minutes: 4));
+    if (response.statusCode != 200 || response.bodyBytes.isEmpty) throw Exception('Изтеглянето на актуализацията е неуспешно (HTTP ${response.statusCode}).');
+    final actual = crypto.sha256.convert(response.bodyBytes).toString();
+    if (actual != expected) throw Exception('Проверката за цялост на APK файла е неуспешна.');
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/pcwork-mobile-update.apk');
+    await file.writeAsBytes(response.bodyBytes, flush: true);
+    return file.path;
   }
 
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {

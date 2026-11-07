@@ -61,6 +61,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
   static const int _currentBuildNumber = 66;
+  static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
+  bool _installingUpdate = false;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -113,6 +115,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _downloadAndInstallUpdate() async {
+    final info = _appUpdateInfo;
+    if (info == null || _installingUpdate) return;
+    setState(() => _installingUpdate = true);
+    try {
+      final path = await api.downloadAndVerifyUpdate(info);
+      await _updaterChannel.invokeMethod<bool>('installApk', {'path': path});
+    } on PlatformException catch (e) {
+      _message(e.message ?? tr('Android не успя да стартира инсталацията.', 'Android could not start the installer.'));
+    } catch (e) {
+      _message('${tr('Актуализацията не бе инсталирана:', 'Update could not be installed:')} $e');
+    } finally {
+      if (mounted) setState(() => _installingUpdate = false);
+    }
+  }
+
   Widget _appUpdateBanner() {
     final info = _appUpdateInfo;
     if (info == null) return const SizedBox.shrink();
@@ -129,9 +147,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           if (notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 7), child: Text(notes, maxLines: 4, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDarkTheme ? Colors.white70 : Colors.black54))),
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: url != null && url.scheme == 'https' ? () => launchUrl(url, mode: LaunchMode.externalApplication) : null,
+            onPressed: url != null && url.scheme == 'https' && !_installingUpdate ? _downloadAndInstallUpdate : null,
             icon: const Icon(Icons.download_rounded),
-            label: Text(tr('Изтегли актуализацията', 'Download update')),
+            label: Text(_installingUpdate ? tr('Изтегляне и проверка…', 'Downloading and verifying…') : tr('Актуализирай сега', 'Update now')),
           )),
           Text(tr('Инсталирането се потвърждава от Android. Не се извършва тиха инсталация.', 'Android will ask you to confirm installation. Silent installation is not performed.'), style: TextStyle(fontSize: 11, color: isDarkTheme ? Colors.white54 : Colors.black54)),
         ]),
@@ -341,11 +359,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _selectTab(1);
         }
       });
-      if (mounted) {
-        setState(() => _pushStatusMessage = registered
-            ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-            : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
-      }
+      if (mounted) setState(() => _pushStatusMessage = registered
+          ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
+          : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
     } finally {
       _pushRegistering = false;
     }

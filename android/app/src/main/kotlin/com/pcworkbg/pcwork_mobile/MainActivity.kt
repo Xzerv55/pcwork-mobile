@@ -2,6 +2,9 @@ package com.pcworkbg.pcwork_mobile
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
+import java.io.File
+import androidx.core.content.FileProvider
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -14,6 +17,36 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pcworkbg.pcwork_mobile/updater")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "installApk") { result.notImplemented(); return@setMethodCallHandler }
+                val path = call.argument<String>("path")
+                if (path.isNullOrBlank()) { result.error("invalid_path", "APK path is missing.", null); return@setMethodCallHandler }
+                try {
+                    val apk = File(path)
+                    if (!apk.isFile || apk.length() <= 0L || apk.extension.lowercase() != "apk") {
+                        result.error("invalid_apk", "Downloaded APK file is invalid.", null); return@setMethodCallHandler
+                    }
+                    if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                        val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                            data = android.net.Uri.parse("package:$packageName")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(settingsIntent)
+                        result.error("install_permission_required", "Разреши инсталиране от PCWork, след което натисни отново „Актуализирай сега“.", null)
+                        return@setMethodCallHandler
+                    }
+                    val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(intent)
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("installer_error", e.message ?: "Could not open Android installer.", null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, notificationChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method != "requestNotificationPermission") {
