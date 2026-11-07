@@ -44,7 +44,7 @@ class _ChatwayScreenState extends State<ChatwayScreen> {
 
   Future<Uri?> _loadChatUrl() async {
     final token = await widget.tokenProvider().timeout(const Duration(seconds: 5));
-    return widget.api.getChatwayUrl(token: token).timeout(const Duration(seconds: 18));
+    return widget.api.getChatwayUrl(token: token, isDarkTheme: widget.isDarkTheme).timeout(const Duration(seconds: 18));
   }
 
   Future<void> _reload() async {

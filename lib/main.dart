@@ -546,7 +546,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 14),
           child: Row(children: [
-            Container(width: 39, height: 39, decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(13)), child: icon),
+            Container(width: 39, height: 39, decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(13)), alignment: Alignment.center, child: icon),
             const SizedBox(width: 9),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
@@ -817,7 +817,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(signedInUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
     const SizedBox(height: 6),
     Text(signedInUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
-    if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: const TextStyle(color: Colors.white60))],
+    if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
     if (signedInUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
       const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.join(', ')))),
@@ -852,8 +852,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   ]);
 
   Future<void> _editCustomerProfile() async {
+    if (!mounted) return;
     final user = signedInUser;
-    if (user == null) return;
+    if (user == null) {
+      _message(tr('Влезте в профила си, за да редактирате данните.', 'Sign in to edit your profile.'));
+      return;
+    }
     final name = TextEditingController(text: user.name);
     final phone = TextEditingController(text: user.phone);
     final email = TextEditingController(text: user.email);
@@ -865,6 +869,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final address2 = TextEditingController(text: (b['address_2'] ?? '').toString());
     final city = TextEditingController(text: (b['city'] ?? '').toString());
     final postcode = TextEditingController(text: (b['postcode'] ?? '').toString());
+    final shipFirst = TextEditingController(text: (sh['first_name'] ?? first.text).toString());
+    final shipLast = TextEditingController(text: (sh['last_name'] ?? last.text).toString());
     final shipAddress = TextEditingController(text: (sh['address_1'] ?? '').toString());
     final shipCity = TextEditingController(text: (sh['city'] ?? '').toString());
     final shipPostcode = TextEditingController(text: (sh['postcode'] ?? '').toString());
@@ -885,22 +891,30 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         TextField(controller: city, decoration: InputDecoration(labelText: tr('Град','City'))),
         TextField(controller: postcode, decoration: InputDecoration(labelText: tr('Пощенски код','Postcode'))),
         const Divider(height: 28), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка (ако е различен)','Shipping address (if different)'), style: const TextStyle(fontWeight: FontWeight.bold))),
+        TextField(controller: shipFirst, decoration: InputDecoration(labelText: tr('Име за доставка','Shipping first name'))),
+        TextField(controller: shipLast, decoration: InputDecoration(labelText: tr('Фамилия за доставка','Shipping last name'))),
         TextField(controller: shipAddress, decoration: InputDecoration(labelText: tr('Адрес за доставка','Shipping address'))),
         TextField(controller: shipCity, decoration: InputDecoration(labelText: tr('Град за доставка','Shipping city'))),
         TextField(controller: shipPostcode, decoration: InputDecoration(labelText: tr('Пощенски код за доставка','Shipping postcode'))),
       ]))),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx,false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: () => Navigator.pop(ctx,true), child: Text(tr('Запази','Save')))],
     ));
-    if (ok == true) {
-      try {
-        final updated = await auth.updateProfile(name: name.text, phone: phone.text,
-          billing: {'first_name': first.text, 'last_name': last.text, 'company': company.text, 'address_1': address.text, 'address_2': address2.text, 'city': city.text, 'postcode': postcode.text, 'country': 'BG'},
-          shipping: {'first_name': first.text, 'last_name': last.text, 'address_1': shipAddress.text, 'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG'});
-        if (mounted) setState(() => signedInUser = updated);
-        _message(tr('Профилът е обновен. Регистрационният имейл не е променян.','Profile updated. Registration email was not changed.'));
-      } catch (error) { _message('${tr('Неуспешно обновяване:','Update failed:')} $error'); }
+    if (ok == true && mounted) {
+      if (name.text.trim().length < 2 || phone.text.trim().length < 6) {
+        _message(tr('Въведете име и валиден телефон (поне 6 символа).', 'Enter a name and a valid phone number (at least 6 characters).'));
+      } else {
+        try {
+          final updated = await auth.updateProfile(name: name.text, phone: phone.text,
+            billing: {'first_name': first.text, 'last_name': last.text, 'company': company.text, 'address_1': address.text, 'address_2': address2.text, 'city': city.text, 'postcode': postcode.text, 'country': 'BG'},
+            shipping: {'first_name': shipFirst.text, 'last_name': shipLast.text, 'address_1': shipAddress.text, 'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG'});
+          if (mounted) setState(() => signedInUser = updated);
+          _message(tr('Профилът е обновен. Регистрационният имейл не е променян.','Profile updated. Registration email was not changed.'));
+        } catch (error) {
+          _message('${tr('Неуспешно обновяване:','Update failed:')} $error');
+        }
+      }
     }
-    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipAddress, shipCity, shipPostcode]) { c.dispose(); }
+    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipFirst, shipLast, shipAddress, shipCity, shipPostcode]) { c.dispose(); }
   }
 
   Future<void> _openNotificationSettings() async {

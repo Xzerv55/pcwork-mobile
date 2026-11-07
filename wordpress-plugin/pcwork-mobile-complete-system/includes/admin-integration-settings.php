@@ -287,15 +287,18 @@ final class PCWork_Admin_Integration_Settings {
         register_rest_route('pcwork/v1','/chatway/session',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'chatway_session'] ]);
         register_rest_route('pcwork/v1','/push/register',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'register_device'] ]);
         register_rest_route('pcwork/v1','/push/unregister',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'unregister_device'] ]);
+        register_rest_route('pcwork/v1','/push/preferences',[ 'methods'=>'GET', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'get_marketing_preferences'] ]);
+        register_rest_route('pcwork/v1','/push/preferences',[ 'methods'=>'POST', 'permission_callback'=>['PCWork_Mobile_Auth_Bridge','authorize'], 'callback'=>[__CLASS__,'update_marketing_preferences'] ]);
     }
 
-    public static function chatway_config() {
+    public static function chatway_config(WP_REST_Request $request) {
         $s = self::get_settings();
         $installation_id = sanitize_text_field((string)($s['chatway_installation_id'] ?? ''));
         if (($s['chatway_enabled'] ?? '0') !== '1' || !preg_match('/^[A-Za-z0-9_-]{6,100}$/', $installation_id)) {
             return rest_ensure_response(['enabled' => false, 'provider' => 'chatway']);
         }
-        return rest_ensure_response(['enabled' => true, 'provider' => 'chatway', 'chat_url' => add_query_arg('pcwork_mobile_chat', '1', home_url('/'))]);
+        $theme = $request->get_param('theme') === 'light' ? 'light' : 'dark';
+        return rest_ensure_response(['enabled' => true, 'provider' => 'chatway', 'chat_url' => add_query_arg(['pcwork_mobile_chat' => '1', 'pcw_theme' => $theme], home_url('/'))]);
     }
 
     /** Creates a short-lived, single-use launch ticket; the app never receives the Chatway verification secret. */
@@ -309,8 +312,9 @@ final class PCWork_Admin_Integration_Settings {
         if (!$user_id || !get_user_by('id', $user_id)) return new WP_Error('pcwork_chatway_auth', 'Необходим е активен клиентски профил.', ['status'=>401]);
         try { $ticket = bin2hex(random_bytes(32)); }
         catch (Exception $e) { return new WP_Error('pcwork_chatway_ticket', 'Неуспешно създаване на защитена чат сесия.', ['status'=>500]); }
+        $theme = $request->get_param('theme') === 'light' ? 'light' : 'dark';
         set_transient('pcw_chatway_launch_' . hash('sha256', $ticket), ['user_id'=>(int)$user_id, 'created'=>time()], 180);
-        return rest_ensure_response(['enabled'=>true, 'provider'=>'chatway', 'chat_url'=>add_query_arg(['pcwork_mobile_chat'=>'1','pcw_chat_ticket'=>$ticket], home_url('/')), 'expires_in'=>180]);
+        return rest_ensure_response(['enabled'=>true, 'provider'=>'chatway', 'chat_url'=>add_query_arg(['pcwork_mobile_chat'=>'1','pcw_chat_ticket'=>$ticket,'pcw_theme'=>$theme], home_url('/')), 'expires_in'=>180]);
     }
 
     /** Dedicated Chatway page. A one-time ticket binds the WebView to the authenticated WordPress user. */
@@ -345,10 +349,13 @@ final class PCWork_Admin_Integration_Settings {
                 $identifier_type = in_array(($s['chatway_verification_identifier'] ?? 'id'), ['id','email'], true) ? $s['chatway_verification_identifier'] : 'id';
                 $visitor_id = (string)$user->ID;
                 $email = (string)$user->user_email;
+                $name = (string)$user->display_name;
+                $phone = (string)get_user_meta($user->ID, 'pcwork_phone', true);
+                if ($phone === '') $phone = (string)get_user_meta($user->ID, 'billing_phone', true);
                 $hmac_base = $identifier_type === 'email' ? $email : $visitor_id;
                 $hmac = hash_hmac('sha256', $hmac_base, (string)$s['chatway_verification_secret']);
                 $identity = [
-                    'visitor'=>['data'=>['id'=>$visitor_id,'email'=>$email],'hmac'=>$hmac],
+                    'visitor'=>['data'=>['id'=>$visitor_id,'name'=>$name,'email'=>$email,'phone'=>$phone],'hmac'=>$hmac],
                     'tags'=>[], 'customFields'=>[],
                 ];
                 $identity_script = '<script>window.chatwaySettings = '.wp_json_encode($identity, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT).';</script>';
@@ -360,7 +367,12 @@ final class PCWork_Admin_Integration_Settings {
         header('Content-Type: text/html; charset=utf-8');
         header('X-Content-Type-Options: nosniff');
         header('Referrer-Policy: no-referrer');
-        echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#0a101a"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:#0a101a;color:#eaf4ff;font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:#9fb0c4}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:#fff;font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.'<script id="chatway" async src="'.esc_url($script).'"></script><script>window.addEventListener("load",function(){var tries=0;var timer=setInterval(function(){tries++;if(window.$chatway&&typeof window.$chatway.openChatwayWidget==="function"){clearInterval(timer);window.$chatway.openChatwayWidget();}if(tries>40)clearInterval(timer);},250);});</script></body></html>';
+        $light_theme = isset($_GET['pcw_theme']) && sanitize_key(wp_unslash($_GET['pcw_theme'])) === 'light';
+        $page_bg = $light_theme ? '#f3f6fa' : '#0a101a';
+        $page_text = $light_theme ? '#172033' : '#eaf4ff';
+        $muted_text = $light_theme ? '#68778b' : '#9fb0c4';
+        $heading_text = $light_theme ? '#172033' : '#ffffff';
+        echo '<!doctype html><html lang="bg"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="'.esc_attr($page_bg).'"><title>PCWork – Онлайн поддръжка</title><style>html,body{margin:0;width:100%;height:100%;background:'.esc_attr($page_bg).';color:'.esc_attr($page_text).';font-family:system-ui,-apple-system,sans-serif}body{display:flex;align-items:center;justify-content:center}.hint{max-width:320px;padding:28px;text-align:center;color:'.esc_attr($muted_text).'}.orb{width:62px;height:62px;margin:0 auto 18px;border-radius:20px;background:linear-gradient(135deg,#21d4d8,#7d65d9);display:grid;place-items:center;color:#07151b;font-size:28px;font-weight:800;box-shadow:0 12px 40px #21d4d833}h2{color:'.esc_attr($heading_text).';font-size:21px;margin:0 0 8px}.hint p{font-size:14px;line-height:1.55;margin:0}</style></head><body><div class="hint"><div class="orb">P</div><h2>PCWork поддръжка</h2><p>Зареждаме защитения чат. Можете да продължите предишния си разговор с екипа.</p></div>'.$identity_script.'<script id="chatway" async src="'.esc_url($script).'"></script><script>window.addEventListener("load",function(){var tries=0;var timer=setInterval(function(){tries++;if(window.$chatway&&typeof window.$chatway.openChatwayWidget==="function"){clearInterval(timer);window.$chatway.openChatwayWidget();}if(tries>40)clearInterval(timer);},250);});</script></body></html>';
         exit;
     }
 
@@ -372,6 +384,25 @@ final class PCWork_Admin_Integration_Settings {
         return rest_ensure_response(['enabled'=>true,'provider'=>'bookly','booking_url'=>$url,'display_mode'=>'webview']);
     }
 
+
+    public static function get_marketing_preferences() {
+        $user_id = get_current_user_id();
+        return rest_ensure_response(['marketing_opt_in' => get_user_meta($user_id, 'pcwork_marketing_opt_in', true) === '1']);
+    }
+
+    public static function update_marketing_preferences(WP_REST_Request $request) {
+        $value = $request->get_param('marketing_opt_in');
+        if (!is_bool($value)) return new WP_Error('pcwork_marketing_consent_invalid', 'Невалидна стойност за маркетингово съгласие.', ['status' => 400]);
+        $user_id = get_current_user_id();
+        update_user_meta($user_id, 'pcwork_marketing_opt_in', $value ? '1' : '0');
+        if ($value) {
+            update_user_meta($user_id, 'pcwork_marketing_opt_in_at', current_time('mysql', true));
+            delete_user_meta($user_id, 'pcwork_marketing_opt_out_at');
+        } else {
+            update_user_meta($user_id, 'pcwork_marketing_opt_out_at', current_time('mysql', true));
+        }
+        return rest_ensure_response(['marketing_opt_in' => $value, 'saved' => true]);
+    }
 
     public static function register_device(WP_REST_Request $request) {
         $token = sanitize_text_field((string)$request->get_param('token'));

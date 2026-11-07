@@ -432,13 +432,13 @@ class ApiService {
   }
 
 
-  Future<Uri?> getChatwayUrl({String? token}) async {
+  Future<Uri?> getChatwayUrl({String? token, bool isDarkTheme = true}) async {
     final authenticated = token != null && token.trim().isNotEmpty;
     final response = authenticated
         ? await http.post(_uri('chatway/session'),
             headers: {'Authorization': 'Bearer ${token.trim()}', 'Content-Type': 'application/json'},
-            body: jsonEncode(<String, dynamic>{})).timeout(const Duration(seconds: 15))
-        : await http.get(_uri('chatway/config')).timeout(const Duration(seconds: 15));
+            body: jsonEncode(<String, dynamic>{'theme': isDarkTheme ? 'dark' : 'light'})).timeout(const Duration(seconds: 15))
+        : await http.get(_uri('chatway/config').replace(queryParameters: {'theme': isDarkTheme ? 'dark' : 'light'})).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
       final decoded = _decodeResponse(response);
       throw Exception(_responseMessage(decoded, response.statusCode));

@@ -239,9 +239,28 @@ final class PCWork_Mobile_Auth_Bridge {
             if (!is_array($address)) continue;
             foreach($keys as $key) if (array_key_exists($key,$address)) update_user_meta($user_id,$kind.'_'.$key,sanitize_text_field((string)$address[$key]));
         }
+        // Keep standard WordPress and WooCommerce customer fields synchronized.
+        $first_name = sanitize_text_field((string)($billing['first_name'] ?? ''));
+        $last_name = sanitize_text_field((string)($billing['last_name'] ?? ''));
+        update_user_meta($user_id, 'first_name', $first_name);
+        update_user_meta($user_id, 'last_name', $last_name);
         // Registration email is intentionally immutable through this endpoint.
         update_user_meta($user_id,'billing_email',get_userdata($user_id)->user_email);
-        if (class_exists('WC_Customer')) { $customer=new WC_Customer($user_id); $customer->set_first_name(sanitize_text_field((string)($billing['first_name'] ?? ''))); $customer->set_last_name(sanitize_text_field((string)($billing['last_name'] ?? ''))); $customer->set_billing_phone($phone); $customer->save(); }
+        if (class_exists('WC_Customer')) {
+            $customer = new WC_Customer($user_id);
+            $customer->set_first_name($first_name);
+            $customer->set_last_name($last_name);
+            $customer->set_billing_phone($phone);
+            foreach (['address_1','address_2','city','state','postcode','country','company'] as $field) {
+                if (array_key_exists($field, (array)$billing)) { $method = 'set_billing_' . $field; if (method_exists($customer, $method)) $customer->$method(sanitize_text_field((string)$billing[$field])); }
+                if (array_key_exists($field, (array)$shipping)) { $method = 'set_shipping_' . $field; if (method_exists($customer, $method)) $customer->$method(sanitize_text_field((string)$shipping[$field])); }
+            }
+            if (is_array($shipping)) {
+                if (isset($shipping['first_name'])) $customer->set_shipping_first_name(sanitize_text_field((string)$shipping['first_name']));
+                if (isset($shipping['last_name'])) $customer->set_shipping_last_name(sanitize_text_field((string)$shipping['last_name']));
+            }
+            $customer->save();
+        }
         return rest_ensure_response(self::profile_payload($user_id));
     }
 }

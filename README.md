@@ -1,7 +1,3 @@
-# PCWork Mobile v58
+# PCWork Mobile v59
 
-Flutter Android/iOS application for PCWork service operations, customer repairs, booking, WooCommerce storefront, support, staff tools, Firebase push and Google Sheets synchronization.
-
-Current app version: `0.58.0+58`.
-
-See `RELEASE_NOTES_v58.md` and `PCWork_v58_INSTALL_BG.md` for changes and setup.
+Flutter Android/iOS client, unified WordPress plugin and Google Apps Script sync. See `PCWork_v59_INSTALL_BG.md` for the Bulgarian update instructions and `RELEASE_NOTES_v59.md` for changes.

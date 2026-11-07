@@ -252,9 +252,7 @@ class _ShopScreenState extends State<ShopScreen> {
             SizedBox(
               height: 112,
               width: double.infinity,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(color: Color(0xFF0D1724)),
-                child: imageUrl.isNotEmpty
+              child: imageUrl.isNotEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(8),
                         child: Image.network(
@@ -269,7 +267,6 @@ class _ShopScreenState extends State<ShopScreen> {
                         ),
                       )
                     : const Center(child: Icon(Icons.devices_other, size: 42, color: Color(0xFF21D4D8))),
-              ),
             ),
             Expanded(
               child: Padding(
@@ -304,7 +301,7 @@ class _ShopScreenState extends State<ShopScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF111B29),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .82),
@@ -377,7 +374,7 @@ class _ShopScreenState extends State<ShopScreen> {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        backgroundColor: const Color(0xFF111B29),
+        backgroundColor: Theme.of(context).colorScheme.surface,
         builder: (sheetContext) => SafeArea(
           child: SizedBox(
             height: MediaQuery.of(sheetContext).size.height * .72,
@@ -439,7 +436,7 @@ class _ShopScreenState extends State<ShopScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF111B29),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => SafeArea(
           child: Padding(
@@ -457,7 +454,9 @@ class _ShopScreenState extends State<ShopScreen> {
                 if (cart.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(tr('Количката е празна.', 'Your cart is empty.'))),
                 ...cart.entries.map((entry) {
                   final product = cartProducts[entry.key] ?? {'name': 'Product', 'price': '0'};
+                  final cartImage = (product['image'] ?? '').toString();
                   return ListTile(
+                    leading: cartImage.isEmpty ? const SizedBox(width: 48, height: 48, child: Icon(Icons.devices_other)) : ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(width: 48, height: 48, child: Image.network(cartImage, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other)))),
                     title: Text('${product['name']}'),
                     subtitle: Text('${product['variation_label'] ?? ''} ${product['price']} × ${entry.value}'),
                     trailing: Row(
