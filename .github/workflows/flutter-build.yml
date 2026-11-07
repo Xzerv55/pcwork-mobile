@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -44,7 +44,7 @@ jobs:
           --dart-define=FIREBASE_IOS_API_KEY="$FIREBASE_IOS_API_KEY"
           --dart-define=FIREBASE_IOS_APP_ID="$FIREBASE_IOS_APP_ID"
           --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: pcwork-ios-v57-app-unsigned
           path: build/ios/iphoneos/Runner.app
