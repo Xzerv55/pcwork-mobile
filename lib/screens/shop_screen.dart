@@ -446,8 +446,18 @@ class _ShopScreenState extends State<ShopScreen> {
 
   Future<void> _orderDetails(String token, Map<String, dynamic> order) async {
     try {
-      final id = (order['id'] as num).toInt();
-      final detail = await widget.api.getShopOrder(token, id);
+      final id = int.tryParse('${order['id']}') ?? 0;
+      if (id <= 0) throw Exception('Невалиден номер на поръчката.');
+      Map<String, dynamic> detail = Map<String, dynamic>.from(order);
+      if (detail['items'] is! List) {
+        try { detail = await widget.api.getShopOrder(token, id); }
+        catch (_) {
+          final rows = await widget.api.getShopOrders(token);
+          final match = rows.where((row) => int.tryParse('${row['id']}') == id).toList();
+          if (match.isEmpty) rethrow;
+          detail = match.first;
+        }
+      }
       if (!mounted) return;
       showModalBottomSheet<void>(
         context: context, isScrollControlled: true, backgroundColor: const Color(0xFF111B29),
@@ -458,6 +468,8 @@ class _ShopScreenState extends State<ShopScreen> {
             const SizedBox(height: 8),
             Text('${detail['date'] ?? ''} · ${detail['status'] ?? ''}'),
             const SizedBox(height: 8),
+            ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Метод на плащане', 'Payment method')), subtitle: Text((detail['payment_method_title'] ?? tr('Наложен платеж', 'Cash on delivery')).toString())),
+            if (detail['shipping_methods'] is List && (detail['shipping_methods'] as List).isNotEmpty) ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Куриерска услуга', 'Courier service')), subtitle: Text((detail['shipping_methods'] as List).join(', '))),
             ...(detail['items'] is List ? (detail['items'] as List).whereType<Map>().map((line) => ListTile(
               contentPadding: EdgeInsets.zero, title: Text('${line['name'] ?? ''}'),
               subtitle: Text('${line['quantity'] ?? 1} × ${line['price'] ?? ''}'),
@@ -595,18 +607,18 @@ class _ShopScreenState extends State<ShopScreen> {
       } catch (e) { setDialogState(() { shippingRates = []; selectedShippingRateId = ''; shippingRateError = '$e'; }); }
       finally { setDialogState(() => loadingShippingRates = false); }
     }
-    if (selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
-      try {
-        shippingRates = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier});
-        if (shippingRates.isNotEmpty) selectedShippingRateId = '${shippingRates.first['id']}';
-      } catch (e) { shippingRateError = '$e'; }
-    }
+    bool initialRatesRequested = false;
     if (!mounted) { for (final c in [firstName, lastName, city, address, postcode, phone]) { c.dispose(); } return; }
     final formKey = GlobalKey<FormState>();
 
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
+        if (!initialRatesRequested && selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+          initialRatesRequested = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) { if (ctx.mounted) unawaited(refreshShippingRates(setDialogState)); });
+        }
+        return AlertDialog(
         backgroundColor: const Color(0xFF151F2E),
         title: Text(tr('Данни за поръчката', 'Order details')),
         content: SizedBox(
@@ -637,7 +649,9 @@ class _ShopScreenState extends State<ShopScreen> {
                   validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
                 ),
                 const SizedBox(height: 12),
-                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод на доставка', 'Delivery method'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод на плащане', 'Payment method'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(dense: true, leading: const Icon(Icons.payments_outlined, color: Color(0xFF21D4D8)), title: Text(tr('Наложен платеж', 'Cash on delivery'), style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(tr('Плащане при получаване на поръчката.', 'Pay when the order is delivered.')))),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Куриерска услуга', 'Courier service'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: loadingShippingRates ? null : () => refreshShippingRates(setDialogState),
                   icon: loadingShippingRates ? const SizedBox(width:14,height:14,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.refresh_rounded, size:17),
@@ -667,7 +681,7 @@ class _ShopScreenState extends State<ShopScreen> {
             }
           }, child: Text(tr('Продължи', 'Continue'))),
         ],
-      )),
+      ); }),
     );
 
     if (!mounted || accepted != true) { for (final c in [firstName, lastName, city, address, postcode, phone]) { c.dispose(); } return; }
@@ -712,7 +726,7 @@ class _ShopScreenState extends State<ShopScreen> {
         controller: controller,
         keyboardType: keyboard,
         onChanged: onChanged,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(labelText: label, floatingLabelBehavior: FloatingLabelBehavior.auto, contentPadding: const EdgeInsets.fromLTRB(14, 19, 14, 15), isDense: false),
         validator: (value) => required && (value == null || value.trim().isEmpty) ? tr('Задължително поле', 'Required field') : null,
       ),
     );

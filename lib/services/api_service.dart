@@ -176,7 +176,7 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopShippingRates(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> shipping}) async {
-    final response = await _httpClient.post(_uri('shop/shipping-rates'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'items': items, 'shipping': shipping})).timeout(const Duration(seconds: 30));
+    final response = await _httpClient.post(_uri('shop/shipping-rates'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'items': items, 'shipping': shipping})).timeout(const Duration(seconds: 15));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
@@ -201,7 +201,10 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getShopOrder(String token, int id) async {
-    final response = await _httpClient.get(_uri('shop/orders/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 25));
+    http.Response response = await _httpClient.get(_uri('shop/orders/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
+    if (response.statusCode == 404) {
+      response = await _httpClient.get(_uri('shop/order/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
+    }
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;

@@ -19,6 +19,7 @@ import '../screens/contact_hub_screen.dart';
 import '../screens/auth_screen.dart';
 import '../screens/shop_screen.dart';
 import '../screens/notification_history_screen.dart';
+import '../screens/visitor_analytics_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key});
@@ -60,7 +61,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 77;
+  static const int _currentBuildNumber = 85;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
@@ -119,6 +120,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } catch (_) {
       // Update checks are optional and must never block app startup.
     }
+  }
+
+  Future<void> _openVisitorAnalytics() async {
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      _message(tr('Необходим е администраторски вход.', 'Administrator sign-in required.'));
+      return;
+    }
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VisitorAnalyticsScreen(api: api, token: token, english: english),
+    ));
   }
 
   Future<void> _downloadAndInstallUpdate() async {
@@ -824,7 +837,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ShopScreen(
           api: api,
           tokenProvider: () => auth.token,
-          profileProvider: () async => (await auth.me()),
+          profileProvider: () async => signedInUser ?? await auth.me(),
           english: english,
           notificationOrderId: _pendingShopOrderId,
           openOrdersOnEntry: _openShopOrdersOnEntry,
@@ -916,6 +929,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
           ]),
           actions: [
+            if (canUseAdminChat) IconButton(
+              tooltip: tr('Данни на посетителите', 'Visitor analytics'),
+              onPressed: _openVisitorAnalytics,
+              icon: const Icon(Icons.analytics_outlined),
+            ),
+            IconButton(
+              tooltip: tr('Често задавани въпроси', 'Frequently asked questions'),
+              onPressed: () => _openWebsite('https://pcwork-bg.com/faq/'),
+              icon: const Icon(Icons.help_outline_rounded),
+            ),
             IconButton(
               tooltip: tr('Известия', 'Notifications'),
               onPressed: _openNotifications,
@@ -1017,7 +1040,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
-    _infoTile(Icons.verified_user_outlined, tr('Общи условия GDPR', 'GDPR terms'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
+    if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
   ]);
 
@@ -1494,7 +1517,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
     final navigatorContext = _navigatorKey.currentState?.overlay?.context;
     if (navigatorContext == null) return;
-    final closed = await showDialog<bool>(context: navigatorContext, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(
+    final closed = await showDialog<bool>(context: navigatorContext, barrierDismissible: true, builder: (dialogContext) => StatefulBuilder(
       builder: (ctx, updateDialog) {
         setDialogState = updateDialog;
         Widget field(TextEditingController controller, String label, {TextInputType? keyboardType, bool locked = false}) => Padding(
@@ -1544,7 +1567,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       },
     ));
     saveTimer?.cancel();
-    if (closed == true && mounted && dirty) {
+    // The dialog may have been dismissed by tapping outside; prevent the
+    // autosave status callback from calling setState on the disposed dialog.
+    setDialogState = (_) {};
+    if (closed != false && mounted && dirty) {
       await saveProfile();
     }
     for (final c in [phone, email, first, last, address, city]) { c.dispose(); }
@@ -1887,10 +1913,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                             SizedBox(
                               height: 128,
                               width: double.infinity,
-                              child: item.imageUrl.isNotEmpty
-                                  ? Image.network(item.imageUrl, fit: BoxFit.contain,
-                                      errorBuilder: (_, __, ___) => _locationImageFallback())
-                                  : _locationImageFallback(),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: item.imageUrl.isNotEmpty
+                                      ? Image.network(item.imageUrl, fit: BoxFit.contain, width: double.infinity,
+                                          errorBuilder: (_, __, ___) => _locationImageFallback())
+                                      : _locationImageFallback(),
+                                ),
+                              ),
                             ),
                             if (item.imageCaption.isNotEmpty)
                               Padding(

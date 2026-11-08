@@ -460,7 +460,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     final phone = _phoneDigits(repair.phone);
     if (phone.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone);
-    final launched = await launchUrl(uri);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(tr('Не може да се отвори приложението за обаждания.', 'Could not open the phone app.'))),
