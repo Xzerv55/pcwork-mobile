@@ -1383,7 +1383,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             setSheet(() { saving = true; requestError = null; });
             try {
               final deviceType = selectedDeviceType == 'Друго' ? 'Друго: ${otherDevice.text.trim()}' : selectedDeviceType!;
-              final created = await api.createCustomerRepairRequest(token, {
+              await api.createCustomerRepairRequest(token, {
                 'location_code': selected!.code,
                 'device_type': deviceType,
                 'device_model': model.text.trim(),
