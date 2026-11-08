@@ -72,7 +72,9 @@ class _RepairProtocolScreenState extends State<RepairProtocolScreen> {
         if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Сървърът не записа PDF (HTTP ${response.statusCode}): $body');
         if (mounted) setState(() => _serverMessage = _emailCustomer ? 'PDF е записан. Заявено е изпращане по имейл.' : 'PDF е записан в защитеното досие на ремонта.');
       } else {
-        if (mounted) setState(() => _serverMessage = widget.canEmail
+       if (mounted) {
+  setState(() => _serverMessage = widget.canEmail);
+}
             ? 'PDF е създаден локално. Няма конфигурирана сървърна сесия за архивиране.'
             : 'PDF е създаден локално и може да бъде споделен. Качването в сервизния архив е достъпно само за служители.');
       }

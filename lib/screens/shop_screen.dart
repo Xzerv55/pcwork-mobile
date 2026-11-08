@@ -430,10 +430,28 @@ class _ShopScreenState extends State<ShopScreen> {
             future: ordersFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-              if (snapshot.hasError) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('${snapshot.error}', textAlign: TextAlign.center),
-                const SizedBox(height: 10), OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); _orders(); }, icon: const Icon(Icons.refresh), label: Text(tr('Опитай отново', 'Retry'))),
-              ])));
+            if (snapshot.hasError) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${snapshot.error}', textAlign: TextAlign.center),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.pop(sheetContext);
+              _orders();
+            },
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('Опитай отново', 'Retry')),
+          ),
+        ],
+      ),
+    ),
+  );
+}
               final rows = snapshot.data ?? const <Map<String, dynamic>>[];
               if (rows.isEmpty) return Center(child: Text(tr('Все още нямате поръчки.', 'You have no orders yet.')));
               return ListView.builder(
