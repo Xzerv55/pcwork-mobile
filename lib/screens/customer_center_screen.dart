@@ -72,7 +72,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           border: Border.all(color: const Color(0xFFD5AD55), width: 1.2),
           boxShadow: const [BoxShadow(color: Color(0x332A1C00), blurRadius: 18, offset: Offset(0, 8))],
         ),
-        child: Center(child: CircularProgressIndicator(color: gold)),
+        child: const Center(child: CircularProgressIndicator(color: gold)),
       );
     }
     if (loyalty.hasError || loyalty.data == null) {
@@ -87,15 +87,15 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           border: Border.all(color: const Color(0xFFD5AD55), width: 1.2),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(Icons.workspace_premium_rounded, color: gold, size: 30), const SizedBox(width: 10), Expanded(child: Text('PCWORK GOLD LOYALTY', style: TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 1.1, fontSize: 16)))]),
+          const Row(children: [Icon(Icons.workspace_premium_rounded, color: gold, size: 30), SizedBox(width: 10), Expanded(child: Text('PCWORK GOLD LOYALTY', style: TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 1.1, fontSize: 16)))]),
           const SizedBox(height: 10),
           Text(tr('Не успяхме да заредим златната ти карта.', 'We could not load your gold loyalty card.'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(shortDetails, style: const TextStyle(color: Colors.white70, fontSize: 11)),
           Align(alignment: Alignment.centerRight, child: TextButton.icon(
             onPressed: () => setState(() => _loyaltyFuture = widget.api.getLoyaltySummary(widget.token)),
-            icon: Icon(Icons.refresh_rounded, color: gold),
-            label: Text(tr('Опитай отново', 'Try again'), style: TextStyle(color: gold, fontWeight: FontWeight.w800)),
+            icon: const Icon(Icons.refresh_rounded, color: gold),
+            label: Text(tr('Опитай отново', 'Try again'), style: const TextStyle(color: gold, fontWeight: FontWeight.w800)),
           )),
         ]),
       );
@@ -122,19 +122,19 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
             Container(width: 42, height: 42, decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFFFFF0B8), Color(0xFFD49A32)]), boxShadow: [BoxShadow(color: Color(0x66502F00), blurRadius: 8)]), child: const Icon(Icons.workspace_premium_rounded, color: Color(0xFF392609), size: 27)),
             const SizedBox(width: 11),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('PCWORK', style: TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontSize: 17)),
+              Text('PCWORK', style: const TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontSize: 17)),
               Text(tr('КАРТА ЗА ЛОЯЛНОСТ', 'LOYALTY MEMBERSHIP'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 1.15, fontSize: 10)),
             ])),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7), decoration: BoxDecoration(color: const Color(0x33FFF0B8), borderRadius: BorderRadius.circular(30), border: Border.all(color: const Color(0x99FFE5A0))), child: Text(tier.toUpperCase(), style: TextStyle(color: gold, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: .8))),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7), decoration: BoxDecoration(color: const Color(0x33FFF0B8), borderRadius: BorderRadius.circular(30), border: Border.all(color: const Color(0x99FFE5A0))), child: Text(tier.toUpperCase(), style: const TextStyle(color: gold, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: .8))),
           ]),
           const SizedBox(height: 20),
           Text('$points', style: const TextStyle(color: Color(0xFFFFF4D2), fontSize: 42, height: 1, fontWeight: FontWeight.w900, letterSpacing: 1)),
           const SizedBox(height: 4),
-          Text(tr('НАТРУПАНИ ТОЧКИ', 'POINTS BALANCE'), style: TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+          Text(tr('НАТРУПАНИ ТОЧКИ', 'POINTS BALANCE'), style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5)),
           const SizedBox(height: 17),
           ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 9, backgroundColor: Colors.white24, color: const Color(0xFFFFE29A))),
           const SizedBox(height: 8),
-          Row(children: [Expanded(child: Text(remaining > 0 ? tr('Още $remaining точки до следващото ниво', '$remaining points to the next tier') : tr('Достигнато е най-високото ниво!', 'Highest tier reached!'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))), Text(tr('1 лв. = 1 т.', '1 BGN = 1 pt'), style: TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800))]),
+          Row(children: [Expanded(child: Text(remaining > 0 ? tr('Още $remaining точки до следващото ниво', '$remaining points to the next tier') : tr('Достигнато е най-високото ниво!', 'Highest tier reached!'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))), Text(tr('1 лв. = 1 т.', '1 BGN = 1 pt'), style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800))]),
           const SizedBox(height: 13),
           Row(children: [const Icon(Icons.lock_rounded, color: Color(0xFFFFE29A), size: 13), const SizedBox(width: 5), Text(tr('ПЕРСОНАЛНА КЛИЕНТСКА КАРТА', 'PERSONAL MEMBER CARD'), style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w700)), const Spacer(), const Icon(Icons.stars_rounded, color: Color(0xFFFFE29A), size: 17)]),
         ]),
