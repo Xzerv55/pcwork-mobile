@@ -63,9 +63,9 @@ class ApiService {
     _shopCache[key] = _TimedShopCache(now.add(ttl), rows);
   }
 
-  String _scope(String token) => userId > 0 ? 'user_$userId' : sha256.convert(utf8.encode(token)).toString();
+  String _scope(String token) => userId > 0 ? 'user_$userId' : crypto.sha256.convert(utf8.encode(token)).toString();
   String _repairsCacheKey(String token) => 'pcwork_v37_repairs_${_scope(token)}';
-  String _locationsCacheKey() => 'pcwork_v37_locations_${sha256.convert(utf8.encode(baseUrl.trim()))}';
+  String _locationsCacheKey() => 'pcwork_v37_locations_${crypto.sha256.convert(utf8.encode(baseUrl.trim()))}';
   String _queueKey(String token) => 'pcwork_v37_queue_${_scope(token)}';
   String createClientRequestId() => _newRequestId();
 
@@ -135,7 +135,7 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
-    final cacheKey = '${baseUrl.trim()}:products:${categoryId}:${search.trim().toLowerCase()}';
+    final cacheKey = '${baseUrl.trim()}:products:$categoryId:${search.trim().toLowerCase()}';
     final cached = _shopCache[cacheKey];
     if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
     final params = <String, String>{'per_page': '20'};

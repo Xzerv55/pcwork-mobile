@@ -1472,12 +1472,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             field(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *')),
             const SizedBox(height: 8),
             Align(alignment: Alignment.centerLeft, child: Text(tr('Избор на куриер *', 'Choose courier *'), style: const TextStyle(fontWeight: FontWeight.w600))),
-            ...[
-              ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
-            ].map((option) => RadioListTile<String>(
-              dense: true, contentPadding: EdgeInsets.zero, value: option.$1, groupValue: courier,
-              title: Text(option.$2), onChanged: (value) { courier = value ?? ''; markChanged(); updateDialog(() {}); },
-            )),
+            RadioGroup<String>(
+              groupValue: courier,
+              onChanged: (value) { courier = value ?? ''; markChanged(); updateDialog(() {}); },
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                ...[
+                  ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
+                ].map((option) => RadioListTile<String>(
+                  dense: true, contentPadding: EdgeInsets.zero, value: option.$1,
+                  title: Text(option.$2),
+                )),
+              ]),
+            ),
             field(phone, tr('Телефон *', 'Phone *'), keyboardType: TextInputType.phone),
             field(email, tr('Email * (заключен)', 'Email * (locked)'), locked: true),
             Align(alignment: Alignment.centerLeft, child: Text(tr('Email се попълва автоматично от регистрацията и не може да се редактира.', 'Email is filled automatically from registration and cannot be edited.'), style: const TextStyle(fontSize: 11, color: Colors.grey))),

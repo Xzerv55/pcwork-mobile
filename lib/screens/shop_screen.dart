@@ -554,12 +554,18 @@ class _ShopScreenState extends State<ShopScreen> {
                 const SizedBox(height: 8),
                 Align(alignment: Alignment.centerLeft, child: Text(tr('Избор на куриер *', 'Choose courier *'), style: const TextStyle(fontWeight: FontWeight.w600))),
                 const SizedBox(height: 4),
-                ...[
-                  ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
-                ].map((option) => RadioListTile<String>(
-                  dense: true, contentPadding: EdgeInsets.zero, value: option.$1, groupValue: courier,
-                  title: Text(option.$2), onChanged: (value) => setDialogState(() => courier = value ?? ''),
-                )),
+                RadioGroup<String>(
+                  groupValue: courier,
+                  onChanged: (value) => setDialogState(() => courier = value ?? ''),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    ...[
+                      ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
+                    ].map((option) => RadioListTile<String>(
+                      dense: true, contentPadding: EdgeInsets.zero, value: option.$1,
+                      title: Text(option.$2),
+                    )),
+                  ]),
+                ),
                 _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
                 TextFormField(
                   initialValue: email, readOnly: true,
