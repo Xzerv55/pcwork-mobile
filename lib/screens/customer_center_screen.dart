@@ -61,7 +61,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
     }),
   );
   Widget _loyaltyCard(AsyncSnapshot<Map<String, dynamic>> loyalty) {
-    final gold = const Color(0xFFFFD76A);
+    const gold = Color(0xFFFFD76A);
     if (loyalty.connectionState == ConnectionState.waiting) {
       return Container(
         height: 176,
@@ -119,7 +119,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
         Positioned(right: -22, top: -25, child: Icon(Icons.workspace_premium_rounded, size: 150, color: Colors.white.withValues(alpha: .055))),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Container(width: 42, height: 42, decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFFFFF0B8), Color(0xFFD49A32)]), boxShadow: const [BoxShadow(color: Color(0x66502F00), blurRadius: 8)]), child: const Icon(Icons.workspace_premium_rounded, color: Color(0xFF392609), size: 27)),
+            Container(width: 42, height: 42, decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFFFFF0B8), Color(0xFFD49A32)]), boxShadow: [BoxShadow(color: Color(0x66502F00), blurRadius: 8)]), child: const Icon(Icons.workspace_premium_rounded, color: Color(0xFF392609), size: 27)),
             const SizedBox(width: 11),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('PCWORK', style: TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontSize: 17)),
