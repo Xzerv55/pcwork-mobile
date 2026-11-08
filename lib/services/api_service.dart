@@ -344,6 +344,32 @@ class ApiService {
   }
 
 
+  Future<List<Map<String, dynamic>>> getStockItems(String token) async {
+    final response = await _httpClient.get(_uri('stock'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<void> createStockItem(String token, Map<String, dynamic> item) async {
+    final response = await _httpClient.post(_uri('stock'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(item)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 201 && response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<void> updateStockItem(String token, int id, Map<String, dynamic> item) async {
+    final response = await _httpClient.patch(_uri('stock/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(item)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<void> moveStockItem(String token, int id, {required String type, required double quantity, String note = ''}) async {
+    final response = await _httpClient.post(_uri('stock/$id/movement'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'type': type, 'quantity': quantity, 'note': note})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
   Future<List<Map<String, dynamic>>> getTechnicians(String token, String locationCode) async {
     final uri = _uri('staff/technicians').replace(queryParameters: {'location_code': locationCode});
     final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));

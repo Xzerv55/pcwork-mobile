@@ -6,6 +6,7 @@ import 'repair_calendar_screen.dart';
 import 'technician_dispatch_screen.dart';
 import 'staff_management_screen.dart';
 import 'repair_statistics_screen.dart';
+import 'stock_inventory_screen.dart';
 
 class StaffDashboardScreen extends StatefulWidget {
   const StaffDashboardScreen({super.key, required this.api, required this.token, required this.english});
@@ -63,6 +64,13 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             builder: (_) => RepairStatisticsScreen(api: widget.api, token: widget.token, english: widget.english),
           )),
           icon: const Icon(Icons.query_stats_outlined),
+        ),
+        IconButton(
+          tooltip: tr('Склад и резервни части', 'Stock & spare parts'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english),
+          )),
+          icon: const Icon(Icons.inventory_2_outlined),
         ),
         IconButton(
           tooltip: tr('Екип и работно време', 'Team & attendance'),
