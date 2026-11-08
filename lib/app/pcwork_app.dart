@@ -141,7 +141,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
-    try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; });
+    try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; repairsFuture = _loadRepairsFuture(); });
       unawaited(_loadMarketingPreference(t));
       unawaited(_enablePush(knownToken: t));
       _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
@@ -1499,7 +1499,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   void _showRepairDetails(Repair repair) async {
     final token = await auth.token;
     if (token == null || !mounted) return;
-    showModalBottomSheet(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => FutureBuilder<Repair>(future: api.getRepair(token, repair.id), builder: (context, snap) {
+    Future<Repair> detailFuture = api.getRepair(token, repair.id);
+    StateSetter? updateSheet;
+    final trackingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted || updateSheet == null) return;
+      updateSheet!(() { detailFuture = api.getRepair(token, repair.id); });
+    });
+    await showModalBottomSheet<void>(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => StatefulBuilder(builder: (sheetContext, setSheetState) {
+      updateSheet = setSheetState;
+      return FutureBuilder<Repair>(future: detailFuture, builder: (context, snap) {
       // Show the already-loaded repair immediately; fetch the history/details
       // in the background instead of blocking the whole sheet with a spinner.
       final r = snap.data ?? repair;
@@ -1507,8 +1515,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final roles = currentUser?.roles ?? const <String>[];
       final isStaff = (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && !showClientPreview) || showStaffPreview;
       return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [if (snap.connectionState != ConnectionState.done) const LinearProgressIndicator(minHeight: 2), if (snap.hasError) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(tr('Показваме наличните данни; историята не можа да се обнови.', 'Showing available details; repair history could not be refreshed.'), style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))), Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
-        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairWorklogScreen(api: api, token: token, repairId: r.id, repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, isStaff: isStaff))); }, icon: const Icon(Icons.receipt_long_outlined), label: Text(tr('Сервизен дневник · дейности, части и плащания','Service log · work, parts & payments'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (isStaff && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
-    }));
+        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairWorklogScreen(api: api, token: token, repairId: r.id, repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, isStaff: isStaff))); }, icon: const Icon(Icons.receipt_long_outlined), label: Text(tr('Сервизен дневник · дейности, части и плащания','Service log · work, parts & payments'))), const Divider(height: 28), Row(children: [Expanded(child: Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), const Icon(Icons.sensors_rounded, color: cyan, size: 16), const SizedBox(width: 5), Text(tr('На живо · 30 сек.', 'Live · 30 sec.'), style: const TextStyle(fontSize: 10, color: cyan, fontWeight: FontWeight.w700))]), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (isStaff && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
+    });
+    });
+    trackingTimer.cancel();
   }
 
   Widget _repairProgress(String status) {
@@ -1899,82 +1909,77 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Widget _homeAccountDashboard() {
     final future = repairsFuture;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.dashboard_customize_outlined, color: cyan),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Text(
-                    tr('Здравей, ${signedInUser?.name ?? ''}', 'Welcome, ${signedInUser?.name ?? ''}'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => _selectTab(1),
-                  child: Text(tr('Ремонти', 'Repairs')),
-                ),
-              ],
-            ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Card(
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 42, height: 42, decoration: BoxDecoration(color: cyan.withValues(alpha: .13), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.dashboard_customize_rounded, color: cyan)),
+              const SizedBox(width: 11),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('ТВОЯТ PCWORK DASHBOARD', 'YOUR PCWORK DASHBOARD'), style: const TextStyle(color: cyan, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w900)),
+                Text(tr('Здравей, ${signedInUser?.name ?? ''}', 'Welcome, ${signedInUser?.name ?? ''}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ])),
+              IconButton(tooltip: tr('Обнови таблото', 'Refresh dashboard'), onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()), icon: const Icon(Icons.refresh_rounded, color: cyan)),
+            ]),
+            const SizedBox(height: 14),
             if (future == null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _selectTab(1), icon: const Icon(Icons.build_outlined), label: Text(tr('Зареди моите ремонти', 'Load my repairs')))),
-              )
+              SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()), icon: const Icon(Icons.sync_rounded), label: Text(tr('Зареди информацията', 'Load dashboard data'))))
             else FutureBuilder<List<Repair>>(
               future: future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    child: LinearProgressIndicator(minHeight: 3),
-                  );
-                }
-                if (snapshot.hasError) {
-                  return Row(
-                    children: [
-                      const Expanded(child: Text('Неуспешно зареждане на ремонтите.', style: TextStyle(color: Colors.white60, fontSize: 12))),
-                      IconButton(
-                        tooltip: tr('Опитай отново', 'Retry'),
-                        onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()),
-                        icon: const Icon(Icons.refresh, color: cyan),
-                      ),
-                    ],
-                  );
-                }
-                final rows = snapshot.data ?? const <Repair>[];
+                if (snapshot.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: LinearProgressIndicator(minHeight: 3));
+                if (snapshot.hasError) return Row(children: [Expanded(child: Text(tr('Информацията за ремонтите не е достъпна.', 'Repair information is unavailable.'), style: const TextStyle(fontSize: 12, color: Colors.orangeAccent))), IconButton(onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()), icon: const Icon(Icons.refresh, color: cyan))]);
+                final rows = List<Repair>.from(snapshot.data ?? const <Repair>[])
+                  ..sort((a, b) => _repairDate(b.updatedAt.isNotEmpty ? b.updatedAt : b.createdAt).compareTo(_repairDate(a.updatedAt.isNotEmpty ? a.updatedAt : a.createdAt)));
                 final active = rows.where((r) => !['completed', 'cancelled'].contains(r.status)).length;
                 final ready = rows.where((r) => r.status == 'ready').length;
-                return Row(
-                  children: [
-                    Expanded(child: _repairMetric(tr('Всички', 'Total'), rows.length)),
-                    Expanded(child: _repairMetric(tr('Активни', 'Active'), active)),
-                    Expanded(child: _repairMetric(tr('Готови', 'Ready'), ready)),
-                  ],
-                );
+                final latest = rows.isEmpty ? null : rows.first;
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [Expanded(child: _dashboardMetric(tr('Ремонти', 'Repairs'), rows.length, Icons.build_circle_outlined)), const SizedBox(width: 8), Expanded(child: _dashboardMetric(tr('Активни', 'Active'), active, Icons.autorenew_rounded)), const SizedBox(width: 8), Expanded(child: _dashboardMetric(tr('Готови', 'Ready'), ready, Icons.task_alt_rounded))]),
+                  if (latest != null) ...[
+                    const SizedBox(height: 15),
+                    Text(tr('ПОСЛЕДЕН РЕМОНТ', 'LATEST REPAIR'), style: const TextStyle(fontSize: 10, letterSpacing: 1.1, color: Color(0xFF93A4B8), fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 7),
+                    Container(decoration: BoxDecoration(color: cyan.withValues(alpha: .07), borderRadius: BorderRadius.circular(16), border: Border.all(color: cyan.withValues(alpha: .18))), child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                      leading: CircleAvatar(backgroundColor: cyan.withValues(alpha: .13), child: const Icon(Icons.precision_manufacturing_rounded, color: cyan)),
+                      title: Text(latest.number.isEmpty ? 'PCW-${latest.id}' : latest.number, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text('${latest.device} ${latest.model}\n${_statusLabel(latest.status)}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _showRepairDetails(latest),
+                    )),
+                  ] else Padding(padding: const EdgeInsets.only(top: 12), child: Text(tr('Все още нямате регистрирани ремонти.', 'You do not have any registered repairs yet.'), style: const TextStyle(fontSize: 12, color: Color(0xFF93A4B8)))),
+                  const SizedBox(height: 12),
+                  SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => _selectTab(1), icon: const Icon(Icons.timeline_rounded), label: Text(tr('Проследи всички ремонти', 'Track all repairs')))),
+                ]);
               },
             ),
-            if (canSeeStaffUi)
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _openStaffDashboard,
-                  icon: const Icon(Icons.admin_panel_settings_outlined),
-                  label: Text(tr('Служебно табло', 'Staff dashboard')),
-                ),
-              ),
-          ],
+            if (canSeeStaffUi) ...[const SizedBox(height: 8), SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _openStaffDashboard, icon: const Icon(Icons.admin_panel_settings_outlined), label: Text(tr('Служебно табло', 'Staff dashboard'))))],
+          ]),
         ),
       ),
-    );
+      const SizedBox(height: 12),
+      Row(children: [
+        _dashboardAction(Icons.add_circle_outline_rounded, canSeeStaffUi ? tr('Приеми устройство', 'Device intake') : tr('Нова заявка', 'New request'), () { if (canSeeStaffUi) { _showIntakeForm(); } else { _showCustomerRepairRequest(); } }),
+        const SizedBox(width: 10),
+        _dashboardAction(Icons.calendar_month_rounded, tr('Запази час', 'Book appointment'), () => _selectTab(4)),
+        const SizedBox(width: 10),
+        _dashboardAction(Icons.forum_outlined, tr('Чат', 'Chat'), () => _selectTab(3)),
+      ]),
+    ]);
   }
+
+  Widget _dashboardMetric(String label, int value, IconData icon) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 12),
+    decoration: BoxDecoration(color: isDarkTheme ? const Color(0xFF172536) : const Color(0xFFF0F5F8), borderRadius: BorderRadius.circular(14)),
+    child: Column(children: [Icon(icon, color: cyan, size: 19), const SizedBox(height: 5), Text('$value', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8), fontWeight: FontWeight.w600))]),
+  );
+
+  Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
 
   Future<void> _openBookly() async {
     try {
