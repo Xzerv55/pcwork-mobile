@@ -122,7 +122,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
             Container(width: 42, height: 42, decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [Color(0xFFFFF0B8), Color(0xFFD49A32)]), boxShadow: [BoxShadow(color: Color(0x66502F00), blurRadius: 8)]), child: const Icon(Icons.workspace_premium_rounded, color: Color(0xFF392609), size: 27)),
             const SizedBox(width: 11),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('PCWORK', style: const TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontSize: 17)),
+              const Text('PCWORK', style: TextStyle(color: gold, fontWeight: FontWeight.w900, letterSpacing: 2.2, fontSize: 17)),
               Text(tr('КАРТА ЗА ЛОЯЛНОСТ', 'LOYALTY MEMBERSHIP'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 1.15, fontSize: 10)),
             ])),
             Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7), decoration: BoxDecoration(color: const Color(0x33FFF0B8), borderRadius: BorderRadius.circular(30), border: Border.all(color: const Color(0x99FFE5A0))), child: Text(tier.toUpperCase(), style: const TextStyle(color: gold, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: .8))),
