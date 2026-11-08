@@ -7,7 +7,18 @@ pluginManagement {
         flutterSdkPath
     }
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-    repositories { google(); mavenCentral(); gradlePluginPortal() }
+    repositories {
+        google()
+        // Use Google's Maven Central mirror to avoid transient GitHub release redirects/timeouts.
+        maven {
+            url = uri("https://maven-central.storage-download.googleapis.com/maven2/")
+            content {
+                includeGroupByRegex("org\\.jetbrains\\.kotlin(\\..*)?")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
 }
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
