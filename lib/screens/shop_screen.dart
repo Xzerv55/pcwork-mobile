@@ -5,11 +5,14 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key, required this.api, required this.tokenProvider, required this.profileProvider, required this.english});
+  const ShopScreen({super.key, required this.api, required this.tokenProvider, required this.profileProvider, required this.english, this.notificationOrderId, this.openOrdersOnEntry = false, this.onNotificationHandled});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final Future<AuthUser?> Function() profileProvider;
   final bool english;
+  final int? notificationOrderId;
+  final bool openOrdersOnEntry;
+  final VoidCallback? onNotificationHandled;
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
@@ -27,6 +30,8 @@ class _ShopScreenState extends State<ShopScreen> {
   bool placingOrder = false;
   String? error;
   int category = 0;
+  int? _handledNotificationOrderId;
+  bool _handledOrdersEntry = false;
 
   String tr(String bg, String en) => widget.english ? en : bg;
   String get currencyCode => products.isNotEmpty ? (products.first['currency']?.toString() ?? 'BGN') : 'BGN';
@@ -40,6 +45,39 @@ class _ShopScreenState extends State<ShopScreen> {
     super.initState();
     _restoreCart();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleNotificationIntent());
+  }
+
+  @override
+  void didUpdateWidget(covariant ShopScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.notificationOrderId == null) _handledNotificationOrderId = null;
+    if (!widget.openOrdersOnEntry) _handledOrdersEntry = false;
+    if (oldWidget.notificationOrderId != widget.notificationOrderId ||
+        oldWidget.openOrdersOnEntry != widget.openOrdersOnEntry) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _handleNotificationIntent());
+    }
+  }
+
+  Future<void> _handleNotificationIntent() async {
+    final orderId = widget.notificationOrderId;
+    if (orderId != null && orderId > 0 && orderId != _handledNotificationOrderId) {
+      _handledNotificationOrderId = orderId;
+      try {
+        final token = await widget.tokenProvider();
+        if (token != null && token.isNotEmpty && mounted) await _orderDetails(token, {'id': orderId});
+      } catch (e) {
+        if (mounted) _message('${tr('Поръчката не може да бъде отворена:', 'Could not open order:')} $e');
+      } finally {
+        widget.onNotificationHandled?.call();
+      }
+      return;
+    }
+    if (widget.openOrdersOnEntry && !_handledOrdersEntry) {
+      _handledOrdersEntry = true;
+      await _orders();
+      widget.onNotificationHandled?.call();
+    }
   }
 
   Future<void> _restoreCart() async {
@@ -100,6 +138,8 @@ class _ShopScreenState extends State<ShopScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  // Mirrors the website's WooCommerce 'Вземи' action inside the app cart;
+  // it never redirects to the external cart page.
   void _add(Map<String, dynamic> product) {
     final productId = int.tryParse('${product['id']}') ?? 0;
     if (productId <= 0) return;
@@ -284,7 +324,7 @@ class _ShopScreenState extends State<ShopScreen> {
                       child: FilledButton.tonal(
                         onPressed: canBuy ? () { if (isVariable) { _showProduct(product); } else { _add(product); } } : null,
                         style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), visualDensity: VisualDensity.compact),
-                        child: Text(isVariable && canBuy ? tr('Избери вариант', 'Choose option') : canBuy ? tr('Добави', 'Add') : tr('Изчерпан', 'Unavailable'), maxLines: 1, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
+                        child: Text(isVariable && canBuy ? tr('Избери вариант', 'Choose option') : canBuy ? tr('Вземи', 'Get it') : tr('Изчерпан', 'Unavailable'), maxLines: 1, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ],
@@ -350,7 +390,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   child: FilledButton.icon(
                     onPressed: product['purchasable'] == true ? () { _add(product); Navigator.pop(ctx); } : null,
                     icon: const Icon(Icons.add_shopping_cart),
-                    label: Text(tr('Добави в количката', 'Add to cart')),
+                    label: Text(tr('Вземи', 'Get it')),
                   ),
                 ),
             ],
@@ -531,6 +571,10 @@ class _ShopScreenState extends State<ShopScreen> {
     final city = TextEditingController(text: (shipping['city'] ?? billing['city'] ?? '').toString());
     final address = TextEditingController(text: (shipping['address_1'] ?? billing['address_1'] ?? '').toString());
     final postcode = TextEditingController(text: (shipping['postcode'] ?? billing['postcode'] ?? '').toString());
+    const couriers = <String, String>{'econt': 'Econt', 'speedy': 'Speedy', 'pigeon': 'Pigeon'};
+    String selectedCourier = couriers.containsKey((shipping['courier'] ?? '').toString().toLowerCase())
+        ? (shipping['courier'] ?? '').toString().toLowerCase()
+        : '';
     final phone = TextEditingController(text: (billing['phone'] ?? profile?.phone ?? '').toString());
     final email = profile?.email ?? '';
     final orderItems = cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList();
@@ -538,9 +582,21 @@ class _ShopScreenState extends State<ShopScreen> {
     String selectedShippingRateId = '';
     bool loadingShippingRates = false;
     String? shippingRateError;
-    if (city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+    Future<void> refreshShippingRates(StateSetter setDialogState) async {
+      if (selectedCourier.isEmpty || city.text.trim().isEmpty || address.text.trim().isEmpty) {
+        setDialogState(() { shippingRates = []; selectedShippingRateId = ''; shippingRateError = tr('Изберете куриер и попълнете град и адрес.', 'Select a courier and enter a city and address.'); });
+        return;
+      }
+      setDialogState(() { loadingShippingRates = true; shippingRateError = null; });
       try {
-        shippingRates = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG'});
+        final rows = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier});
+        setDialogState(() { shippingRates = rows; selectedShippingRateId = rows.isNotEmpty ? '${rows.first['id']}' : ''; if (rows.isEmpty) shippingRateError = tr('Няма активен метод за избрания куриер на този адрес.', 'No active method is available for the selected courier at this address.'); });
+      } catch (e) { setDialogState(() { shippingRates = []; selectedShippingRateId = ''; shippingRateError = '$e'; }); }
+      finally { setDialogState(() => loadingShippingRates = false); }
+    }
+    if (selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+      try {
+        shippingRates = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier});
         if (shippingRates.isNotEmpty) selectedShippingRateId = '${shippingRates.first['id']}';
       } catch (e) { shippingRateError = '$e'; }
     }
@@ -562,21 +618,29 @@ class _ShopScreenState extends State<ShopScreen> {
                 _checkoutField(lastName, tr('Фамилия *', 'Last name *')),
                 _checkoutField(city, tr('Град/село *', 'City/village *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
-                _checkoutField(postcode, tr('Пощенски код (ако е приложимо)', 'Postcode (if applicable)'), required: false, keyboard: TextInputType.number, onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
-                const SizedBox(height: 8),
-                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод за доставка от WooCommerce *', 'Shipping method from WooCommerce *'), style: const TextStyle(fontWeight: FontWeight.w700))),
-                Align(alignment: Alignment.centerLeft, child: Text(tr('Опциите се зареждат според адреса и активните методи в магазина.', 'Options are loaded based on the address and active store methods.'), style: const TextStyle(fontSize: 11, color: Colors.white60))),
-                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
-                  onPressed: loadingShippingRates ? null : () async {
-                    setDialogState(() { loadingShippingRates = true; shippingRateError = null; });
-                    try {
-                      final rows = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG'});
-                      setDialogState(() { shippingRates = rows; selectedShippingRateId = rows.isNotEmpty ? '${rows.first['id']}' : ''; if (rows.isEmpty) shippingRateError = tr('WooCommerce не върна активни методи за този адрес.', 'WooCommerce returned no active methods for this address.'); });
-                    } catch (e) { setDialogState(() { shippingRates = []; selectedShippingRateId = ''; shippingRateError = '$e'; }); }
-                    finally { setDialogState(() => loadingShippingRates = false); }
+                DropdownButtonFormField<String>(
+                  initialValue: selectedCourier.isEmpty ? null : selectedCourier,
+                  decoration: InputDecoration(labelText: tr('Избор на куриер *', 'Choose courier *')),
+                  hint: Text(tr('Изберете куриер', 'Select courier')),
+                  items: couriers.entries.map((entry) => DropdownMenuItem<String>(value: entry.key, child: Text(entry.value))).toList(),
+                  validator: (value) => value == null || value.isEmpty ? tr('Изберете куриер.', 'Select a courier.') : null,
+                  onChanged: (value) {
+                    setDialogState(() { selectedCourier = value ?? ''; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; });
+                    if (value != null && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) unawaited(refreshShippingRates(setDialogState));
                   },
+                ),
+                _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
+                TextFormField(
+                  initialValue: email, readOnly: true,
+                  decoration: InputDecoration(labelText: tr('Email *', 'Email *'), helperText: tr('Имейлът се взима автоматично от регистрацията и не може да се редактира.', 'Email is taken from your registration and cannot be edited.')),
+                  validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
+                ),
+                const SizedBox(height: 12),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод на доставка', 'Delivery method'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                  onPressed: loadingShippingRates ? null : () => refreshShippingRates(setDialogState),
                   icon: loadingShippingRates ? const SizedBox(width:14,height:14,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.refresh_rounded, size:17),
-                  label: Text(tr('Обнови методите', 'Refresh methods')),
+                  label: Text(tr('Обнови', 'Refresh')),
                 )),
                 if (shippingRates.isNotEmpty) RadioGroup<String>(
                   groupValue: selectedShippingRateId,
@@ -588,12 +652,6 @@ class _ShopScreenState extends State<ShopScreen> {
                   )).toList()),
                 ),
                 if (shippingRateError != null) Align(alignment: Alignment.centerLeft, child: Text(shippingRateError!, style: const TextStyle(color: Colors.orange, fontSize: 11))),
-                _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
-                TextFormField(
-                  initialValue: email, readOnly: true,
-                  decoration: InputDecoration(labelText: tr('Email *', 'Email *'), helperText: tr('Имейлът се взима автоматично от регистрацията и не може да се редактира.', 'Email is taken from your registration and cannot be edited.')),
-                  validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
-                ),
               ]),
             ),
           ),
@@ -628,7 +686,7 @@ class _ShopScreenState extends State<ShopScreen> {
         },
         shipping: {
           'first_name': first, 'last_name': last, 'address_1': selectedAddress,
-          'city': selectedCity, 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG',
+          'city': selectedCity, 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier,
         },
         shippingRateId: selectedShippingRateId,
       );

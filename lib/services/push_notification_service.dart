@@ -37,7 +37,7 @@ class PushNotificationService {
   static String? _activeBearerToken;
   static const MethodChannel _androidNotificationChannel = MethodChannel('com.pcworkbg.pcwork_mobile/notifications');
 
-  static Future<void> storeNotification(RemoteMessage message) async {
+  static Future<String> storeNotification(RemoteMessage message) async {
     final data = Map<String, dynamic>.from(message.data);
     final title = (message.notification?.title ?? data['title'] ?? data['notification_title'] ?? 'Известие от PCWork').toString();
     final body = (message.notification?.body ?? data['body'] ?? data['message'] ?? data['notification_body'] ?? '').toString();
@@ -55,10 +55,11 @@ class PushNotificationService {
       'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
       'campaign_id': (data['campaign_id'] ?? '').toString(),
       'image': (data['image'] ?? '').toString(),
-      'data': data,
+      'data': {...data, '_notification_id': id},
       'received_at': DateTime.now().toIso8601String(),
       'read': false,
     });
+    return id;
   }
 
   static Future<void> saveNotificationRecord(Map<String, dynamic> record) async {
@@ -109,6 +110,23 @@ class PushNotificationService {
   static Future<void> clearNotificationHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_notificationHistoryKey);
+  }
+
+  static Future<void> removeNotificationById(String id) async {
+    if (id.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final raw = prefs.getString(_notificationHistoryKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final records = decoded.whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => (item['id'] ?? '').toString() != id)
+          .toList();
+      await prefs.setString(_notificationHistoryKey, jsonEncode(records));
+    } catch (_) { /* Leave the notification history untouched if it is malformed. */ }
   }
 
   static Future<void> initialize() async {
@@ -185,11 +203,16 @@ class PushNotificationService {
       });
       await _foregroundSubscription?.cancel();
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) async {
-        try { await storeNotification(message); } catch (_) { /* Keep live delivery available if local history fails. */ }
+        String storedNotificationId = '';
+        try { storedNotificationId = await storeNotification(message); } catch (_) { /* Keep live delivery available if local history fails. */ }
+        final foregroundData = Map<String, dynamic>.from(message.data);
+        foregroundData['_notification_id'] = storedNotificationId.isNotEmpty
+            ? storedNotificationId
+            : (message.messageId ?? foregroundData['notification_id'] ?? foregroundData['id'] ?? '');
         onForeground(
           message.notification?.title ?? 'PCWork',
-          message.notification?.body ?? 'Имате ново известие за ремонта си.',
-          Map<String, dynamic>.from(message.data),
+          message.notification?.body ?? 'Имате ново известие от PCWork.',
+          foregroundData,
         );
       });
       await _openedSubscription?.cancel();
@@ -217,7 +240,10 @@ class PushNotificationService {
     // Defer routing/display so the initial notification is not lost during startup.
     unawaited(() async {
       // Persist the tapped message before the UI refreshes its history/badge.
-      try { await storeNotification(message); } catch (_) {}
+      try {
+        final storedId = await storeNotification(message);
+        if ((data['_notification_id'] ?? '').toString().isEmpty) data['_notification_id'] = storedId;
+      } catch (_) {}
       await WidgetsBinding.instance.endOfFrame;
       await Future<void>.delayed(const Duration(milliseconds: 650));
       onOpened(data);
