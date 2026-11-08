@@ -32,7 +32,7 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
       title: Text(item == null ? tr('Нов артикул', 'New item') : tr('Редакция на артикул', 'Edit item')),
       content: SizedBox(width: 440, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextFormField(controller: name, decoration: InputDecoration(labelText: tr('Наименование *', 'Name *')), validator: (v) => (v == null || v.trim().isEmpty) ? tr('Задължително поле', 'Required') : null),
-        TextFormField(controller: sku, decoration: InputDecoration(labelText: 'SKU / Код')),
+        TextFormField(controller: sku, decoration: const InputDecoration(labelText: 'SKU / Код')),
         if (item == null) TextFormField(controller: location, decoration: InputDecoration(labelText: tr('Код на сервизен обект *', 'Service location code *')), validator: (v) => (v == null || v.trim().isEmpty) ? tr('Задължително поле', 'Required') : null),
         if (item == null) TextFormField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Начална наличност', 'Opening quantity')))
         else InputDecorator(decoration: InputDecoration(labelText: tr('Текуща наличност (променя се чрез Зареди/Изпиши)', 'Current quantity (change via Receive/Issue)')), child: Text('${item['quantity'] ?? 0} ${item['unit'] ?? ''}')),
@@ -40,7 +40,7 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
         TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Единична доставна цена', 'Unit cost'))),
         TextFormField(controller: unit, decoration: InputDecoration(labelText: tr('Мерна единица', 'Unit'))),
         TextFormField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: tr('Описание', 'Description'))),
-      ]))),
+      ])))),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () { if (formKey.currentState!.validate()) Navigator.pop(ctx, true); }, child: Text(tr('Запази', 'Save')))],
     ));
     if (ok == true) {
@@ -93,7 +93,13 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
           title: Text('${item['name'] ?? ''}'),
           subtitle: Text('${item['sku'] ?? ''} · ${item['location_code'] ?? ''}\n${tr('Наличност', 'Stock')}: ${item['quantity']} ${item['unit'] ?? ''} · ${tr('Минимум', 'Min')}: ${item['minimum_quantity']} · ${tr('Цена', 'Cost')}: ${item['unit_cost']}'),
           isThreeLine: true,
-          trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'in' || v == 'out') _movement(item, v); else _edit(item); }, itemBuilder: (_) => [PopupMenuItem(value: 'in', child: Text(tr('Зареди', 'Receive'))), PopupMenuItem(value: 'out', child: Text(tr('Изпиши', 'Issue'))), PopupMenuItem(value: 'edit', child: Text(tr('Редактирай', 'Edit')))]),
+          trailing: PopupMenuButton<String>(onSelected: (v) {
+            if (v == 'in' || v == 'out') {
+              _movement(item, v);
+            } else {
+              _edit(item);
+            }
+          }, itemBuilder: (_) => [PopupMenuItem(value: 'in', child: Text(tr('Зареди', 'Receive'))), PopupMenuItem(value: 'out', child: Text(tr('Изпиши', 'Issue'))), PopupMenuItem(value: 'edit', child: Text(tr('Редактирай', 'Edit')))]),
           onTap: () => _edit(item),
         ))),
       ]));
