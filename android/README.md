@@ -1,5 +1,7 @@
-# Android platform scaffold
+# Android host project
 
-The Android host project is materialized from the Flutter SDK template by `scripts/prepare_android.sh` before CI builds. The script preserves `app/google-services.json` across regeneration. Put the real Firebase file at `android/app/google-services.json` (not the `.example` template).
+The Android Gradle host project is included in this source archive. `scripts/prepare_android.sh` only generates a host project if its Gradle build file is missing; it preserves an existing `android/app/google-services.json`.
 
-Application ID: `com.pcworkbg.pcwork_mobile`.
+Place the real Firebase configuration at `android/app/google-services.json`. The `.example` file is a template, not a working Firebase configuration.
+
+Application ID: `com.pcworkbg.pcwork_mobile`. Version name and version code are read from `pubspec.yaml`.

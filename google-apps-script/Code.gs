@@ -1,5 +1,5 @@
 /**
- * PCWork Google Sheets webhook – Security v2.6.0
+ * PCWork Google Sheets webhook – Security v2.7.0
  *
  * Required Script Properties:
  *   PCWORK_HMAC_SECRET      - same value as WordPress PCWork HMAC Secret
