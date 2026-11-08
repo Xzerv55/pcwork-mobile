@@ -29,6 +29,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
+            ~/.gradle/pcwork-wrapper
             ~/Library/Caches/CocoaPods
             ios/Pods
           key: ${{ runner.os }}-mobile-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock', 'ios/Podfile', 'android/gradle/wrapper/gradle-wrapper.properties') }}
