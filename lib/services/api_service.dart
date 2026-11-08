@@ -173,8 +173,16 @@ class ApiService {
     return _copyShopRows(result);
   }
 
-  Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping}) async {
-    final response = await http.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping})).timeout(const Duration(seconds: 35));
+  Future<List<Map<String, dynamic>>> getShopShippingRates(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> shipping}) async {
+    final response = await http.post(_uri('shop/shipping-rates'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'items': items, 'shipping': shipping})).timeout(const Duration(seconds: 30));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping, String? shippingRateId}) async {
+    final response = await http.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'shipping_rate_id': shippingRateId})).timeout(const Duration(seconds: 35));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;

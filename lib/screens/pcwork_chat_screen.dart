@@ -19,7 +19,7 @@ class PCWorkChatScreen extends StatefulWidget {
   State<PCWorkChatScreen> createState() => _PCWorkChatScreenState();
 }
 
-class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
+class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBindingObserver {
   final TextEditingController _message = TextEditingController();
   final ScrollController _scroll = ScrollController();
   final ImagePicker _picker = ImagePicker();
@@ -37,7 +37,23 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initialize();
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      Future<void>.delayed(const Duration(milliseconds: 100), () {
+        if (mounted && _scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      });
+    });
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (widget.isActive) _scrollToLatest();
   }
 
   Future<void> _initialize() async {
@@ -81,7 +97,6 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
     final token = _token;
     if (token == null || _loadingMessages) return;
     _loadingMessages = true;
-    final wasNearBottom = forceBottom || _loading || !_scroll.hasClients || (_scroll.position.maxScrollExtent - _scroll.position.pixels) < 100;
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -92,14 +107,13 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
           _lastId = rows.fold<int>(_lastId, (v, row) => (int.tryParse('${row['id']}') ?? v) > v ? int.parse('${row['id']}') : v);
           _error = null;
         });
-        if (wasNearBottom) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
-          });
-        }
+        // Keep the conversation anchored to the newest message on initial load,
+        // after every incoming message and after sending a reply.
+        _scrollToLatest();
       } else if (!silent && mounted) {
         setState(() => _error = null);
       }
+      if (forceBottom) _scrollToLatest();
       if (mounted && _loading) setState(() => _loading = false);
     } catch (e) {
       if (mounted && !silent) setState(() { _error = '$e'; _loading = false; });
@@ -142,6 +156,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _message.dispose();
     _scroll.dispose();
     super.dispose();
@@ -197,7 +212,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
       ),
       if (_error != null && _messages.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(tr('Временно няма връзка. Ще опитаме отново автоматично.', 'Connection temporarily unavailable. Retrying automatically.'), style: const TextStyle(color: Colors.orange, fontSize: 11))),
       Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
+          padding: EdgeInsets.fromLTRB(7, 2, 7, MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 1),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             IconButton(onPressed: _sending ? null : _pickImage, icon: const Icon(Icons.image_outlined), tooltip: tr('Добави снимка', 'Add image')),
             Expanded(child: TextField(
@@ -205,7 +220,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
               minLines: 1,
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(hintText: tr('Напиши съобщение…', 'Write a message…'), contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12)),
+              decoration: InputDecoration(isDense: true, hintText: tr('Напиши съобщение…', 'Write a message…'), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
               onSubmitted: (_) => _send(),
             )),
             const SizedBox(width: 6),

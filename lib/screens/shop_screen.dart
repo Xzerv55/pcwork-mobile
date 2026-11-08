@@ -530,10 +530,21 @@ class _ShopScreenState extends State<ShopScreen> {
     final lastName = TextEditingController(text: (billing['last_name'] ?? '').toString());
     final city = TextEditingController(text: (shipping['city'] ?? billing['city'] ?? '').toString());
     final address = TextEditingController(text: (shipping['address_1'] ?? billing['address_1'] ?? '').toString());
+    final postcode = TextEditingController(text: (shipping['postcode'] ?? billing['postcode'] ?? '').toString());
     final phone = TextEditingController(text: (billing['phone'] ?? profile?.phone ?? '').toString());
     final email = profile?.email ?? '';
-    String courier = (billing['courier'] ?? '').toString().toLowerCase();
-    if (!['econt', 'speedy', 'pigeon'].contains(courier)) courier = '';
+    final orderItems = cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList();
+    List<Map<String, dynamic>> shippingRates = [];
+    String selectedShippingRateId = '';
+    bool loadingShippingRates = false;
+    String? shippingRateError;
+    if (city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+      try {
+        shippingRates = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG'});
+        if (shippingRates.isNotEmpty) selectedShippingRateId = '${shippingRates.first['id']}';
+      } catch (e) { shippingRateError = '$e'; }
+    }
+    if (!mounted) { for (final c in [firstName, lastName, city, address, postcode, phone]) { c.dispose(); } return; }
     final formKey = GlobalKey<FormState>();
 
     final accepted = await showDialog<bool>(
@@ -549,23 +560,34 @@ class _ShopScreenState extends State<ShopScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 _checkoutField(firstName, tr('Име *', 'First name *')),
                 _checkoutField(lastName, tr('Фамилия *', 'Last name *')),
-                _checkoutField(city, tr('Град/село *', 'City/village *')),
-                _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *')),
+                _checkoutField(city, tr('Град/село *', 'City/village *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
+                _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
+                _checkoutField(postcode, tr('Пощенски код (ако е приложимо)', 'Postcode (if applicable)'), required: false, keyboard: TextInputType.number, onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 const SizedBox(height: 8),
-                Align(alignment: Alignment.centerLeft, child: Text(tr('Избор на куриер *', 'Choose courier *'), style: const TextStyle(fontWeight: FontWeight.w600))),
-                const SizedBox(height: 4),
-                RadioGroup<String>(
-                  groupValue: courier,
-                  onChanged: (value) => setDialogState(() => courier = value ?? ''),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    ...[
-                      ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
-                    ].map((option) => RadioListTile<String>(
-                      dense: true, contentPadding: EdgeInsets.zero, value: option.$1,
-                      title: Text(option.$2),
-                    )),
-                  ]),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод за доставка от WooCommerce *', 'Shipping method from WooCommerce *'), style: const TextStyle(fontWeight: FontWeight.w700))),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Опциите се зареждат според адреса и активните методи в магазина.', 'Options are loaded based on the address and active store methods.'), style: const TextStyle(fontSize: 11, color: Colors.white60))),
+                Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+                  onPressed: loadingShippingRates ? null : () async {
+                    setDialogState(() { loadingShippingRates = true; shippingRateError = null; });
+                    try {
+                      final rows = await widget.api.getShopShippingRates(token, items: orderItems, shipping: {'city': city.text.trim(), 'address_1': address.text.trim(), 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG'});
+                      setDialogState(() { shippingRates = rows; selectedShippingRateId = rows.isNotEmpty ? '${rows.first['id']}' : ''; if (rows.isEmpty) shippingRateError = tr('WooCommerce не върна активни методи за този адрес.', 'WooCommerce returned no active methods for this address.'); });
+                    } catch (e) { setDialogState(() { shippingRates = []; selectedShippingRateId = ''; shippingRateError = '$e'; }); }
+                    finally { setDialogState(() => loadingShippingRates = false); }
+                  },
+                  icon: loadingShippingRates ? const SizedBox(width:14,height:14,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.refresh_rounded, size:17),
+                  label: Text(tr('Обнови методите', 'Refresh methods')),
+                )),
+                if (shippingRates.isNotEmpty) RadioGroup<String>(
+                  groupValue: selectedShippingRateId,
+                  onChanged: (value) => setDialogState(() => selectedShippingRateId = value ?? ''),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: shippingRates.map((rate) => RadioListTile<String>(
+                    dense: true, contentPadding: EdgeInsets.zero, value: '${rate['id']}',
+                    title: Text((rate['label'] ?? rate['method_id'] ?? '').toString()),
+                    subtitle: Text((rate['formatted_cost'] ?? '${rate['cost'] ?? ''}').toString()),
+                  )).toList()),
                 ),
+                if (shippingRateError != null) Align(alignment: Alignment.centerLeft, child: Text(shippingRateError!, style: const TextStyle(color: Colors.orange, fontSize: 11))),
                 _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
                 TextFormField(
                   initialValue: email, readOnly: true,
@@ -579,17 +601,17 @@ class _ShopScreenState extends State<ShopScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))),
           FilledButton(onPressed: () {
-            if (formKey.currentState!.validate() && courier.isNotEmpty) {
+            if (formKey.currentState!.validate() && selectedShippingRateId.isNotEmpty) {
               Navigator.pop(ctx, true);
-            } else if (courier.isEmpty) {
-              _message(tr('Изберете куриер.', 'Choose a courier.'));
+            } else {
+              _message(tr('Обновете и изберете метод за доставка от WooCommerce.', 'Refresh and select a WooCommerce shipping method.'));
             }
           }, child: Text(tr('Продължи', 'Continue'))),
         ],
       )),
     );
 
-    if (!mounted || accepted != true) { for (final c in [firstName, lastName, city, address, phone]) { c.dispose(); } return; }
+    if (!mounted || accepted != true) { for (final c in [firstName, lastName, city, address, postcode, phone]) { c.dispose(); } return; }
     setState(() => placingOrder = true);
     final first = firstName.text.trim();
     final last = lastName.text.trim();
@@ -598,16 +620,17 @@ class _ShopScreenState extends State<ShopScreen> {
     try {
       final result = await widget.api.createShopOrder(
         token,
-        items: cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList(),
+        items: orderItems,
         billing: {
           'first_name': first, 'last_name': last, 'email': email,
-          'phone': phone.text.trim(), 'address_1': selectedAddress, 'city': selectedCity,
-          'country': 'BG', 'courier': courier,
+          'phone': phone.text.trim(), 'address_1': selectedAddress, 'city': selectedCity, 'postcode': postcode.text.trim(),
+          'state': (billing['state'] ?? '').toString(), 'country': 'BG',
         },
         shipping: {
           'first_name': first, 'last_name': last, 'address_1': selectedAddress,
-          'city': selectedCity, 'country': 'BG', 'courier': courier,
+          'city': selectedCity, 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG',
         },
+        shippingRateId: selectedShippingRateId,
       );
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
@@ -619,16 +642,17 @@ class _ShopScreenState extends State<ShopScreen> {
       _message('$e');
     } finally {
       if (mounted) setState(() => placingOrder = false);
-      for (final c in [firstName, lastName, city, address, phone]) { c.dispose(); }
+      for (final c in [firstName, lastName, city, address, postcode, phone]) { c.dispose(); }
     }
   }
 
-  Widget _checkoutField(TextEditingController controller, String label, {TextInputType? keyboard, bool required = true}) {
+  Widget _checkoutField(TextEditingController controller, String label, {TextInputType? keyboard, bool required = true, ValueChanged<String>? onChanged}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboard,
+        onChanged: onChanged,
         decoration: InputDecoration(labelText: label),
         validator: (value) => required && (value == null || value.trim().isEmpty) ? tr('Задължително поле', 'Required field') : null,
       ),

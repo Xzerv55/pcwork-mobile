@@ -62,7 +62,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 74;
+  static const int _currentBuildNumber = 75;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
@@ -878,32 +878,27 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               Positioned.fill(child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink()))),
               if (_showChatGreeting && tab != 3)
                 Positioned(
-                  right: 14,
-                  bottom: 16,
+                  right: 12,
+                  bottom: 78,
                   child: Material(
                     color: Colors.transparent,
-                    child: Container(
-                      width: MediaQuery.of(context).size.width < 338 ? MediaQuery.of(context).size.width - 28 : 310,
-                      padding: const EdgeInsets.fromLTRB(14, 11, 8, 11),
-                      decoration: BoxDecoration(
-                        color: isDarkTheme ? const Color(0xFF17283A) : Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: cyan.withValues(alpha: .65)),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 18, offset: const Offset(0, 7))],
+                    child: Tooltip(
+                      message: tr('Отвори чата', 'Open chat'),
+                      child: InkWell(
+                        onTap: () { setState(() => _showChatGreeting = false); _selectTab(3); },
+                        borderRadius: BorderRadius.circular(28),
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: cyan,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withValues(alpha: .85), width: 2),
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 10, offset: const Offset(0, 3))],
+                          ),
+                          child: const Icon(Icons.chat_bubble_rounded, color: Color(0xFF061319), size: 23),
+                        ),
                       ),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Container(width: 40, height: 40, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle), child: const Icon(Icons.chat_bubble_rounded, color: Color(0xFF061319))),
-                        const SizedBox(width: 10),
-                        Flexible(child: InkWell(
-                          onTap: () { setState(() => _showChatGreeting = false); _selectTab(3); },
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                            Text(tr('С какво да помогнем?', 'How can we help?'), style: TextStyle(fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
-                            const SizedBox(height: 2),
-                            Text(tr('Натисни, за да отвориш чата', 'Tap to open chat'), style: TextStyle(fontSize: 11, color: isDarkTheme ? Colors.white70 : Colors.black54)),
-                          ]),
-                        )),
-                        IconButton(visualDensity: VisualDensity.compact, tooltip: tr('Затвори', 'Close'), onPressed: () => setState(() => _showChatGreeting = false), icon: const Icon(Icons.close_rounded, size: 18)),
-                      ]),
                     ),
                   ),
                 ),
