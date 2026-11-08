@@ -197,7 +197,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
                             child: GestureDetector(
                               onLongPress: text.isEmpty ? null : () async {
                                 await Clipboard.setData(ClipboardData(text: text));
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Съобщението е копирано.', 'Message copied.')), duration: const Duration(seconds: 1)));
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Съобщението е копирано.', 'Message copied.')), duration: const Duration(seconds: 1)));
                               },
                               child: Container(
                               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .78),
