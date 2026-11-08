@@ -1,15 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Small wrapper for environments where the standard Gradle wrapper JAR is not bundled.
+
+# Lightweight Gradle launcher for repositories that do not bundle gradle-wrapper.jar.
 GRADLE_VERSION="8.14.3"
 BASE="${GRADLE_USER_HOME:-$HOME/.gradle}/pcwork-wrapper"
 DIST="$BASE/gradle-$GRADLE_VERSION"
+ARCHIVE="$BASE/gradle-$GRADLE_VERSION-bin.zip"
+
 if [[ ! -x "$DIST/bin/gradle" ]]; then
   mkdir -p "$BASE"
-  ARCHIVE="$BASE/gradle-$GRADLE_VERSION-bin.zip"
-  if [[ ! -f "$ARCHIVE" ]]; then
-    curl --fail --location --retry 3 "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip" --output "$ARCHIVE"
+
+  # Discard incomplete/corrupt downloads left by an interrupted or proxy-failed request.
+  if [[ -f "$ARCHIVE" ]] && ! unzip -tq "$ARCHIVE" >/dev/null 2>&1; then
+    rm -f "$ARCHIVE"
   fi
+
+  if [[ ! -f "$ARCHIVE" ]]; then
+    URLS=(
+      "https://downloads.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+      "https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+    )
+    DOWNLOADED=false
+    for URL in "${URLS[@]}"; do
+      echo "Downloading Gradle $GRADLE_VERSION from $URL"
+      if curl --fail --location --show-error --retry 3 --retry-all-errors --retry-delay 2 \
+        --connect-timeout 20 --max-time 600 "$URL" --output "$ARCHIVE" \
+        && unzip -tq "$ARCHIVE" >/dev/null 2>&1; then
+        DOWNLOADED=true
+        break
+      fi
+      rm -f "$ARCHIVE"
+      echo "Gradle download failed; trying the next distribution mirror." >&2
+    done
+
+    if [[ "$DOWNLOADED" != true ]]; then
+      echo "ERROR: Could not download a valid Gradle $GRADLE_VERSION archive from any configured mirror." >&2
+      exit 1
+    fi
+  fi
+
   unzip -q -o "$ARCHIVE" -d "$BASE"
 fi
+
 exec "$DIST/bin/gradle" "$@"
