@@ -34,7 +34,7 @@ jobs:
           cache: true
 
       - name: Cache Pub packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pub-cache
           key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
@@ -42,12 +42,11 @@ jobs:
             ${{ runner.os }}-pub-
 
       - name: Cache Gradle dependencies and wrapper
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            ~/.gradle/pcwork-wrapper
             android/.gradle
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties') }}
           restore-keys: |
