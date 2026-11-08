@@ -99,6 +99,7 @@ class _AuthScreenState extends State<AuthScreen> {
           email: _email.text.trim(),
           name: _name.text,
           phone: _phone.text,
+          dataCollectionOptIn: _register && _dataCollectionConsent,
         );
         if (!mounted) return;
         setState(() {
@@ -130,6 +131,7 @@ class _AuthScreenState extends State<AuthScreen> {
         email: _email.text.trim(),
         name: _name.text,
         phone: _phone.text,
+        dataCollectionOptIn: _register && _dataCollectionConsent,
       );
       if (mounted) {
         setState(() => _info = message);
@@ -150,6 +152,7 @@ class _AuthScreenState extends State<AuthScreen> {
       _passwordMode = false;
       _password.clear();
       _acceptedTerms = false;
+      _dataCollectionConsent = false;
       _resendSeconds = 0;
       _code.clear();
       _error = null;
@@ -273,6 +276,20 @@ class _AuthScreenState extends State<AuthScreen> {
                               contentPadding: EdgeInsets.zero,
                               controlAffinity: ListTileControlAffinity.leading,
                               title: Text(tr('Съгласен/на съм с общите условия и политиката за поверителност.', 'I agree to the Terms and Privacy Policy.'), style: const TextStyle(fontSize: 12)),
+                            ),
+                          if (_register && !_codeSent)
+                            CheckboxListTile(
+                              value: _dataCollectionConsent,
+                              onChanged: _busy ? null : (value) => setState(() => _dataCollectionConsent = value == true),
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: Text(
+                                tr(
+                                  'Съгласен/на съм PCWork да използва данните от профила ми за обслужване и да получавам маркетингови push известия. Съгласието е доброволно и може да бъде оттеглено.',
+                                  'I agree that PCWork may use my profile data for customer service and send me marketing push notifications. This consent is optional and can be withdrawn.',
+                                ),
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           if (_codeSent && !_passwordMode)
                             TextFormField(

@@ -83,6 +83,7 @@ class AuthService {
     required String email,
     String name = '',
     String phone = '',
+    bool dataCollectionOptIn = false,
   }) async {
     final path = register ? 'auth/register/request' : 'auth/login/request';
     final body = <String, dynamic>{'email': email.trim()};
@@ -90,6 +91,7 @@ class AuthService {
       body['name'] = name.trim();
       body['phone'] = phone.trim();
       body['terms_accepted'] = true;
+      body['data_collection_opt_in'] = dataCollectionOptIn;
     }
     late final http.Response response;
     try {
