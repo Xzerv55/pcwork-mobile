@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class NotificationHistoryScreen extends StatefulWidget {
   const NotificationHistoryScreen({
+    super.key,
     required this.records,
     required this.english,
     required this.isDarkTheme,
