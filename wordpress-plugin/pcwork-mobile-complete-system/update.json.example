@@ -1,8 +1,0 @@
-{
-  "version": "0.68.0",
-  "version_code": 68,
-  "apk_url": "https://pcwork-bg.com/wp-content/uploads/pcwork-mobile/PCWork-Mobile.apk",
-  "sha256": "REPLACE_WITH_64_CHARACTER_LOWERCASE_SHA256",
-  "release_notes": "Собствен PCWork чат, настройки на език, подобрения и оптимизации.",
-  "mandatory": false
-}
