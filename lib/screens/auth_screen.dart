@@ -32,6 +32,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _codeSent = false;
   bool _passwordMode = false;
   bool _acceptedTerms = false;
+  bool _dataCollectionConsent = false;
   bool _busy = false;
   String? _error;
   String? _info;
