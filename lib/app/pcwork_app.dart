@@ -19,6 +19,7 @@ import '../screens/contact_hub_screen.dart';
 import '../screens/auth_screen.dart';
 import '../screens/shop_screen.dart';
 import '../screens/notification_history_screen.dart';
+import '../screens/customer_center_screen.dart';
 import '../screens/visitor_analytics_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
@@ -65,7 +66,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 89;
+  static const int _currentBuildNumber = 92;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1121,6 +1122,28 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openCustomerCenter() async {
+    final user = signedInUser;
+    if (user == null) {
+      _selectTab(5);
+      return;
+    }
+    final bearer = await auth.token;
+    if (bearer == null || bearer.isEmpty || !mounted) return;
+    await _navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => CustomerCenterScreen(
+      api: api,
+      token: bearer,
+      user: user,
+      english: english,
+      onRepairs: () { _navigatorKey.currentState?.pop(); _selectTab(1); },
+      onOrders: () { _navigatorKey.currentState?.pop(); setState(() { _pendingShopOrderId = null; _openShopOrdersOnEntry = true; }); _selectTab(2); },
+      onChat: () { _navigatorKey.currentState?.pop(); _selectTab(3); },
+      onBooking: () { _navigatorKey.currentState?.pop(); _selectTab(4); },
+      onNotifications: () { _navigatorKey.currentState?.pop(); _openNotifications(); },
+      onProfile: () { _navigatorKey.currentState?.pop(); _selectTab(5); },
+    )));
+  }
+
   Widget _home() => ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 28), children: [
     Container(
       padding: const EdgeInsets.all(22),
@@ -1152,6 +1175,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
     const SizedBox(height: 22),
     if (signedInUser == null) _homeSignInCard() else _homeAccountDashboard(),
+    if (signedInUser != null) ...[const SizedBox(height: 10), SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _openCustomerCenter, icon: const Icon(Icons.space_dashboard_rounded), label: Text(tr('Отвори клиентския център', 'Open customer center'))))],
     const SizedBox(height: 8),
     Row(children: [
       Expanded(child: _quickCard(Icons.qr_code_2_rounded, tr('Моите ремонти', 'My repairs'), () => _selectTab(1))),

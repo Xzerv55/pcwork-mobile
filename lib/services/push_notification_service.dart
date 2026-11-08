@@ -47,6 +47,25 @@ class PushNotificationService {
     } catch (_) { /* Remote FCM delivery remains available if local display is unavailable. */ }
   }
 
+  static String _notificationCategory(String event) {
+    final value = event.toLowerCase();
+    if (value.contains('repair')) return 'repair';
+    if (value.contains('order')) return 'order';
+    if (value.contains('chat') || value.contains('message')) return 'chat';
+    if (value.contains('booking') || value.contains('appointment')) return 'booking';
+    if (value.contains('campaign') || value.contains('marketing')) return 'promotion';
+    return 'general';
+  }
+
+  static String _notificationPriority(String event, String status) {
+    final value = event.toLowerCase();
+    final state = status.toLowerCase();
+    if (state == 'ready' || state == 'waiting_approval' || state == 'cancelled' || value.contains('security')) return 'high';
+    if (value.contains('repair') || value.contains('order') || value.contains('chat') || value.contains('booking')) return 'normal';
+    if (value.contains('campaign') || value.contains('marketing')) return 'low';
+    return 'normal';
+  }
+
   static Future<String> storeNotification(RemoteMessage message) async {
     final data = Map<String, dynamic>.from(message.data);
     final title = (message.notification?.title ?? data['title'] ?? data['notification_title'] ?? 'Известие от PCWork').toString();
@@ -62,6 +81,8 @@ class PushNotificationService {
       'url': (data['url'] ?? '').toString(),
       'event': (data['event'] ?? '').toString(),
       'screen': (data['screen'] ?? '').toString(),
+      'category': _notificationCategory((data['event'] ?? '').toString()),
+      'priority': _notificationPriority((data['event'] ?? '').toString(), (data['status'] ?? '').toString()),
       'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
       'order_id': (data['order_id'] ?? data['orderId'] ?? '').toString(),
       'campaign_id': (data['campaign_id'] ?? '').toString(),

@@ -132,6 +132,10 @@ class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
                         padding: const EdgeInsets.only(top: 5),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           if (body.isNotEmpty) Text(body, style: TextStyle(color: muted)),
+                          if ((item['category'] ?? '').toString().isNotEmpty || (item['priority'] ?? '').toString() == 'high') Padding(padding: const EdgeInsets.only(top: 7), child: Wrap(spacing: 6, children: [
+                            if ((item['category'] ?? '').toString().isNotEmpty) _tag(_categoryLabel((item['category'] ?? '').toString())),
+                            if ((item['priority'] ?? '').toString() == 'high') _tag(tr('Важно', 'Important'), important: true),
+                          ])),
                           if (dateText.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(dateText, style: TextStyle(fontSize: 11, color: muted))),
                         ]),
                       ),
@@ -147,4 +151,21 @@ class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
             ),
     );
   }
+
+  String _categoryLabel(String value) {
+    switch (value) {
+      case 'repair': return tr('Ремонт', 'Repair');
+      case 'order': return tr('Поръчка', 'Order');
+      case 'chat': return tr('Чат', 'Chat');
+      case 'booking': return tr('Записване', 'Booking');
+      case 'promotion': return tr('Промоция', 'Promotion');
+      default: return tr('Общо', 'General');
+    }
+  }
+
+  Widget _tag(String label, {bool important = false}) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(color: (important ? Colors.orangeAccent : const Color(0xFF21D4D8)).withValues(alpha: .13), borderRadius: BorderRadius.circular(20)),
+    child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: important ? Colors.orangeAccent : const Color(0xFF21D4D8))),
+  );
 }
