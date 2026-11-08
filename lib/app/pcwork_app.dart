@@ -64,8 +64,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 85;
+  static const int _currentBuildNumber = 86;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
+  static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
   int? _pendingShopOrderId;
@@ -120,6 +121,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _initialize() async {
     await _loadSettings();
+    // Preload Bookly configuration so the booking action is immediate when
+    // the user reaches the reservation tab later in the session.
+    unawaited(api.getBookingUrl().catchError((_) => null));
     await _loadNotificationHistory();
     if (!mounted) return;
     // Do not make the server health check a startup dependency.
@@ -883,10 +887,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             });
           },
         );
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: canSeeStaffUi);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
+    }
+  }
+
+  Future<void> _confirmExit() async {
+    final context = _navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    final shouldExit = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(tr('Изход от приложението?', 'Exit the app?')),
+        content: Text(tr('Наистина ли искате да затворите PCWork?', 'Do you really want to close PCWork?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(tr('Остани', 'Stay'))),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(tr('Изход', 'Exit'))),
+        ],
+      ),
+    );
+    if (shouldExit == true) {
+      await SystemNavigator.pop();
     }
   }
 
@@ -956,7 +979,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         )),
       ),
-      home: Scaffold(
+      home: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop && _navigatorKey.currentState?.canPop() != true) {
+            unawaited(_confirmExit());
+          }
+        },
+        child: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 36, height: 36, fit: BoxFit.contain)),
@@ -1005,6 +1035,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
             ],
           ),
+        ),
         ),
       ),
     );
@@ -1083,6 +1114,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _launchContact(Uri uri) async {
     try {
+      if (uri.scheme == 'tel') {
+        await _phoneChannel.invokeMethod<bool>('openDialer', {'number': uri.path});
+        return;
+      }
       final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened && mounted) _message(tr('Не успяхме да отворим приложението или връзката.', 'Could not open the app or link.'));
     } catch (e) {

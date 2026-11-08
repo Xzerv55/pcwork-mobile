@@ -7,13 +7,14 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 
 class PCWorkChatScreen extends StatefulWidget {
-  const PCWorkChatScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme, required this.isActive});
+  const PCWorkChatScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme, required this.isActive, this.canUploadFiles = false});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final int sessionKey;
   final bool english;
   final bool isDarkTheme;
   final bool isActive;
+  final bool canUploadFiles;
 
   @override
   State<PCWorkChatScreen> createState() => _PCWorkChatScreenState();
@@ -214,7 +215,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
       Padding(
           padding: EdgeInsets.fromLTRB(7, 2, 7, MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 1),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            IconButton(onPressed: _sending ? null : _pickImage, icon: const Icon(Icons.image_outlined), tooltip: tr('Добави снимка', 'Add image')),
+            if (widget.canUploadFiles) IconButton(onPressed: _sending ? null : _pickImage, icon: const Icon(Icons.image_outlined), tooltip: tr('Добави снимка', 'Add image')),
             Expanded(child: TextField(
               controller: _message,
               minLines: 1,

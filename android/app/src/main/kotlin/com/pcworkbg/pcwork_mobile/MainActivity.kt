@@ -47,6 +47,26 @@ class MainActivity : FlutterActivity() {
                     result.error("installer_error", e.message ?: "Could not open Android installer.", null)
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pcworkbg.pcwork_mobile/phone")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "openDialer") { result.notImplemented(); return@setMethodCallHandler }
+                val number = call.argument<String>("number")?.trim()
+                if (number.isNullOrBlank()) { result.error("invalid_number", "Phone number is missing.", null); return@setMethodCallHandler }
+                try {
+                    val intent = Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:" + android.net.Uri.encode(number)))
+                    val preferredDialers = listOf("com.google.android.dialer", "com.samsung.android.dialer", "com.android.phone", "com.android.dialer", "com.miui.dialer", "com.oneplus.dialer")
+                    val dialerPackage = preferredDialers.firstOrNull { packageManager.getLaunchIntentForPackage(it) != null }
+                    if (dialerPackage == null) {
+                        result.error("dialer_unavailable", "No supported phone dialer is installed.", null)
+                    } else {
+                        intent.setPackage(dialerPackage)
+                        startActivity(intent)
+                        result.success(true)
+                    }
+                } catch (e: Exception) {
+                    result.error("dialer_error", e.message ?: "Could not open phone dialer.", null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, notificationChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method != "requestNotificationPermission") {

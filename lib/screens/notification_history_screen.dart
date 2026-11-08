@@ -69,6 +69,11 @@ class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(tr('Известия', 'Notifications')),
+        leading: IconButton(
+          tooltip: tr('Затвори', 'Close'),
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
         actions: [
           if (records.isNotEmpty)
             IconButton(

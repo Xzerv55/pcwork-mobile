@@ -49,6 +49,8 @@ class _TimedRepairCache {
 }
 
 class ApiService {
+  static Uri? _cachedBookingUri;
+  static DateTime? _bookingCacheUntil;
   ApiService({required this.baseUrl, this.userId = 0});
   final String baseUrl;
   final int userId;
@@ -212,7 +214,7 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopOrders(String token) async {
-    final response = await _httpClient.get(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 25));
+    final response = await _httpClient.get(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 12));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
@@ -694,7 +696,9 @@ class ApiService {
   }
 
   Future<Uri?> getBookingUrl() async {
-    final response = await _httpClient.get(_uri('booking/config')).timeout(const Duration(seconds: 15));
+    final now = DateTime.now();
+    if (_bookingCacheUntil != null && now.isBefore(_bookingCacheUntil!)) return _cachedBookingUri;
+    final response = await _httpClient.get(_uri('booking/config')).timeout(const Duration(seconds: 7));
     if (response.statusCode != 200) return null;
     final decoded = _decodeResponse(response);
     if (decoded is! Map) return null;
@@ -703,7 +707,9 @@ class ApiService {
     final raw = data['booking_url'] ?? data['url'] ?? data['page_url'];
     if (enabled == false || raw is! String || raw.isEmpty) return null;
     final uri = Uri.tryParse(raw);
-    return uri != null && (uri.scheme == 'https' || uri.scheme == 'http') ? uri : null;
+    _cachedBookingUri = uri != null && (uri.scheme == 'https' || uri.scheme == 'http') ? uri : null;
+    _bookingCacheUntil = now.add(const Duration(minutes: 5));
+    return _cachedBookingUri;
   }
 }
 
