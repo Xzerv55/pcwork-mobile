@@ -1,0 +1,154 @@
+name: PCWork Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcwork-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build installable Android APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle dependencies and wrapper
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # The icon/splash generators update both platform asset catalogs.
+      - name: Generate iOS asset catalog for shared branding assets
+        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+
+      - name: Generate Android project
+        run: bash ./scripts/prepare_android.sh
+
+      # Firebase client settings are read from the checked-out Android config.
+      # These are app-side identifiers/API key, not a service-account private key.
+      - name: Read Firebase Android configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_FILE="android/app/google-services.json"
+          if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "ERROR: $CONFIG_FILE is missing. Add the real Firebase Android configuration to the repository (do not commit service-account credentials)."
+            exit 1
+          fi
+          PACKAGE_NAME="com.pcworkbg.pcwork_mobile"
+          MATCH_COUNT=$(jq --arg package "$PACKAGE_NAME" '[.client[]? | select(.client_info.android_client_info.package_name == $package)] | length' "$CONFIG_FILE")
+          if [[ "$MATCH_COUNT" != "1" ]]; then
+            echo "ERROR: google-services.json must contain exactly one Android client for $PACKAGE_NAME."
+            exit 1
+          fi
+          FIREBASE_PROJECT_ID=$(jq -r '.project_info.project_id // empty' "$CONFIG_FILE")
+          FIREBASE_MESSAGING_SENDER_ID=$(jq -r '.project_info.project_number // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_APP_ID=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .client_info.mobilesdk_app_id // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_API_KEY=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .api_key[0].current_key // empty' "$CONFIG_FILE")
+          if [[ -z "$FIREBASE_PROJECT_ID" || -z "$FIREBASE_MESSAGING_SENDER_ID" || -z "$FIREBASE_ANDROID_APP_ID" || -z "$FIREBASE_ANDROID_API_KEY" ]]; then
+            echo "ERROR: google-services.json is missing one or more required Firebase Android client fields."
+            exit 1
+          fi
+          {
+            printf 'FIREBASE_PROJECT_ID=%s\n' "$FIREBASE_PROJECT_ID"
+            printf 'FIREBASE_MESSAGING_SENDER_ID=%s\n' "$FIREBASE_MESSAGING_SENDER_ID"
+            printf 'FIREBASE_ANDROID_APP_ID=%s\n' "$FIREBASE_ANDROID_APP_ID"
+            printf 'FIREBASE_ANDROID_API_KEY=%s\n' "$FIREBASE_ANDROID_API_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure persistent release signing
+        shell: bash
+        env:
+          PCWORK_KEYSTORE_BASE64: ${{ secrets.PCWORK_KEYSTORE_BASE64 }}
+          PCWORK_KEYSTORE_PASSWORD: ${{ secrets.PCWORK_KEYSTORE_PASSWORD }}
+          PCWORK_KEY_ALIAS: ${{ secrets.PCWORK_KEY_ALIAS }}
+          PCWORK_KEY_PASSWORD: ${{ secrets.PCWORK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PCWORK_KEYSTORE_BASE64:-}" || -z "${PCWORK_KEYSTORE_PASSWORD:-}" || -z "${PCWORK_KEY_ALIAS:-}" || -z "${PCWORK_KEY_PASSWORD:-}" ]]; then
+            echo "ERROR: Configure all four GitHub Actions secrets: PCWORK_KEYSTORE_BASE64, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS, PCWORK_KEY_PASSWORD. See SIGNING_SETUP_BG.md."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/pcwork-signing"
+          printf '%s' "$PCWORK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          chmod 600 "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          echo "PCWORK_KEYSTORE_FILE=$RUNNER_TEMP/pcwork-signing/pcwork-release.jks" >> "$GITHUB_ENV"
+          echo "PCWORK_KEYSTORE_PASSWORD=$PCWORK_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_ALIAS=$PCWORK_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_PASSWORD=$PCWORK_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Generate PCWork launcher icons and native splash
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Build debug APK for phone testing
+        run: >-
+          flutter build apk --debug --no-pub
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Build release APK for device testing
+        run: >-
+          flutter build apk --release --split-per-abi --no-pub
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Upload APK files
+        uses: actions/upload-artifact@v6
+        with:
+          name: pcwork-android-v76-apks
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+          retention-days: 14
