@@ -702,7 +702,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final selectedAddress = address.text.trim();
     final selectedCity = city.text.trim();
     try {
-      final result = await widget.api.createShopOrder(
+      await widget.api.createShopOrder(
         token,
         items: orderItems,
         billing: {
@@ -719,9 +719,7 @@ class _ShopScreenState extends State<ShopScreen> {
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
-      _message(tr('Поръчката е създадена. Отварям страницата за плащане.', 'Order created. Opening payment page.'));
-      final paymentUrl = result['payment_url']?.toString() ?? '';
-      if (paymentUrl.isNotEmpty) await widget.api.openExternal(paymentUrl);
+      _message(tr('Поръчката е приета и започва обработка.', 'Your order has been accepted and is being processed.'));
     } catch (e) {
       _message('$e');
     } finally {

@@ -972,11 +972,35 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             color: states.contains(WidgetState.selected) ? (isDarkTheme ? cyan : const Color(0xFF087F83)) : const Color(0xFF8796AA),
           )),
         ),
-        filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
-          backgroundColor: cyan, foregroundColor: const Color(0xFF061319),
-          overlayColor: cyan.withValues(alpha: .20),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        filledButtonTheme: FilledButtonThemeData(style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.disabled) ? cyan.withValues(alpha: .35) : cyan),
+          foregroundColor: const WidgetStatePropertyAll(Color(0xFF061319)),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) return const Color(0xFF061319).withValues(alpha: .28);
+            if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) return Colors.white.withValues(alpha: .16);
+            return Colors.transparent;
+          }),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 3 : 1),
+          animationDuration: const Duration(milliseconds: 110),
+          shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
+        )),
+        elevatedButtonTheme: ElevatedButtonThemeData(style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .30) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
+          animationDuration: const Duration(milliseconds: 110),
+        )),
+        outlinedButtonTheme: OutlinedButtonThemeData(style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .28) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
+          animationDuration: const Duration(milliseconds: 110),
+          side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.pressed) ? cyan : const Color(0xFF2A3A50), width: states.contains(WidgetState.pressed) ? 1.8 : 1)),
+        )),
+        textButtonTheme: TextButtonThemeData(style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .25) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .10) : Colors.transparent),
+          animationDuration: const Duration(milliseconds: 110),
+        )),
+        iconButtonTheme: IconButtonThemeData(style: ButtonStyle(
+          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .32) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .14) : Colors.transparent),
+          animationDuration: const Duration(milliseconds: 110),
         )),
       ),
       home: PopScope(
