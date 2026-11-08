@@ -38,6 +38,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool staffPreview = false;
   bool clientPreview = false;
   int tab = 0;
+  bool _showChatGreeting = true;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
   String apiUrl = defaultApi;
@@ -61,12 +62,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 76;
+  static const int _currentBuildNumber = 75;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
-  int? _pendingShopOrderId;
-  bool _openShopOrdersOnEntry = false;
   int get _unreadNotificationCount => _notificationHistory.where((item) => item['read'] != true).length;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
@@ -348,52 +347,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     await _loadNotificationHistory();
   }
 
-  int _notificationDestinationTab(Map<String, dynamic> data) {
-    final screen = (data['screen'] ?? '').toString().toLowerCase();
-    final event = (data['event'] ?? '').toString().toLowerCase();
-    if (screen.contains('chat') || event == 'chat_message' || event.contains('chat')) return 3;
-    if (screen.contains('repair') || event.contains('repair')) return 1;
-    if (screen.contains('order') || screen.contains('product') || screen.contains('service') || screen.contains('advert') || screen == 'shop' || screen == 'listings' || event == 'woocommerce_new_order' || event.contains('order')) return 2;
-    if (screen.contains('booking') || event.contains('booking') || event.contains('appointment')) return 4;
-    if (screen.contains('profile') || event.contains('profile')) return 5;
-    if (screen == 'home' || screen == 'dashboard') return 0;
-    return 0;
-  }
-
   Future<void> _openNotificationRecord(Map<String, dynamic> record) async {
     final rawData = record['data'];
     final data = rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{};
-    data.addAll({
-      'screen': record['screen'] ?? data['screen'],
-      'event': record['event'] ?? data['event'],
-      'repair_id': record['repair_id'] ?? data['repair_id'] ?? data['repairId'],
-      'order_id': record['order_id'] ?? data['order_id'] ?? data['orderId'],
-      'campaign_id': record['campaign_id'] ?? data['campaign_id'],
-      'url': record['url'] ?? data['url'],
-    });
-    final event = (data['event'] ?? '').toString().toLowerCase();
+    final screen = (record['screen'] ?? data['screen'] ?? '').toString();
+    final event = (record['event'] ?? data['event'] ?? '').toString();
+    final repairId = int.tryParse((record['repair_id'] ?? data['repair_id'] ?? data['repairId'] ?? '').toString());
     final title = (record['title'] ?? tr('Известие от PCWork', 'PCWork notification')).toString();
     final body = (record['body'] ?? '').toString();
-    final targetUrl = (data['url'] ?? '').toString();
+    final targetUrl = (record['url'] ?? data['url'] ?? '').toString();
     final notificationId = (record['id'] ?? data['_notification_id'] ?? '').toString();
-    final repairId = int.tryParse((data['repair_id'] ?? data['repairId'] ?? '').toString());
-    final orderId = int.tryParse((data['order_id'] ?? data['orderId'] ?? '').toString());
-
-    // Remove the notification from the in-app active list once its destination
-    // is opened, instead of leaving a stale unread/active card behind.
-    await PushNotificationService.removeNotificationById(notificationId);
-    await _loadNotificationHistory();
-    if (!mounted) return;
-
-    if (orderId != null && orderId > 0) {
-      _pendingShopOrderId = orderId;
-      _openShopOrdersOnEntry = false;
-    } else if (event == 'woocommerce_new_order' || event.contains('order')) {
-      _pendingShopOrderId = null;
-      _openShopOrdersOnEntry = true;
+    if (notificationId.isNotEmpty) {
+      final updated = _notificationHistory.map((item) => (item['id'] ?? '').toString() == notificationId
+          ? <String, dynamic>{...item, 'read': true}
+          : Map<String, dynamic>.from(item)).toList();
+      await PushNotificationService.saveNotificationHistory(updated);
+      if (mounted) setState(() => _notificationHistory = updated);
     }
 
-    final destinationTab = _notificationDestinationTab(data);
+    // Close the history page before navigating to the destination.
+    final destinationTab = screen == 'chat' || event == 'chat_message' ? 3
+        : event == 'woocommerce_new_order' ? 2
+        : (repairId != null || event.contains('repair')) ? 1
+        : 0;
     _selectTab(destinationTab);
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
@@ -408,30 +384,26 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           return;
         }
       } catch (_) {
-        // Keep the user on the Repairs tab if the list is temporarily unavailable.
+        // Fall back to the notification content if the repair list is unavailable.
       }
     }
 
-    if (event == 'marketing_campaign') {
-      final uri = Uri.tryParse(targetUrl.trim());
-      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        await _showMarketingDialog(
-          title: title,
-          body: body,
-          imageUrl: (record['image'] ?? data['image'] ?? '').toString(),
-          targetUrl: targetUrl,
-          campaignId: (data['campaign_id'] ?? '').toString(),
-        );
-      }
+    final uri = Uri.tryParse(targetUrl.trim());
+    if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty && event == 'marketing_campaign') {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
       return;
     }
-
-    final isKnownDestination = (data['screen'] ?? '').toString().isNotEmpty ||
-        event == 'chat_message' || event.contains('repair') || event.contains('order') ||
-        event.contains('booking') || event.contains('appointment') || event.contains('profile');
-    if (!isKnownDestination) await _showPushDialog(title: title, body: body, targetUrl: targetUrl);
+    if (event == 'marketing_campaign') {
+      await _showMarketingDialog(
+        title: title,
+        body: body,
+        imageUrl: (record['image'] ?? data['image'] ?? '').toString(),
+        targetUrl: targetUrl,
+        campaignId: (record['campaign_id'] ?? data['campaign_id'] ?? '').toString(),
+      );
+    } else {
+      await _showPushDialog(title: title, body: body, targetUrl: targetUrl);
+    }
   }
 
   Future<void> _requestSystemNotifications() async {
@@ -458,19 +430,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       }
       final registered = await push.register(bearer, onForeground: (title, body, data) {
         if (!mounted) return;
-        final destinationTab = _notificationDestinationTab(data);
-        final event = (data['event'] ?? '').toString().toLowerCase();
-        final screen = (data['screen'] ?? '').toString().toLowerCase();
-        final hasKnownDestination = screen.isNotEmpty || event == 'chat_message' || event.contains('repair') || event.contains('order') || event.contains('booking') || event.contains('appointment') || event.contains('profile');
-        final notificationId = (data['_notification_id'] ?? '').toString();
-        if (event != 'marketing_campaign' && hasKnownDestination && tab == destinationTab) {
-          unawaited(PushNotificationService.removeNotificationById(notificationId).then((_) => _loadNotificationHistory()));
-          if (destinationTab == 1) setState(() => repairsFuture = _loadRepairsFuture());
-          return;
-        }
+        final isChatMessage = (data['event'] ?? '').toString() == 'chat_message' || (data['screen'] ?? '').toString() == 'chat';
+        if (isChatMessage && tab == 3) return;
         unawaited(_loadNotificationHistory());
         if ((data['event'] ?? '').toString() == 'marketing_campaign') {
-          unawaited(PushNotificationService.removeNotificationById(notificationId).then((_) => _loadNotificationHistory()));
           unawaited(_showMarketingDialog(
             title: title,
             body: body,
@@ -479,22 +442,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             campaignId: (data['campaign_id'] ?? '').toString(),
           ));
         } else {
-          final record = <String, dynamic>{
-            'id': notificationId,
-            'title': title,
-            'body': body,
-            'url': (data['url'] ?? '').toString(),
-            'event': (data['event'] ?? '').toString(),
-            'screen': (data['screen'] ?? '').toString(),
-            'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
-            'order_id': (data['order_id'] ?? data['orderId'] ?? '').toString(),
-            'campaign_id': (data['campaign_id'] ?? '').toString(),
-            'image': (data['image'] ?? '').toString(),
-            'data': Map<String, dynamic>.from(data),
-          };
-          unawaited(_showPushDialog(title: title, body: body, onOpen: () => _openNotificationRecord(record)));
+          unawaited(_showPushDialog(title: title, body: body, targetUrl: (data['url'] ?? '').toString()));
         }
-        if (mounted && destinationTab == 1) setState(() => repairsFuture = _loadRepairsFuture());
+        if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
       }, onOpened: (data) async {
         if (!mounted) return;
         final record = <String, dynamic>{
@@ -505,7 +455,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           'event': (data['event'] ?? '').toString(),
           'screen': (data['screen'] ?? '').toString(),
           'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
-          'order_id': (data['order_id'] ?? data['orderId'] ?? '').toString(),
           'campaign_id': (data['campaign_id'] ?? '').toString(),
           'image': (data['image'] ?? '').toString(),
           'data': Map<String, dynamic>.from(data),
@@ -528,7 +477,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     required String title,
     required String body,
     String targetUrl = '',
-    Future<void> Function()? onOpen,
   }) async {
     if (!mounted || _pushDialogShowing) return;
     final context = _navigatorKey.currentContext;
@@ -557,13 +505,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           ]),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (body.trim().isNotEmpty) Text(body, style: const TextStyle(fontSize: 15, height: 1.45)),
-            if (validTarget || onOpen != null) ...[
+            if (validTarget) ...[
               const SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: () async {
                   Navigator.of(dialogContext).pop();
-                  if (onOpen != null) { await onOpen(); }
-                  else if (uri != null) { await launchUrl(uri, mode: LaunchMode.externalApplication); }
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
                 },
                 icon: const Icon(Icons.open_in_new_rounded),
                 label: Text(tr('Отвори', 'Open')),
@@ -821,22 +768,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     switch (index) {
       case 0: return _home();
       case 1: return _repairs();
-      case 2:
-        return ShopScreen(
-          api: api,
-          tokenProvider: () => auth.token,
-          profileProvider: () async => (await auth.me()),
-          english: english,
-          notificationOrderId: _pendingShopOrderId,
-          openOrdersOnEntry: _openShopOrdersOnEntry,
-          onNotificationHandled: () {
-            if (!mounted) return;
-            setState(() {
-              _pendingShopOrderId = null;
-              _openShopOrdersOnEntry = false;
-            });
-          },
-        );
+      case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, profileProvider: () async => (await auth.me()), english: english);
       case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat);
       case 4: return _booking();
       case 5: return _profile();
@@ -944,7 +876,32 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           child: Stack(
             children: [
               Positioned.fill(child: IndexedStack(index: tab, children: List<Widget>.generate(6, (index) => _visitedTabs.contains(index) ? _tabContent(index) : const SizedBox.shrink()))),
-
+              if (_showChatGreeting && tab != 3)
+                Positioned(
+                  right: 12,
+                  bottom: 78,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Tooltip(
+                      message: tr('Отвори чата', 'Open chat'),
+                      child: InkWell(
+                        onTap: () { setState(() => _showChatGreeting = false); _selectTab(3); },
+                        borderRadius: BorderRadius.circular(28),
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            color: cyan,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withValues(alpha: .85), width: 2),
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .22), blurRadius: 10, offset: const Offset(0, 3))],
+                          ),
+                          child: const Icon(Icons.chat_bubble_rounded, color: Color(0xFF061319), size: 23),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

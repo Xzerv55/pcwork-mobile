@@ -219,8 +219,6 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
               controller: _message,
               minLines: 1,
               maxLines: 4,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.send,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(isDense: true, hintText: tr('Напиши съобщение…', 'Write a message…'), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
               onSubmitted: (_) => _send(),
