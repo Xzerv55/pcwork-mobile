@@ -62,27 +62,65 @@ class _RepairProtocolScreenState extends State<RepairProtocolScreen> {
         pw.SizedBox(height: 8), pw.Text('Подписът е въведен в мобилното приложение. Този файл е генериран за преглед и не удостоверява сам по себе си правно съгласие или приемане на общи условия.', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
         pw.SizedBox(height: 12), pw.Divider(), pw.Text('PCWork · pcwork-bg.com', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
       ])));
-      final pdfBytes = await doc.save();
-      if (widget.canEmail && widget.baseUrl.isNotEmpty && widget.token.isNotEmpty && widget.repairId > 0) {
-        final uri = Uri.parse('${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/wp-json/pcwork/v1/repairs/${widget.repairId}/protocol');
-        final request = http.MultipartRequest('POST', uri)..headers['Authorization'] = 'Bearer ${widget.token}'..files.add(http.MultipartFile.fromBytes('protocol_pdf', pdfBytes, filename: 'PCWork_${widget.repairNumber}.pdf'));
-        if (_emailCustomer && widget.canEmail) request.fields['send_email'] = '1';
-        final response = await request.send().timeout(const Duration(seconds: 45));
-        final body = await response.stream.bytesToString();
-        if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Сървърът не записа PDF (HTTP ${response.statusCode}): $body');
-        if (mounted) setState(() => _serverMessage = _emailCustomer ? 'PDF е записан. Заявено е изпращане по имейл.' : 'PDF е записан в защитеното досие на ремонта.');
-      } else {
-       if (mounted) {
-  setState(() => _serverMessage = widget.canEmail);
-}
-            ? 'PDF е създаден локално. Няма конфигурирана сървърна сесия за архивиране.'
-            : 'PDF е създаден локално и може да бъде споделен. Качването в сервизния архив е достъпно само за служители.');
-      }
-      await Printing.sharePdf(bytes: pdfBytes, filename: 'PCWork_${widget.repairNumber}.pdf');
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Грешка при генериране на PDF: $e')));
-    } finally { if (mounted) setState(() => _working = false); }
+     ```dart
+final pdfBytes = await doc.save();
+
+if (widget.canEmail &&
+    widget.baseUrl.isNotEmpty &&
+    widget.token.isNotEmpty &&
+    widget.repairId > 0) {
+  final uri = Uri.parse(
+    '${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/wp-json/pcwork/v1/repairs/${widget.repairId}/protocol',
+  );
+
+  final request = http.MultipartRequest('POST', uri)
+    ..headers['Authorization'] = 'Bearer ${widget.token}'
+    ..files.add(
+      http.MultipartFile.fromBytes(
+        'protocol_pdf',
+        pdfBytes,
+        filename: 'PCWork_${widget.repairNumber}.pdf',
+      ),
+    );
+
+  if (_emailCustomer && widget.canEmail) {
+    request.fields['send_email'] = '1';
   }
+
+  final response = await request.send().timeout(
+    const Duration(seconds: 45),
+  );
+
+  final body = await response.stream.bytesToString();
+
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception(
+      'Сървърът не записа PDF (HTTP ${response.statusCode}): $body',
+    );
+  }
+
+  if (mounted) {
+    setState(() {
+      _serverMessage = _emailCustomer
+          ? 'PDF е записан. Заявено е изпращане по имейл.'
+          : 'PDF е записан в защитеното досие на ремонта.';
+    });
+  }
+} else {
+  if (mounted) {
+    setState(() {
+      _serverMessage = widget.canEmail
+          ? 'PDF е създаден локално. Няма конфигурирана сървърна сесия за архивиране.'
+          : 'PDF е създаден локално и може да бъде споделен. Качването в сервизния архив е достъпно само за служители.';
+    });
+  }
+}
+
+await Printing.sharePdf(
+  bytes: pdfBytes,
+  filename: 'PCWork_${widget.repairNumber}.pdf',
+);
+```
 
   pw.Widget _pdfLine(String label, String value, pw.Font bold) => pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 4), child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.SizedBox(width: 145, child: pw.Text('$label:', style: pw.TextStyle(font: bold))), pw.Expanded(child: pw.Text(value.isEmpty ? '—' : value))]));
 
