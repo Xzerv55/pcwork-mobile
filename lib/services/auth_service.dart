@@ -66,6 +66,12 @@ class AuthService {
   Future<String?> get token => _storage.read(key: _tokenKey);
 
   Future<void> logout() async {
+    final bearer = await _storage.read(key: _tokenKey);
+    if (bearer != null && bearer.isNotEmpty) {
+      try {
+        await http.post(_uri('auth/revoke-sessions'), headers: {'Authorization': 'Bearer $bearer', 'Accept': 'application/json'}).timeout(const Duration(seconds: 8));
+      } catch (_) { /* Local logout must still complete when the server is offline. */ }
+    }
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _cachedUserKey);
   }

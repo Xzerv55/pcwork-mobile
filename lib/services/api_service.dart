@@ -544,6 +544,30 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  Future<List<Map<String, dynamic>>> getAdminChatThreads(String token) async {
+    final response = await http.get(_uri('chat/admin/threads'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map ? decoded['data'] : null;
+    return data is List ? data.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> getAdminChatMessages(String token, int userId, {int afterId = 0}) async {
+    final uri = _uri('chat/admin/messages').replace(queryParameters: {'user_id': '$userId', 'after_id': '$afterId'});
+    final response = await http.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! Map) throw Exception('Невалиден отговор от административния чат.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<void> sendAdminChatMessage(String token, int userId, String message) async {
+    final response = await http.post(_uri('chat/admin/messages'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'user_id': userId, 'message': message})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_responseMessage(decoded, response.statusCode));
+  }
+
   Future<void> sendChatMessage(String token, {String message = '', String? imageBase64, String? imageMime}) async {
     final payload = <String, dynamic>{'message': message};
     if (imageBase64 != null && imageBase64.isNotEmpty) {

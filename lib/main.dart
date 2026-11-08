@@ -62,7 +62,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 73;
+  static const int _currentBuildNumber = 74;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
@@ -73,6 +73,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   ApiService get api => ApiService(baseUrl: apiUrl, userId: signedInUser?.id ?? 0);
   String tr(String bg, String en) => english ? en : bg;
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
+  bool get canUseAdminChat => signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false;
   bool get isStaffAccount => signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false;
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
@@ -428,8 +429,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return;
       }
       final registered = await push.register(bearer, onForeground: (title, body, data) {
-        unawaited(_loadNotificationHistory());
         if (!mounted) return;
+        final isChatMessage = (data['event'] ?? '').toString() == 'chat_message' || (data['screen'] ?? '').toString() == 'chat';
+        if (isChatMessage && tab == 3) return;
+        unawaited(_loadNotificationHistory());
         if ((data['event'] ?? '').toString() == 'marketing_campaign') {
           unawaited(_showMarketingDialog(
             title: title,
@@ -766,7 +769,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       case 0: return _home();
       case 1: return _repairs();
       case 2: return ShopScreen(api: api, tokenProvider: () => auth.token, profileProvider: () async => (await auth.me()), english: english);
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();

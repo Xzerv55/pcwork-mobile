@@ -72,16 +72,16 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
         unawaited(_initialize());
       } else {
         _startPolling();
-        if (widget.isActive) unawaited(_loadMessages(silent: true));
+        if (widget.isActive) unawaited(_loadMessages(silent: true, forceBottom: true));
       }
     }
   }
 
-  Future<void> _loadMessages({bool silent = false}) async {
+  Future<void> _loadMessages({bool silent = false, bool forceBottom = false}) async {
     final token = _token;
     if (token == null || _loadingMessages) return;
     _loadingMessages = true;
-    final wasNearBottom = !_scroll.hasClients || (_scroll.position.maxScrollExtent - _scroll.position.pixels) < 100;
+    final wasNearBottom = forceBottom || _loading || !_scroll.hasClients || (_scroll.position.maxScrollExtent - _scroll.position.pixels) < 100;
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -166,7 +166,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
                     ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(tr('Започнете разговор с екипа на PCWork. Ще получите отговор тук.', 'Start a conversation with the PCWork team. Replies will appear here.'), textAlign: TextAlign.center)))
                     : ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final row = _messages[index];
@@ -177,8 +177,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
                             alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                             child: Container(
                               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .78),
-                              margin: const EdgeInsets.symmetric(vertical: 5),
-                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.symmetric(vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                               decoration: BoxDecoration(
                                 color: mine ? const Color(0xFF164D59) : (dark ? const Color(0xFF1A2738) : Colors.white),
                                 borderRadius: BorderRadius.circular(17),
@@ -196,10 +196,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
                       ),
       ),
       if (_error != null && _messages.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(tr('Временно няма връзка. Ще опитаме отново автоматично.', 'Connection temporarily unavailable. Retrying automatically.'), style: const TextStyle(color: Colors.orange, fontSize: 11))),
-      SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             IconButton(onPressed: _sending ? null : _pickImage, icon: const Icon(Icons.image_outlined), tooltip: tr('Добави снимка', 'Add image')),
             Expanded(child: TextField(
@@ -214,7 +212,6 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> {
             IconButton.filled(onPressed: _sending ? null : () => _send(), icon: _sending ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send_rounded)),
           ]),
         ),
-      ),
     ]);
   }
 }
