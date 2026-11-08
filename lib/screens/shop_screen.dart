@@ -526,79 +526,81 @@ class _ShopScreenState extends State<ShopScreen> {
     if (!mounted) return;
     final billing = profile?.billing ?? const <String, dynamic>{};
     final shipping = profile?.shipping ?? const <String, dynamic>{};
-    final name = TextEditingController(text: [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ').isNotEmpty ? [billing['first_name'], billing['last_name']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ') : (profile?.name ?? ''));
-    final email = TextEditingController(text: profile?.email ?? '');
+    final firstName = TextEditingController(text: (billing['first_name'] ?? '').toString());
+    final lastName = TextEditingController(text: (billing['last_name'] ?? '').toString());
+    final city = TextEditingController(text: (shipping['city'] ?? billing['city'] ?? '').toString());
+    final address = TextEditingController(text: (shipping['address_1'] ?? billing['address_1'] ?? '').toString());
     final phone = TextEditingController(text: (billing['phone'] ?? profile?.phone ?? '').toString());
-    final company = TextEditingController(text: (billing['company'] ?? '').toString());
-    final billingAddress = TextEditingController(text: (billing['address_1'] ?? '').toString());
-    final billingCity = TextEditingController(text: (billing['city'] ?? '').toString());
-    final billingPostcode = TextEditingController(text: (billing['postcode'] ?? '').toString());
-    final address = TextEditingController(text: (shipping['address_1'] ?? '').toString().isNotEmpty ? (shipping['address_1'] ?? '').toString() : (billing['address_1'] ?? '').toString());
-    final city = TextEditingController(text: (shipping['city'] ?? '').toString().isNotEmpty ? (shipping['city'] ?? '').toString() : (billing['city'] ?? '').toString());
-    final postcode = TextEditingController(text: (shipping['postcode'] ?? '').toString().isNotEmpty ? (shipping['postcode'] ?? '').toString() : (billing['postcode'] ?? '').toString());
+    final email = profile?.email ?? '';
+    String courier = (billing['courier'] ?? '').toString().toLowerCase();
+    if (!['econt', 'speedy', 'pigeon'].contains(courier)) courier = '';
     final formKey = GlobalKey<FormState>();
 
     final accepted = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) => AlertDialog(
         backgroundColor: const Color(0xFF151F2E),
         title: Text(tr('Данни за поръчката', 'Order details')),
         content: SizedBox(
-          width: 420,
+          width: MediaQuery.of(ctx).size.width < 700 ? double.maxFinite : 620,
           child: Form(
             key: formKey,
             child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _checkoutField(name, tr('Име и фамилия', 'Full name')),
-                  TextFormField(controller: email, readOnly: true, decoration: InputDecoration(labelText: tr('Регистрационен имейл', 'Registration email'), helperText: tr('Имейлът е заключен към профила ви.', 'Email is locked to your account.'))),
-                  _checkoutField(phone, tr('Телефон', 'Phone'), keyboard: TextInputType.phone),
-                  _checkoutField(company, tr('Фирма (по желание)', 'Company (optional)')),
-                  const Divider(height: 24),
-                  Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране', 'Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
-                  _checkoutField(billingAddress, tr('Адрес за фактуриране', 'Billing address')),
-                  _checkoutField(billingCity, tr('Град', 'City')),
-                  _checkoutField(billingPostcode, tr('Пощенски код', 'Postcode')),
-                  const Divider(height: 24),
-                  Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка', 'Shipping address'), style: const TextStyle(fontWeight: FontWeight.bold))),
-                  _checkoutField(address, tr('Адрес за доставка', 'Delivery address')),
-                  _checkoutField(city, tr('Град за доставка', 'Shipping city')),
-                  _checkoutField(postcode, tr('Пощенски код за доставка', 'Shipping postcode')),
-                ],
-              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                _checkoutField(firstName, tr('Име *', 'First name *')),
+                _checkoutField(lastName, tr('Фамилия *', 'Last name *')),
+                _checkoutField(city, tr('Град/село *', 'City/village *')),
+                _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *')),
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerLeft, child: Text(tr('Избор на куриер *', 'Choose courier *'), style: const TextStyle(fontWeight: FontWeight.w600))),
+                const SizedBox(height: 4),
+                ...[
+                  ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
+                ].map((option) => RadioListTile<String>(
+                  dense: true, contentPadding: EdgeInsets.zero, value: option.$1, groupValue: courier,
+                  title: Text(option.$2), onChanged: (value) => setDialogState(() => courier = value ?? ''),
+                )),
+                _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
+                TextFormField(
+                  initialValue: email, readOnly: true,
+                  decoration: InputDecoration(labelText: tr('Email *', 'Email *'), helperText: tr('Имейлът се взима автоматично от регистрацията и не може да се редактира.', 'Email is taken from your registration and cannot be edited.')),
+                  validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
+                ),
+              ]),
             ),
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-            },
-            child: Text(tr('Продължи', 'Continue')),
-          ),
+          FilledButton(onPressed: () {
+            if (formKey.currentState!.validate() && courier.isNotEmpty) {
+              Navigator.pop(ctx, true);
+            } else if (courier.isEmpty) {
+              _message(tr('Изберете куриер.', 'Choose a courier.'));
+            }
+          }, child: Text(tr('Продължи', 'Continue'))),
         ],
-      ),
+      )),
     );
 
-    if (!mounted || accepted != true) { for (final c in [name, email, phone, company, billingAddress, billingCity, billingPostcode, address, city, postcode]) { c.dispose(); } return; }
+    if (!mounted || accepted != true) { for (final c in [firstName, lastName, city, address, phone]) { c.dispose(); } return; }
     setState(() => placingOrder = true);
-    final nameParts = name.text.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
-    final firstName = nameParts.isEmpty ? '' : nameParts.first;
-    final lastName = nameParts.length > 1 ? nameParts.skip(1).join(' ') : '';
+    final first = firstName.text.trim();
+    final last = lastName.text.trim();
+    final selectedAddress = address.text.trim();
+    final selectedCity = city.text.trim();
     try {
       final result = await widget.api.createShopOrder(
         token,
         items: cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList(),
         billing: {
-          'first_name': firstName, 'last_name': lastName, 'company': company.text.trim(), 'email': profile?.email ?? email.text.trim(),
-          'phone': phone.text.trim(), 'address_1': billingAddress.text.trim(), 'city': billingCity.text.trim(),
-          'postcode': billingPostcode.text.trim(), 'country': 'BG',
+          'first_name': first, 'last_name': last, 'email': email,
+          'phone': phone.text.trim(), 'address_1': selectedAddress, 'city': selectedCity,
+          'country': 'BG', 'courier': courier,
         },
         shipping: {
-          'first_name': firstName, 'last_name': lastName, 'address_1': address.text.trim(),
-          'city': city.text.trim(), 'postcode': postcode.text.trim(), 'country': 'BG',
+          'first_name': first, 'last_name': last, 'address_1': selectedAddress,
+          'city': selectedCity, 'country': 'BG', 'courier': courier,
         },
       );
       if (!mounted) return;
@@ -611,18 +613,18 @@ class _ShopScreenState extends State<ShopScreen> {
       _message('$e');
     } finally {
       if (mounted) setState(() => placingOrder = false);
-      for (final c in [name, email, phone, company, billingAddress, billingCity, billingPostcode, address, city, postcode]) { c.dispose(); }
+      for (final c in [firstName, lastName, city, address, phone]) { c.dispose(); }
     }
   }
 
-  Widget _checkoutField(TextEditingController controller, String label, {TextInputType? keyboard}) {
+  Widget _checkoutField(TextEditingController controller, String label, {TextInputType? keyboard, bool required = true}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboard,
         decoration: InputDecoration(labelText: label),
-        validator: (value) => (value == null || value.trim().isEmpty) ? tr('Задължително поле', 'Required field') : null,
+        validator: (value) => required && (value == null || value.trim().isEmpty) ? tr('Задължително поле', 'Required field') : null,
       ),
     );
   }

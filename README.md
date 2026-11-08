@@ -1,23 +1,16 @@
-# PCWork Mobile v69 source
+# PCWork Mobile v72 source
 
-Source baseline: v68. This release increments the Android/iOS app version to 0.69.0+69.
+Текуща мобилна версия: **0.72.0+72**. Базата е изпратеният от потребителя PCWork Mobile v71.
 
-## Main changes
-- First-party PCWork Chat replaces the external Chatway WebView.
-- The chat uses authenticated WordPress REST endpoints and polls only while its tab is active (8-second interval, with overlapping requests prevented).
-- Text and image messages are supported; images are compressed on-device and capped at 5 MB.
-- The launch greeting bubble “С какво да помогнем?” opens the chat directly. The tab is labelled “Чат” / “Chat”.
-- Chat notifications use the existing Firebase Cloud Messaging integration when push is enabled.
-- Shop navigation is labelled Обяви / Listings.
-- Language is automatic from the device locale by default, with Bulgarian and English overrides in Settings.
-- Customer account role label is localized as Потребител / Customer.
-- Removed the notification status check button from the profile.
-- Service-location images are shown in a taller contain-fit area to avoid cropping.
+## Основни промени във v72
+- По-удобни, по-широки адаптивни форми за профил и поръчка.
+- Всички полета са задължителни: име, фамилия, град/село, адрес или офис/Box, избор на куриер, телефон и регистрационен имейл.
+- Регистрационният имейл се зарежда от WordPress профила и не може да се редактира.
+- Изборът на куриер е с радио бутони и допуска само един избор: Econt, Speedy или Pigeon.
+- Камбанка до настройките с брояч, история, маркиране като прочетено, отваряне на свързано съдържание и изтриване на известия.
+- Историята се съхранява локално до 200 записа с дедупликация по идентификатор на push съобщението.
 
-## Build
-Run `flutter pub get`, `flutter analyze`, then use the existing GitHub Actions release workflow. The real `google-services.json` and signing credentials must remain in protected GitHub secrets/environment. This source archive intentionally contains only `google-services.json.example`.
+## Изграждане
+Изпълнете `flutter pub get`, след това `flutter analyze`. APK не е включен. За подписване използвайте съществуващите защитени GitHub Secrets и същия signing key. Не заменяйте реалните credentials с примерните файлове.
 
-## Server
-Install the unified WordPress plugin v5.1.0 from the separate plugin archive. The app requires that plugin version for the `/chat/messages` REST API.
-
-See `RELEASE_NOTES_v69.md` and `INSTALL_v69_BG.md`. This archive does not include an APK.
+Съвместим backend: **PCWork Mobile WordPress Plugin v5.3.0**.

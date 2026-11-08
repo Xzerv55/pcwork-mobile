@@ -62,9 +62,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 70;
+  static const int _currentBuildNumber = 71;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
+  List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
+  int get _unreadNotificationCount => _notificationHistory.where((item) => item['read'] != true).length;
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
@@ -85,6 +87,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _initialize() async {
     await _loadSettings();
+    await _loadNotificationHistory();
     if (!mounted) return;
     // Do not make the server health check a startup dependency.
     // Restore the account immediately; the status check runs independently.
@@ -276,6 +279,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_loadNotificationHistory());
       unawaited(_syncOfflineQueue());
       // Re-check FCM registration when the app returns from system settings.
       if (signedInUser != null) unawaited(_retryPushRegistration());
@@ -317,6 +321,90 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
 
+  Future<void> _loadNotificationHistory() async {
+    final records = await PushNotificationService.loadNotificationHistory();
+    if (mounted) setState(() => _notificationHistory = records);
+  }
+
+  Future<void> _openNotifications() async {
+    final readRecords = _notificationHistory.map((item) => <String, dynamic>{...item, 'read': true}).toList();
+    await PushNotificationService.saveNotificationHistory(readRecords);
+    if (!mounted) return;
+    setState(() => _notificationHistory = readRecords);
+    await _navigatorKey.currentState?.push(MaterialPageRoute<void>(
+      builder: (_) => _NotificationHistoryScreen(
+        records: _notificationHistory,
+        english: english,
+        isDarkTheme: isDarkTheme,
+        onChanged: (records) async {
+          await PushNotificationService.saveNotificationHistory(records);
+          if (mounted) setState(() => _notificationHistory = records);
+        },
+        onOpen: _openNotificationRecord,
+      ),
+    ));
+    await _loadNotificationHistory();
+  }
+
+  Future<void> _openNotificationRecord(Map<String, dynamic> record) async {
+    final rawData = record['data'];
+    final data = rawData is Map ? Map<String, dynamic>.from(rawData) : <String, dynamic>{};
+    final screen = (record['screen'] ?? data['screen'] ?? '').toString();
+    final event = (record['event'] ?? data['event'] ?? '').toString();
+    final repairId = int.tryParse((record['repair_id'] ?? data['repair_id'] ?? data['repairId'] ?? '').toString());
+    final title = (record['title'] ?? tr('Известие от PCWork', 'PCWork notification')).toString();
+    final body = (record['body'] ?? '').toString();
+    final targetUrl = (record['url'] ?? data['url'] ?? '').toString();
+    final notificationId = (record['id'] ?? data['_notification_id'] ?? '').toString();
+    if (notificationId.isNotEmpty) {
+      final updated = _notificationHistory.map((item) => (item['id'] ?? '').toString() == notificationId
+          ? <String, dynamic>{...item, 'read': true}
+          : Map<String, dynamic>.from(item)).toList();
+      await PushNotificationService.saveNotificationHistory(updated);
+      if (mounted) setState(() => _notificationHistory = updated);
+    }
+
+    // Close the history page before navigating to the destination.
+    final destinationTab = screen == 'chat' || event == 'chat_message' ? 3
+        : event == 'woocommerce_new_order' ? 2
+        : (repairId != null || event.contains('repair')) ? 1
+        : 0;
+    _selectTab(destinationTab);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    if (repairId != null && repairId > 0 && signedInUser != null) {
+      try {
+        final repairs = await (repairsFuture ??= _loadRepairsFuture());
+        final matchingRepairs = repairs.where((item) => item.id == repairId).toList();
+        final repair = matchingRepairs.isEmpty ? null : matchingRepairs.first;
+        if (repair != null && mounted) {
+          _showRepairDetails(repair);
+          return;
+        }
+      } catch (_) {
+        // Fall back to the notification content if the repair list is unavailable.
+      }
+    }
+
+    final uri = Uri.tryParse(targetUrl.trim());
+    if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty && event == 'marketing_campaign') {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (event == 'marketing_campaign') {
+      await _showMarketingDialog(
+        title: title,
+        body: body,
+        imageUrl: (record['image'] ?? data['image'] ?? '').toString(),
+        targetUrl: targetUrl,
+        campaignId: (record['campaign_id'] ?? data['campaign_id'] ?? '').toString(),
+      );
+    } else {
+      await _showPushDialog(title: title, body: body, targetUrl: targetUrl);
+    }
+  }
+
   Future<void> _requestSystemNotifications() async {
     // Ask Android for POST_NOTIFICATIONS at first launch, even before login
     // and independently of Firebase token registration.
@@ -340,6 +428,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return;
       }
       final registered = await push.register(bearer, onForeground: (title, body, data) {
+        unawaited(_loadNotificationHistory());
         if (!mounted) return;
         if ((data['event'] ?? '').toString() == 'marketing_campaign') {
           unawaited(_showMarketingDialog(
@@ -355,28 +444,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
       }, onOpened: (data) async {
         if (!mounted) return;
-        final title = (data['_notification_title'] ?? data['title'] ?? tr('Известие от PCWork', 'PCWork notification')).toString();
-        final body = (data['_notification_body'] ?? data['body'] ?? data['message'] ?? '').toString();
-        final isMarketing = (data['event'] ?? '').toString() == 'marketing_campaign';
-        if ((data['screen'] ?? '').toString() == 'chat') {
-          _selectTab(3);
-        } else {
-          _selectTab(1);
-        }
-        await WidgetsBinding.instance.endOfFrame;
-        await Future<void>.delayed(const Duration(milliseconds: 650));
-        if (!mounted) return;
-        if (isMarketing) {
-          await _showMarketingDialog(
-            title: title,
-            body: body,
-            imageUrl: (data['image'] ?? '').toString(),
-            targetUrl: (data['url'] ?? '').toString(),
-            campaignId: (data['campaign_id'] ?? '').toString(),
-          );
-        } else {
-          await _showPushDialog(title: title, body: body, targetUrl: (data['url'] ?? '').toString());
-        }
+        final record = <String, dynamic>{
+          'id': (data['_notification_id'] ?? '').toString(),
+          'title': (data['_notification_title'] ?? data['title'] ?? tr('Известие от PCWork', 'PCWork notification')).toString(),
+          'body': (data['_notification_body'] ?? data['body'] ?? data['message'] ?? '').toString(),
+          'url': (data['url'] ?? '').toString(),
+          'event': (data['event'] ?? '').toString(),
+          'screen': (data['screen'] ?? '').toString(),
+          'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
+          'campaign_id': (data['campaign_id'] ?? '').toString(),
+          'image': (data['image'] ?? '').toString(),
+          'data': Map<String, dynamic>.from(data),
+        };
+        await _loadNotificationHistory();
+        await _openNotificationRecord(record);
       });
       if (mounted) {
         setState(() => _pushStatusMessage = registered
@@ -765,6 +846,21 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
           ]),
           actions: [
+            IconButton(
+              tooltip: tr('Известия', 'Notifications'),
+              onPressed: _openNotifications,
+              icon: Stack(clipBehavior: Clip.none, children: [
+                const Icon(Icons.notifications_none_rounded),
+                if (_unreadNotificationCount > 0)
+                  Positioned(right: -7, top: -5, child: Container(
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: const BoxDecoration(color: Color(0xFFE53935), shape: BoxShape.circle),
+                    child: Text(_unreadNotificationCount > 99 ? '99+' : '$_unreadNotificationCount',
+                      textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  )),
+              ]),
+            ),
             IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
           ],
         ),
@@ -1283,24 +1379,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       _message(tr('Влезте в профила си, за да редактирате данните.', 'Sign in to edit your profile.'));
       return;
     }
-    final name = TextEditingController(text: user.name);
-    final phone = TextEditingController(text: user.phone);
     final email = TextEditingController(text: user.email);
+    final phone = TextEditingController(text: user.phone.isNotEmpty ? user.phone : (user.billing['phone'] ?? '').toString());
     final b = user.billing;
-    final sh = user.shipping;
-    final first = TextEditingController(text: (b['first_name'] ?? user.name).toString());
-    final last = TextEditingController(text: (b['last_name'] ?? '').toString());
-    final company = TextEditingController(text: (b['company'] ?? '').toString());
+    final registrationNameParts = user.name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final first = TextEditingController(text: (b['first_name'] ?? (registrationNameParts.isNotEmpty ? registrationNameParts.first : '')).toString());
+    final last = TextEditingController(text: (b['last_name'] ?? (registrationNameParts.length > 1 ? registrationNameParts.skip(1).join(' ') : '')).toString());
     final address = TextEditingController(text: (b['address_1'] ?? '').toString());
-    final address2 = TextEditingController(text: (b['address_2'] ?? '').toString());
     final city = TextEditingController(text: (b['city'] ?? '').toString());
-    final postcode = TextEditingController(text: (b['postcode'] ?? '').toString());
-    final shipFirst = TextEditingController(text: (sh['first_name'] ?? first.text).toString());
-    final shipLast = TextEditingController(text: (sh['last_name'] ?? last.text).toString());
-    final shipAddress = TextEditingController(text: (sh['address_1'] ?? '').toString());
-    final shipAddress2 = TextEditingController(text: (sh['address_2'] ?? '').toString());
-    final shipCity = TextEditingController(text: (sh['city'] ?? '').toString());
-    final shipPostcode = TextEditingController(text: (sh['postcode'] ?? '').toString());
+    String courier = (b['courier'] ?? '').toString().toLowerCase();
+    if (!['econt', 'speedy', 'pigeon'].contains(courier)) courier = '';
 
     Timer? saveTimer;
     var dirty = false;
@@ -1313,8 +1401,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Future<bool> saveProfile() async {
       if (saving) return false;
       if (!dirty) return true;
-      if (name.text.trim().length < 2 || phone.text.trim().length < 6) {
-        setDialogState(() { saveMessage = tr('Въведете име и валиден телефон (поне 6 символа).', 'Enter a name and a valid phone number (at least 6 characters).'); saveError = true; });
+      if (first.text.trim().isEmpty || last.text.trim().isEmpty || city.text.trim().isEmpty || address.text.trim().isEmpty || courier.isEmpty || phone.text.trim().length < 6 || phone.text.trim().length > 30 || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email.text.trim())) {
+        setDialogState(() { saveMessage = tr('Всички полета са задължителни. Проверете име, фамилия, град/село, адрес, куриер, телефон и регистрационен имейл.', 'All fields are required. Check first name, last name, city, address, courier, phone, and registration email.'); saveError = true; });
         return false;
       }
       saving = true;
@@ -1324,17 +1412,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       setDialogState(() { saveMessage = tr('Записване…', 'Saving…'); saveError = false; });
       try {
         final updated = await auth.updateProfile(
-          name: name.text,
+          name: [first.text.trim(), last.text.trim()].where((v) => v.isNotEmpty).join(' ').isNotEmpty ? [first.text.trim(), last.text.trim()].where((v) => v.isNotEmpty).join(' ') : user.name,
           phone: phone.text,
           billing: {
-            'first_name': first.text, 'last_name': last.text, 'company': company.text,
-            'address_1': address.text, 'address_2': address2.text, 'city': city.text,
-            'postcode': postcode.text, 'country': 'BG', 'phone': phone.text,
+            'first_name': first.text, 'last_name': last.text,
+            'address_1': address.text, 'city': city.text, 'country': 'BG',
+            'phone': phone.text, 'courier': courier,
           },
           shipping: {
-            'first_name': shipFirst.text, 'last_name': shipLast.text,
-            'address_1': shipAddress.text, 'address_2': shipAddress2.text,
-            'city': shipCity.text, 'postcode': shipPostcode.text, 'country': 'BG',
+            'first_name': first.text, 'last_name': last.text,
+            'address_1': address.text, 'city': city.text, 'country': 'BG', 'courier': courier,
           },
         );
         if (mounted) setState(() => signedInUser = updated);
@@ -1378,27 +1465,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         );
         return AlertDialog(
           title: Text(tr('Редакция на профила', 'Edit profile')),
-          content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            field(email, tr('Регистрационен имейл (заключен)', 'Registration email (locked)'), locked: true),
-            Align(alignment: Alignment.centerLeft, child: Text(tr('Имейлът е идентификатор на профила и не може да се променя от тази форма.', 'This email identifies your account and cannot be changed here.'), style: const TextStyle(fontSize: 11, color: Colors.grey))),
-            const SizedBox(height: 12),
-            field(name, tr('Име и фамилия', 'Full name')),
-            field(phone, tr('Телефон', 'Phone'), keyboardType: TextInputType.phone),
-            const Divider(height: 25), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за фактуриране', 'Billing address'), style: const TextStyle(fontWeight: FontWeight.bold))),
-            field(first, tr('Собствено име', 'First name')),
-            field(last, tr('Фамилия', 'Last name')),
-            field(company, tr('Фирма (по желание)', 'Company (optional)')),
-            field(address, tr('Адрес', 'Address')),
-            field(address2, tr('Допълнение към адреса', 'Address line 2')),
-            field(city, tr('Град', 'City')),
-            field(postcode, tr('Пощенски код', 'Postcode')),
-            const Divider(height: 25), Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за доставка (ако е различен)', 'Shipping address (if different)'), style: const TextStyle(fontWeight: FontWeight.bold))),
-            field(shipFirst, tr('Име за доставка', 'Shipping first name')),
-            field(shipLast, tr('Фамилия за доставка', 'Shipping last name')),
-            field(shipAddress, tr('Адрес за доставка', 'Shipping address')),
-            field(shipAddress2, tr('Допълнение към адреса за доставка', 'Shipping address line 2')),
-            field(shipCity, tr('Град за доставка', 'Shipping city')),
-            field(shipPostcode, tr('Пощенски код за доставка', 'Shipping postcode')),
+          content: SizedBox(width: MediaQuery.of(ctx).size.width < 700 ? double.maxFinite : 620, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            field(first, tr('Име *', 'First name *')),
+            field(last, tr('Фамилия *', 'Last name *')),
+            field(city, tr('Град/село *', 'City/village *')),
+            field(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *')),
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: Text(tr('Избор на куриер *', 'Choose courier *'), style: const TextStyle(fontWeight: FontWeight.w600))),
+            ...[
+              ('econt', 'Econt'), ('speedy', 'Speedy'), ('pigeon', 'Pigeon'),
+            ].map((option) => RadioListTile<String>(
+              dense: true, contentPadding: EdgeInsets.zero, value: option.$1, groupValue: courier,
+              title: Text(option.$2), onChanged: (value) { courier = value ?? ''; markChanged(); updateDialog(() {}); },
+            )),
+            field(phone, tr('Телефон *', 'Phone *'), keyboardType: TextInputType.phone),
+            field(email, tr('Email * (заключен)', 'Email * (locked)'), locked: true),
+            Align(alignment: Alignment.centerLeft, child: Text(tr('Email се попълва автоматично от регистрацията и не може да се редактира.', 'Email is filled automatically from registration and cannot be edited.'), style: const TextStyle(fontSize: 11, color: Colors.grey))),
             const SizedBox(height: 8),
             Row(children: [Icon(saveError ? Icons.error_outline : Icons.cloud_done_outlined, size: 17, color: saveError ? Colors.redAccent : cyan), const SizedBox(width: 7), Expanded(child: Text(saveMessage, style: TextStyle(fontSize: 12, color: saveError ? Colors.redAccent : (isDarkTheme ? Colors.white60 : Colors.black54))))]),
           ]))),
@@ -1419,7 +1501,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (closed == true && mounted && dirty) {
       await saveProfile();
     }
-    for (final c in [name, phone, email, first, last, company, address, address2, city, postcode, shipFirst, shipLast, shipAddress, shipAddress2, shipCity, shipPostcode]) { c.dispose(); }
+    for (final c in [phone, email, first, last, address, city]) { c.dispose(); }
   }
 
   Future<void> _openNotificationSettings() async {
@@ -1919,4 +2001,148 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   void _message(String value) { if (!mounted) return; _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(value))); }
+}
+
+
+class _NotificationHistoryScreen extends StatefulWidget {
+  const _NotificationHistoryScreen({
+    required this.records,
+    required this.english,
+    required this.isDarkTheme,
+    required this.onChanged,
+    required this.onOpen,
+  });
+
+  final List<Map<String, dynamic>> records;
+  final bool english;
+  final bool isDarkTheme;
+  final Future<void> Function(List<Map<String, dynamic>>) onChanged;
+  final Future<void> Function(Map<String, dynamic>) onOpen;
+
+  @override
+  State<_NotificationHistoryScreen> createState() => _NotificationHistoryScreenState();
+}
+
+class _NotificationHistoryScreenState extends State<_NotificationHistoryScreen> {
+  late List<Map<String, dynamic>> records;
+
+  String tr(String bg, String en) => widget.english ? en : bg;
+
+  @override
+  void initState() {
+    super.initState();
+    records = widget.records.map((item) => Map<String, dynamic>.from(item)).toList();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotificationHistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.records, widget.records)) {
+      records = widget.records.map((item) => Map<String, dynamic>.from(item)).toList();
+    }
+  }
+
+  Future<void> _removeAt(int index) async {
+    setState(() => records.removeAt(index));
+    await widget.onChanged(records);
+  }
+
+  Future<void> _clearAll() async {
+    if (records.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Изчисти известията?', 'Clear notifications?')),
+        content: Text(tr('Всички запазени известия ще бъдат изтрити от това устройство.', 'All saved notifications will be deleted from this device.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Изчисти всички', 'Clear all'))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(records.clear);
+    await widget.onChanged(records);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = widget.isDarkTheme ? Colors.white : const Color(0xFF172033);
+    final muted = widget.isDarkTheme ? Colors.white60 : Colors.black54;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tr('Известия', 'Notifications')),
+        actions: [
+          if (records.isNotEmpty)
+            IconButton(
+              tooltip: tr('Изчисти всички', 'Clear all'),
+              onPressed: _clearAll,
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
+        ],
+      ),
+      body: records.isEmpty
+          ? Center(child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.notifications_off_outlined, size: 58, color: muted),
+                const SizedBox(height: 14),
+                Text(tr('Все още нямате известия', 'You have no notifications yet'),
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: foreground)),
+                const SizedBox(height: 6),
+                Text(tr('Получените известия ще се показват тук.', 'Notifications you receive will appear here.'),
+                  textAlign: TextAlign.center, style: TextStyle(color: muted)),
+              ]),
+            ))
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+              itemCount: records.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 7),
+              itemBuilder: (context, index) {
+                final item = records[index];
+                final title = (item['title'] ?? '').toString();
+                final body = (item['body'] ?? '').toString();
+                final date = DateTime.tryParse((item['received_at'] ?? '').toString());
+                final dateText = date == null ? '' :
+                  '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}  ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                return Dismissible(
+                  key: ValueKey((item['id'] ?? '$index').toString()),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    decoration: BoxDecoration(color: Colors.red.shade700, borderRadius: BorderRadius.circular(18)),
+                    child: const Icon(Icons.delete_outline, color: Colors.white),
+                  ),
+                  onDismissed: (_) => _removeAt(index),
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                      leading: Container(
+                        width: 42, height: 42,
+                        decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .13), shape: BoxShape.circle),
+                        child: const Icon(Icons.notifications_active_outlined, color: Color(0xFF21D4D8)),
+                      ),
+                      onTap: () => widget.onOpen(item),
+                      title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: foreground)),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          if (body.isNotEmpty) Text(body, style: TextStyle(color: muted)),
+                          if (dateText.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(dateText, style: TextStyle(fontSize: 11, color: muted))),
+                        ]),
+                      ),
+                      trailing: IconButton(
+                        tooltip: tr('Изтрий', 'Delete'),
+                        onPressed: () => _removeAt(index),
+                        icon: Icon(Icons.close_rounded, color: muted, size: 20),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
 }
