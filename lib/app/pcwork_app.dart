@@ -43,6 +43,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   int tab = 0;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
+  final List<int> _tabBackStack = <int>[];
   String apiUrl = defaultApi;
   bool apiReady = false;
   bool checkingApi = false;
@@ -64,7 +65,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 88;
+  static const int _currentBuildNumber = 89;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -510,7 +511,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         final screen = (data['screen'] ?? '').toString().toLowerCase();
         final hasKnownDestination = screen.isNotEmpty || event == 'chat_message' || event.contains('repair') || event.contains('order') || event.contains('booking') || event.contains('appointment') || event.contains('profile');
         final notificationId = (data['_notification_id'] ?? '').toString();
-        if (event != 'marketing_campaign' && hasKnownDestination && tab == destinationTab) {
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        final transactionalPush = event == 'order_accepted' ||
+            event == 'customer_repair_requested' ||
+            (event == 'repair_status_changed' && status == 'requested');
+        if (event != 'marketing_campaign' && hasKnownDestination && tab == destinationTab && !transactionalPush) {
           unawaited(PushNotificationService.removeNotificationById(notificationId).then((_) => _loadNotificationHistory()));
           if (destinationTab == 1) setState(() => repairsFuture = _loadRepairsFuture());
           return;
@@ -525,6 +530,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             targetUrl: (data['url'] ?? '').toString(),
             campaignId: (data['campaign_id'] ?? '').toString(),
           ));
+        } else if (transactionalPush) {
+          unawaited(PushNotificationService.showLocalNotification(title, body, data));
+          if (mounted && destinationTab == 1) setState(() => repairsFuture = _loadRepairsFuture());
         } else {
           final record = <String, dynamic>{
             'id': notificationId,
@@ -759,7 +767,42 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
-  void _selectTab(int index) {
+  void _handleSystemBack() {
+    final navigator = _navigatorKey.currentState;
+    if (navigator?.canPop() == true) {
+      navigator!.pop();
+      return;
+    }
+    if (_tabBackStack.isNotEmpty) {
+      final previousTab = _tabBackStack.removeLast();
+      if (previousTab != tab) {
+        final oldTab = tab;
+        if (oldTab == 5) unawaited(_refreshAfterLeavingTab());
+        setState(() {
+          tab = previousTab;
+          _visitedTabs.add(previousTab);
+          _settingsOpen = false;
+          if (previousTab == 1 && repairsFuture == null && signedInUser != null) {
+            repairsFuture = _loadRepairsFuture();
+          }
+        });
+      }
+      return;
+    }
+    if (tab != 0) {
+      final oldTab = tab;
+      if (oldTab == 5) unawaited(_refreshAfterLeavingTab());
+      setState(() {
+        tab = 0;
+        _visitedTabs.add(0);
+        _settingsOpen = false;
+      });
+      return;
+    }
+    unawaited(_confirmExit());
+  }
+
+  void _selectTab(int index, {bool recordHistory = true}) {
     if (index < 0 || index > 5) return;
     // Dismiss every transient route (dialogs, sheets and pushed overlays) before
     // switching the main section. Unsaved draft state is intentionally discarded.
@@ -768,6 +811,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       navigator.popUntil((route) => route.isFirst);
     }
     final previousTab = tab;
+    if (recordHistory && previousTab != index) {
+      _tabBackStack.remove(index);
+      _tabBackStack.add(previousTab);
+      if (_tabBackStack.length > 30) _tabBackStack.removeAt(0);
+    }
     _settingsOpen = false;
     // Refresh account preferences only after leaving Profile. Fetching the
     // repairs list on every tab change duplicated the Repairs request and
@@ -1016,12 +1064,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
-          final navigator = _navigatorKey.currentState;
-          if (navigator?.canPop() == true) {
-            navigator!.pop();
-          } else {
-            unawaited(_confirmExit());
-          }
+          _handleSystemBack();
         },
         child: Scaffold(
         appBar: AppBar(
@@ -1349,7 +1392,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               if (ctx.mounted) Navigator.pop(ctx);
               if (mounted) {
                 setState(() => repairsFuture = _loadRepairsFuture());
-                _message('${tr('Заявката е приета. Номер:', 'Request accepted. Number:')} ${created['repair_number'] ?? ''}');
+                // The server confirms accepted requests through a push notification and notification history.
               }
             } catch (error) {
               if (ctx.mounted) {

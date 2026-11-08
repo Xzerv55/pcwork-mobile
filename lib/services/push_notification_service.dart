@@ -38,6 +38,14 @@ class PushNotificationService {
   static StreamSubscription<RemoteMessage>? _openedSubscription;
   static String? _activeBearerToken;
   static const MethodChannel _androidNotificationChannel = MethodChannel('com.pcworkbg.pcwork_mobile/notifications');
+  static Future<void> showLocalNotification(String title, String body, Map<String, dynamic> data) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _androidNotificationChannel.invokeMethod<void>('showLocalNotification', {
+        'title': title, 'body': body, 'data': data,
+      });
+    } catch (_) { /* Remote FCM delivery remains available if local display is unavailable. */ }
+  }
 
   static Future<String> storeNotification(RemoteMessage message) async {
     final data = Map<String, dynamic>.from(message.data);
@@ -55,6 +63,7 @@ class PushNotificationService {
       'event': (data['event'] ?? '').toString(),
       'screen': (data['screen'] ?? '').toString(),
       'repair_id': (data['repair_id'] ?? data['repairId'] ?? '').toString(),
+      'order_id': (data['order_id'] ?? data['orderId'] ?? '').toString(),
       'campaign_id': (data['campaign_id'] ?? '').toString(),
       'image': (data['image'] ?? '').toString(),
       'data': {...data, '_notification_id': id},
@@ -182,6 +191,14 @@ class PushNotificationService {
       await initialize();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
+      if (Platform.isIOS) {
+        await messaging.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+      }
+      _androidNotificationChannel.setMethodCallHandler((call) async {
+        if (call.method == 'onNotificationTapped' && call.arguments is Map) {
+          onOpened(Map<String, dynamic>.from(call.arguments as Map));
+        }
+      });
       final permission = await messaging.getNotificationSettings();
       if (permission.authorizationStatus != AuthorizationStatus.authorized && permission.authorizationStatus != AuthorizationStatus.provisional) return false;
       if (Platform.isIOS) {
@@ -223,6 +240,12 @@ class PushNotificationService {
       });
       final initial = await messaging.getInitialMessage();
       if (initial != null) _dispatchOpenedMessage(initial, onOpened);
+      if (Platform.isAndroid) {
+        try {
+          final pending = await _androidNotificationChannel.invokeMapMethod<String, dynamic>('getPendingNotification');
+          if (pending != null && pending.isNotEmpty) onOpened(Map<String, dynamic>.from(pending));
+        } catch (_) {}
+      }
       return true;
     } catch (_) {
       // Missing Firebase/APNs configuration must not block login or app use.

@@ -719,7 +719,7 @@ class _ShopScreenState extends State<ShopScreen> {
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
-      _message(tr('Поръчката е приета и започва обработка.', 'Your order has been accepted and is being processed.'));
+      // The server sends a transactional push notification; keep the in-app flow free of duplicate info cards.
     } catch (e) {
       _message('$e');
     } finally {
