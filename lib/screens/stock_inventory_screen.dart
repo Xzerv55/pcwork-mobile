@@ -34,7 +34,8 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
         TextFormField(controller: name, decoration: InputDecoration(labelText: tr('Наименование *', 'Name *')), validator: (v) => (v == null || v.trim().isEmpty) ? tr('Задължително поле', 'Required') : null),
         TextFormField(controller: sku, decoration: InputDecoration(labelText: 'SKU / Код')),
         if (item == null) TextFormField(controller: location, decoration: InputDecoration(labelText: tr('Код на сервизен обект *', 'Service location code *')), validator: (v) => (v == null || v.trim().isEmpty) ? tr('Задължително поле', 'Required') : null),
-        TextFormField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Наличност', 'Quantity'))),
+        if (item == null) TextFormField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Начална наличност', 'Opening quantity')))
+        else InputDecorator(decoration: InputDecoration(labelText: tr('Текуща наличност (променя се чрез Зареди/Изпиши)', 'Current quantity (change via Receive/Issue)')), child: Text('${item['quantity'] ?? 0} ${item['unit'] ?? ''}')),
         TextFormField(controller: minimum, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Минимална наличност', 'Minimum quantity'))),
         TextFormField(controller: cost, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Единична доставна цена', 'Unit cost'))),
         TextFormField(controller: unit, decoration: InputDecoration(labelText: tr('Мерна единица', 'Unit'))),
@@ -44,7 +45,8 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
     ));
     if (ok == true) {
       await _run(() async {
-        final payload = {'sku': sku.text.trim(), 'name': name.text.trim(), 'quantity': double.tryParse(qty.text.replaceAll(',', '.')) ?? 0, 'minimum_quantity': double.tryParse(minimum.text.replaceAll(',', '.')) ?? 0, 'unit_cost': double.tryParse(cost.text.replaceAll(',', '.')) ?? 0, 'unit': unit.text.trim().isEmpty ? 'бр.' : unit.text.trim(), 'description': description.text.trim()};
+        final payload = <String, dynamic>{'sku': sku.text.trim(), 'name': name.text.trim(), 'minimum_quantity': double.tryParse(minimum.text.replaceAll(',', '.')) ?? 0, 'unit_cost': double.tryParse(cost.text.replaceAll(',', '.')) ?? 0, 'unit': unit.text.trim().isEmpty ? 'бр.' : unit.text.trim(), 'description': description.text.trim()};
+        if (item == null) payload['quantity'] = double.tryParse(qty.text.replaceAll(',', '.')) ?? 0;
         if (item == null) { payload['location_code'] = location.text.trim(); await widget.api.createStockItem(widget.token, payload); }
         else { await widget.api.updateStockItem(widget.token, (item['id'] as num).toInt(), payload); }
       });
@@ -53,18 +55,18 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
   }
 
   Future<void> _movement(Map<String, dynamic> item, String type) async {
-    final amount = TextEditingController(); final note = TextEditingController();
+    final amount = TextEditingController(); final note = TextEditingController(); final repairId = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: Text(type == 'in' ? tr('Зареждане на наличност', 'Stock received') : tr('Изписване на наличност', 'Stock issued')),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [Text('${item['name']}'), TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Количество', 'Quantity'))), TextField(controller: note, decoration: InputDecoration(labelText: tr('Бележка', 'Note')))]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [Text('${item['name']}'), TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Количество', 'Quantity'))), TextField(controller: note, decoration: InputDecoration(labelText: tr('Бележка', 'Note'))), TextField(controller: repairId, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('ID на ремонт (по желание)', 'Repair ID (optional)')))]),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Потвърди', 'Confirm')))],
     ));
     if (ok == true) {
       final value = double.tryParse(amount.text.trim().replaceAll(',', '.')) ?? 0;
       if (value <= 0) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Въведи количество над нула.', 'Enter a quantity above zero.')))); }
-      else await _run(() => widget.api.moveStockItem(widget.token, (item['id'] as num).toInt(), type: type, quantity: value, note: note.text.trim()));
+      else { final linkedRepairId = int.tryParse(repairId.text.trim()); await _run(() => widget.api.moveStockItem(widget.token, (item['id'] as num).toInt(), type: type, quantity: value, note: note.text.trim(), repairId: linkedRepairId)); }
     }
-    amount.dispose(); note.dispose();
+    amount.dispose(); note.dispose(); repairId.dispose();
   }
 
   Future<void> _run(Future<void> Function() action) async {

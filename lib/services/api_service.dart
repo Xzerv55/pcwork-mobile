@@ -364,8 +364,10 @@ class ApiService {
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
   }
 
-  Future<void> moveStockItem(String token, int id, {required String type, required double quantity, String note = ''}) async {
-    final response = await _httpClient.post(_uri('stock/$id/movement'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'type': type, 'quantity': quantity, 'note': note})).timeout(const Duration(seconds: 20));
+  Future<void> moveStockItem(String token, int id, {required String type, required double quantity, String note = '', int? repairId}) async {
+    final payload = <String, dynamic>{'type': type, 'quantity': quantity, 'note': note};
+    if (repairId != null && repairId > 0) payload['repair_id'] = repairId;
+    final response = await _httpClient.post(_uri('stock/$id/movement'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(payload)).timeout(const Duration(seconds: 20));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
   }
@@ -480,6 +482,15 @@ class ApiService {
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
     if (data is! Map) throw Exception('Невалиден отговор при записване в сервизния дневник.');
     return Map<String, dynamic>.from(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getRepairWarrantyCards(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map || data['warranty_cards'] is! List) return <Map<String, dynamic>>[];
+    return (data['warranty_cards'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<Repair> getRepair(String token, int id) async {
