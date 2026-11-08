@@ -64,7 +64,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 86;
+  static const int _currentBuildNumber = 88;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -980,33 +980,46 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) return Colors.white.withValues(alpha: .16);
             return Colors.transparent;
           }),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 3 : 1),
+          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .12 : .42)),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 6 : 3),
           animationDuration: const Duration(milliseconds: 110),
           shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
           padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
         )),
         elevatedButtonTheme: ElevatedButtonThemeData(style: ButtonStyle(
           overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .30) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
+          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .10 : .38)),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 5 : 2),
           animationDuration: const Duration(milliseconds: 110),
         )),
         outlinedButtonTheme: OutlinedButtonThemeData(style: ButtonStyle(
           overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .28) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
+          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .08 : .30)),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 4 : 1),
           animationDuration: const Duration(milliseconds: 110),
           side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.pressed) ? cyan : const Color(0xFF2A3A50), width: states.contains(WidgetState.pressed) ? 1.8 : 1)),
         )),
         textButtonTheme: TextButtonThemeData(style: ButtonStyle(
           overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .25) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .10) : Colors.transparent),
+          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .06 : .24)),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 3 : 1),
           animationDuration: const Duration(milliseconds: 110),
         )),
         iconButtonTheme: IconButtonThemeData(style: ButtonStyle(
           overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .32) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .14) : Colors.transparent),
+          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .08 : .30)),
+          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 4 : 1),
           animationDuration: const Duration(milliseconds: 110),
         )),
       ),
       home: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop && _navigatorKey.currentState?.canPop() != true) {
+          if (didPop) return;
+          final navigator = _navigatorKey.currentState;
+          if (navigator?.canPop() == true) {
+            navigator!.pop();
+          } else {
             unawaited(_confirmExit());
           }
         },
