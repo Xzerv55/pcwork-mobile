@@ -48,6 +48,8 @@ class AuthService {
   AuthService({required this.baseUrl});
 
   final String baseUrl;
+  // Reuse a process-wide client to keep HTTP connections alive between API calls.
+  static final http.Client _httpClient = http.Client();
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static const String _tokenKey = 'pcwork_access_token';
   static const String _cachedUserKey = 'pcwork_cached_user_profile';
@@ -69,7 +71,7 @@ class AuthService {
     final bearer = await _storage.read(key: _tokenKey);
     if (bearer != null && bearer.isNotEmpty) {
       try {
-        await http.post(_uri('auth/revoke-sessions'), headers: {'Authorization': 'Bearer $bearer', 'Accept': 'application/json'}).timeout(const Duration(seconds: 8));
+        await _httpClient.post(_uri('auth/revoke-sessions'), headers: {'Authorization': 'Bearer $bearer', 'Accept': 'application/json'}).timeout(const Duration(seconds: 8));
       } catch (_) { /* Local logout must still complete when the server is offline. */ }
     }
     await _storage.delete(key: _tokenKey);
@@ -91,7 +93,7 @@ class AuthService {
     }
     late final http.Response response;
     try {
-      response = await http.post(
+      response = await _httpClient.post(
         _uri(path),
         headers: const {
           'Content-Type': 'application/json; charset=utf-8',
@@ -162,7 +164,7 @@ class AuthService {
   Future<AuthUser> _sendOtp(String path, Map<String, dynamic> body) async {
     late final http.Response response;
     try {
-      response = await http.post(
+      response = await _httpClient.post(
         _uri(path),
         headers: const {
           'Content-Type': 'application/json; charset=utf-8',
@@ -193,7 +195,7 @@ class AuthService {
   Future<AuthUser> updateProfile({required String name, required String phone, Map<String, String> billing = const {}, Map<String, String> shipping = const {}}) async {
     final accessToken = await token;
     if (accessToken == null || accessToken.isEmpty) throw const FormatException('Няма активна сесия. Влез отново.');
-    final response = await http.patch(
+    final response = await _httpClient.patch(
       _uri('auth/profile'),
       headers: {'Authorization': 'Bearer $accessToken', 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json'},
       body: jsonEncode({'name': name.trim(), 'phone': phone.trim(), 'billing': billing, 'shipping': shipping}),
@@ -212,7 +214,7 @@ class AuthService {
     }
 
     try {
-      final response = await http.get(
+      final response = await _httpClient.get(
         _uri('auth/me'),
         headers: {
           'Authorization': 'Bearer $accessToken',

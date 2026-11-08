@@ -30,6 +30,8 @@ Future<void> pcworkFirebaseBackgroundHandler(RemoteMessage message) async {
 class PushNotificationService {
   PushNotificationService({required this.baseUrl});
   final String baseUrl;
+  // Reuse a process-wide client to keep HTTP connections alive between API calls.
+  static final http.Client _httpClient = http.Client();
   static bool _initialized = false;
   static StreamSubscription<String>? _tokenSubscription;
   static StreamSubscription<RemoteMessage>? _foregroundSubscription;
@@ -279,7 +281,7 @@ class PushNotificationService {
         if (permission == 'granted') token = await FirebaseMessaging.instance.getToken();
       } catch (_) {}
     }
-    final response = await http.post(Uri.parse('$base/wp-json/pcwork/v1/push/status'),
+    final response = await _httpClient.post(Uri.parse('$base/wp-json/pcwork/v1/push/status'),
       headers: {'Authorization':'Bearer $bearerToken','Content-Type':'application/json'},
       body: jsonEncode({'token': token ?? '', 'platform': Platform.isIOS ? 'ios' : 'android'})).timeout(const Duration(seconds: 15));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
@@ -290,7 +292,7 @@ class PushNotificationService {
 
   Future<bool> getMarketingConsent(String bearerToken) async {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    final response = await http.get(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken'}).timeout(const Duration(seconds: 15));
+    final response = await _httpClient.get(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken'}).timeout(const Duration(seconds: 15));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
     final decoded = jsonDecode(response.body);
     return decoded is Map && decoded['marketing_opt_in'] == true;
@@ -298,7 +300,7 @@ class PushNotificationService {
 
   Future<void> setMarketingConsent(String bearerToken, bool enabled) async {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
-    final response = await http.post(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken','Content-Type':'application/json'}, body: jsonEncode({'marketing_opt_in':enabled})).timeout(const Duration(seconds: 15));
+    final response = await _httpClient.post(Uri.parse('$base/wp-json/pcwork/v1/push/preferences'), headers: {'Authorization':'Bearer $bearerToken','Content-Type':'application/json'}, body: jsonEncode({'marketing_opt_in':enabled})).timeout(const Duration(seconds: 15));
     if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('HTTP ${response.statusCode}');
     final decoded = jsonDecode(response.body);
     if (decoded is! Map || decoded['saved'] != true) throw Exception('Server did not confirm the preference.');
@@ -307,7 +309,7 @@ class PushNotificationService {
   Future<void> _sendToken(String bearerToken, String token, String action) async {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     final platform = Platform.isIOS ? 'ios' : 'android';
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$base/wp-json/pcwork/v1/push/$action'),
       headers: {
         'Authorization': 'Bearer $bearerToken',
