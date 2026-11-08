@@ -25,7 +25,7 @@ class _VisitorAnalyticsScreenState extends State<VisitorAnalyticsScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final rows = await widget.api.getAdminChatThreads(widget.token);
+      final rows = await widget.api.getVisitorAnalyticsUsers(widget.token);
       if (!mounted) return;
       setState(() { _visitors = rows; _loading = false; });
       if (rows.isNotEmpty) await _select(int.tryParse('${rows.first['user_id']}') ?? 0);
@@ -78,7 +78,7 @@ class _VisitorAnalyticsScreenState extends State<VisitorAnalyticsScreen> {
             final v = _visitors[i]; final id = int.tryParse('${v['user_id']}') ?? 0; final active = id == _selected;
             return ChoiceChip(label: Text((v['display_name'] ?? v['email'] ?? tr('Клиент', 'Customer')).toString()), selected: active, onSelected: (_) => _select(id));
           })),
-          Expanded(child: _visitors.isEmpty ? Center(child: Text(tr('Няма налични клиентски данни.', 'No visitor data available.'))) : _detailsLoading ? const Center(child: CircularProgressIndicator()) : ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 18), children: [
+          Expanded(child: _visitors.isEmpty ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(tr('Няма посетители със записано съгласие за анализ. След вход в сайта клиентът трябва да отвори „Настройки за поверителност“ и да избере „Приемам“.', 'No visitors have consented to analytics yet. After signing in to the website, a customer must open Privacy settings and choose Accept.'), textAlign: TextAlign.center))) : _detailsLoading ? const Center(child: CircularProgressIndicator()) : ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 18), children: [
             _section(tr('Профил и контакт', 'Profile & contact'), Icons.person_outline, [
               _row('Име', profile['name']), _row('Имейл', profile['email']), _row('Телефон', profile['phone']), _row('Статус', profile['status']),
             ]),

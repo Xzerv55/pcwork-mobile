@@ -42,11 +42,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<int> _visitedTabs = <int>{0};
   String apiUrl = defaultApi;
   bool apiReady = false;
+  bool _settingsLoaded = false;
   bool checkingApi = false;
   String? apiMessage;
   AuthUser? signedInUser;
   bool authBusy = false;
   Future<List<Repair>>? repairsFuture;
+  final Map<int, Repair> _repairDetailCache = <int, Repair>{};
+  final Map<int, Future<Repair>> _repairDetailRequests = <int, Future<Repair>>{};
   final TextEditingController repairSearch = TextEditingController();
   String repairStatusFilter = 'all';
   ServiceLocation? selectedLocation;
@@ -59,9 +62,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _pushRegistering = false;
   bool _pushDialogShowing = false;
   final Set<String> _marketingCampaignsHandled = <String>{};
-  bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 85;
+  static const int _currentBuildNumber = 86;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
@@ -248,6 +250,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         hours: prefs.getString('pcwork_selected_location_hours') ?? '',
         mapsUrl: prefs.getString('pcwork_selected_location_maps') ?? '',
       );
+      _settingsLoaded = true;
     });
   }
 
@@ -701,30 +704,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: const Icon(Icons.campaign_rounded, size: 64, color: Color(0xFF21D4D8)),
   );
 
-  Future<void> _refreshAfterLeavingTab() async {
-    if (_refreshingOnTabExit || signedInUser == null) return;
-    _refreshingOnTabExit = true;
-    try {
-      final bearer = await auth.token;
-      if (bearer == null || bearer.isEmpty) return;
-      final results = await Future.wait<dynamic>([
-        auth.me(),
-        push.getMarketingConsent(bearer),
-        api.getRepairs(bearer),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        signedInUser = results[0] as AuthUser;
-        _marketingOptIn = results[1] as bool;
-        _marketingPreferenceLoaded = true;
-        repairsFuture = Future<List<Repair>>.value(results[2] as List<Repair>);
-      });
-    } catch (_) {
-      // Refresh is opportunistic; never block navigation or discard current data.
-    } finally {
-      _refreshingOnTabExit = false;
-    }
-  }
 
   void _selectTab(int index) {
     if (index < 0 || index > 5) return;
@@ -734,9 +713,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (navigator != null && navigator.canPop()) {
       navigator.popUntil((route) => route.isFirst);
     }
-    final previousTab = tab;
     _settingsOpen = false;
-    if (previousTab != index) unawaited(_refreshAfterLeavingTab());
     setState(() {
       tab = index;
       _visitedTabs.add(index);
@@ -872,7 +849,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           // Clip the route overlay to the content viewport. Dialogs, pushed
           // pages and modal sheets cannot paint over the persistent tab bar.
           Expanded(child: ClipRect(child: child ?? const SizedBox.shrink())),
-          _buildBottomNavigation(labels),
+          if (_settingsLoaded) _buildBottomNavigation(labels),
         ],
       ),
       theme: ThemeData(
@@ -957,7 +934,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
           ],
         ),
-        body: DecoratedBox(
+        body: !_settingsLoaded
+            ? const Center(child: CircularProgressIndicator())
+            : DecoratedBox(
           decoration: BoxDecoration(
             gradient: isDarkTheme
                 ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
@@ -1042,6 +1021,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 6),
     if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
+    _infoTile(Icons.privacy_tip_outlined, tr('Общи условия GDPR', 'GDPR terms'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
   ]);
 
   Future<void> _launchContact(Uri uri) async {
@@ -1083,7 +1063,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
     ]); }
     final future = repairsFuture ??= _loadRepairsFuture();
-    return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
+    return RefreshIndicator(onRefresh: () async { _repairDetailCache.clear(); _repairDetailRequests.clear(); final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
@@ -1331,6 +1311,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       noteController.dispose();
       if (!mounted || !sheetContext.mounted) return;
       Navigator.of(sheetContext).pop();
+      _repairDetailCache.remove(repair.id);
+      _repairDetailRequests.remove(repair.id);
       setState(() => repairsFuture = _loadRepairsFuture());
       if (result.pendingSync) {
         _refreshPendingSyncCount(token);
@@ -1344,20 +1326,128 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
-  void _showRepairDetails(Repair repair) async {
-    final token = await auth.token;
-    if (token == null || !mounted) return;
-    showModalBottomSheet(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => FutureBuilder<Repair>(future: api.getRepair(token, repair.id), builder: (context, snap) {
-      if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 220, child: Center(child: CircularProgressIndicator()));
-      if (snap.hasError) return SizedBox(height: 220, child: Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('${snap.error}'))));
-      final r = snap.data;
-      if (r == null) return SizedBox(height: 220, child: Center(child: Text(tr('Няма данни за този ремонт.', 'No repair details were returned.'))));
-      final currentUser = signedInUser;
-      final roles = currentUser?.roles ?? const <String>[];
-      final isStaff = (roles.any((role) => ['administrator','pcwork_staff','shop_manager','editor'].contains(role)) && !showClientPreview) || showStaffPreview;
-      return SizedBox(height: MediaQuery.of(ctx).size.height * .78, child: ListView(padding: const EdgeInsets.all(22), children: [Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)), const SizedBox(height: 8), Wrap(spacing: 8, children: [Chip(label: Text(_statusLabel(r.status))), if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))), if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority)))]), _detailRow(tr('Устройство','Device'), '${r.device} ${r.model}'), _detailRow(tr('Сервизен обект','Service location'), r.location), _detailRow(tr('Проблем','Reported issue'), r.problem), if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок','Due date'), _formatDate(r.dueAt)), if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник','Assigned technician'), r.technicianName), if (isStaff && !['completed','cancelled'].contains(r.status)) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _changeRepairStatus(r, ctx), icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статуса на ремонта','Update repair status'))))), OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта','Share repair information'))), OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number)); if (ctx.mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.','Repair number copied.')))); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер','Copy repair number'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, device: '${r.device} ${r.model}'.trim(), location: r.location, problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt, baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff))); }, icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF','Service protocol · QR · PDF'))),
-        OutlinedButton.icon(onPressed: () async { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff))); }, icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи','Photos & signatures'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number))); }, icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите','View repair documents'))), OutlinedButton.icon(onPressed: () { Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairWorklogScreen(api: api, token: token, repairId: r.id, repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, isStaff: isStaff))); }, icon: const Icon(Icons.receipt_long_outlined), label: Text(tr('Сервизен дневник · дейности, части и плащания','Service log · work, parts & payments'))), const Divider(height: 28), Text(tr('Етап на ремонта','Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), _repairProgress(r.status), const Divider(height: 24), Text(tr('История на ремонта','Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), if (r.history.isEmpty) Text(tr('Няма записана история.','No history recorded yet.')), ...r.history.map((h) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.circle, size: 10, color: cyan), title: Text(_statusLabel(h.status)), subtitle: Text([if (isStaff && h.note.isNotEmpty) h.note, h.createdAt].where((x)=>x.isNotEmpty).join(' · '))))]));
-    }));
+  Future<Repair> _loadRepairDetails(Repair repair) {
+    final cached = _repairDetailCache[repair.id];
+    if (cached != null) return Future<Repair>.value(cached);
+    final pending = _repairDetailRequests[repair.id];
+    if (pending != null) return pending;
+    final request = _fetchRepairDetails(repair);
+    _repairDetailRequests[repair.id] = request;
+    return request;
+  }
+
+  Future<Repair> _fetchRepairDetails(Repair repair) async {
+    try {
+      final token = await auth.token;
+      if (token != null && token.isNotEmpty) {
+        final detailed = await api.getRepair(token, repair.id).timeout(const Duration(seconds: 12));
+        _repairDetailCache[repair.id] = detailed;
+        return detailed;
+      }
+    } catch (_) {
+      // The repair list already contains the essential details. Keep the sheet
+      // usable if the optional history/details request is slow or unavailable.
+    }
+    _repairDetailRequests.remove(repair.id);
+    return repair;
+  }
+
+  void _showRepairDetails(Repair repair) {
+    final initial = _repairDetailCache[repair.id] ?? repair;
+    final detailsFuture = _loadRepairDetails(repair);
+    final sheetContext = _navigatorKey.currentState?.overlay?.context ?? context;
+    showModalBottomSheet<void>(
+      context: sheetContext,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => FutureBuilder<Repair>(
+        future: detailsFuture,
+        initialData: initial,
+        builder: (context, snap) {
+          final r = snap.data ?? initial;
+          final currentUser = signedInUser;
+          final roles = currentUser?.roles ?? const <String>[];
+          final isStaff = (roles.any((role) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(role)) && !showClientPreview) || showStaffPreview;
+
+          Future<void> openWithToken(Future<void> Function(String token) action) async {
+            final token = await auth.token;
+            if (token == null || token.isEmpty) {
+              if (ctx.mounted) _message(tr('Сесията е изтекла. Влезте отново.', 'Session expired. Please sign in again.'));
+              return;
+            }
+            if (ctx.mounted) await action(token);
+          }
+
+          return SizedBox(
+            height: MediaQuery.of(ctx).size.height * .78,
+            child: ListView(
+              padding: const EdgeInsets.all(22),
+              children: [
+                Text(r.number.isEmpty ? 'PCW-${r.id}' : r.number, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [
+                  Chip(label: Text(_statusLabel(r.status))),
+                  if (r.fromCache) Chip(avatar: const Icon(Icons.cloud_off, size: 16), label: Text(tr('Офлайн копие', 'Offline copy'))),
+                  if (isStaff) Chip(avatar: const Icon(Icons.flag_outlined, size: 16), label: Text(_priorityLabel(r.priority))),
+                ]),
+                _detailRow(tr('Устройство', 'Device'), '${r.device} ${r.model}'),
+                _detailRow(tr('Сервизен обект', 'Service location'), r.location),
+                _detailRow(tr('Проблем', 'Reported issue'), r.problem),
+                if (r.dueAt.isNotEmpty) _detailRow(tr('Краен срок', 'Due date'), _formatDate(r.dueAt)),
+                if (isStaff && r.technicianName.isNotEmpty) _detailRow(tr('Отговорен техник', 'Assigned technician'), r.technicianName),
+                if (isStaff && !['completed', 'cancelled'].contains(r.status))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: SizedBox(width: double.infinity, child: FilledButton.icon(
+                      onPressed: () => _changeRepairStatus(r, ctx),
+                      icon: const Icon(Icons.sync_alt_rounded),
+                      label: Text(tr('Промени статуса на ремонта', 'Update repair status')),
+                    )),
+                  ),
+                OutlinedButton.icon(onPressed: () => _shareRepair(r), icon: const Icon(Icons.share_outlined), label: Text(tr('Сподели информация за ремонта', 'Share repair information'))),
+                OutlinedButton.icon(onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: r.number.isEmpty ? 'PCW-${r.id}' : r.number));
+                  if (ctx.mounted) _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('Номерът е копиран.', 'Repair number copied.'))));
+                }, icon: const Icon(Icons.copy), label: Text(tr('Копирай номер', 'Copy repair number'))),
+                OutlinedButton.icon(onPressed: () => openWithToken((token) async {
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairProtocolScreen(
+                    repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number,
+                    device: '${r.device} ${r.model}'.trim(), location: r.location,
+                    problem: r.problem, status: _statusLabel(r.status), createdAt: r.createdAt,
+                    baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff,
+                  )));
+                }), icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF', 'Service protocol · QR · PDF'))),
+                OutlinedButton.icon(onPressed: () => openWithToken((token) async {
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff)));
+                }), icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи', 'Photos & signatures'))),
+                OutlinedButton.icon(onPressed: () => openWithToken((token) async {
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairDocumentsScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number)));
+                }), icon: const Icon(Icons.folder_open_outlined), label: Text(tr('Преглед на документите', 'View repair documents'))),
+                OutlinedButton.icon(onPressed: () => openWithToken((token) async {
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairWorklogScreen(api: api, token: token, repairId: r.id, repairNumber: r.number.isEmpty ? 'PCW-${r.id}' : r.number, isStaff: isStaff)));
+                }), icon: const Icon(Icons.receipt_long_outlined), label: Text(tr('Сервизен дневник · дейности, части и плащания', 'Service log · work, parts & payments'))),
+                const Divider(height: 28),
+                Text(tr('Етап на ремонта', 'Repair progress'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                _repairProgress(r.status),
+                const Divider(height: 24),
+                Text(tr('История на ремонта', 'Repair history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                if (r.history.isEmpty) Text(tr('Няма записана история.', 'No history recorded yet.')),
+                ...r.history.map((h) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.circle, size: 10, color: cyan),
+                  title: Text(_statusLabel(h.status)),
+                  subtitle: Text([if (isStaff && h.note.isNotEmpty) h.note, h.createdAt].where((x) => x.isNotEmpty).join(' · ')),
+                )),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Widget _repairProgress(String status) {
@@ -1916,7 +2006,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 10),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(18),
                                   child: item.imageUrl.isNotEmpty
                                       ? Image.network(item.imageUrl, fit: BoxFit.contain, width: double.infinity,
                                           errorBuilder: (_, __, ___) => _locationImageFallback())

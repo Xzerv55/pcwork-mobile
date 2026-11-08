@@ -594,6 +594,15 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  Future<List<Map<String, dynamic>>> getVisitorAnalyticsUsers(String token) async {
+    final response = await _httpClient.get(_uri('analytics/visitors'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? decoded['visitors'] ?? []) : decoded;
+    if (rows is! List) throw Exception('Невалиден формат на данните за посетителите.');
+    return rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList();
+  }
+
   Future<List<Map<String, dynamic>>> getAdminChatThreads(String token) async {
     final response = await _httpClient.get(_uri('chat/admin/threads'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
     final decoded = _decodeResponse(response);
