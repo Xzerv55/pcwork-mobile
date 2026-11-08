@@ -1,0 +1,66 @@
+name: PCWork iOS unsigned build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Cache Pub packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+      - name: Cache Gradle and CocoaPods dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/Library/Caches/CocoaPods
+            ios/Pods
+          key: ${{ runner.os }}-mobile-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock', 'ios/Podfile', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-mobile-
+      - name: Generate iOS platform files
+        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+      - name: Remove generated placeholder test for MyApp
+        run: rm -f test/widget_test.dart
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Generate PCWork launcher icons and native splash
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+      - name: Analyze Dart code
+        run: flutter analyze
+      - name: Build unsigned iOS app
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_IOS_API_KEY: ${{ secrets.FIREBASE_IOS_API_KEY }}
+          FIREBASE_IOS_APP_ID: ${{ secrets.FIREBASE_IOS_APP_ID }}
+          FIREBASE_IOS_BUNDLE_ID: ${{ secrets.FIREBASE_IOS_BUNDLE_ID }}
+        run: >-
+          flutter build ios --release --no-codesign
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_IOS_API_KEY="$FIREBASE_IOS_API_KEY"
+          --dart-define=FIREBASE_IOS_APP_ID="$FIREBASE_IOS_APP_ID"
+          --dart-define=FIREBASE_IOS_BUNDLE_ID="$FIREBASE_IOS_BUNDLE_ID"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pcwork-ios-v76-app-unsigned
+          path: build/ios/iphoneos/Runner.app
