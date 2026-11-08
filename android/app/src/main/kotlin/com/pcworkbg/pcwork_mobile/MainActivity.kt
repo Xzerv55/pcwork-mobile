@@ -10,6 +10,12 @@ import org.json.JSONObject
 import java.io.File
 import androidx.core.content.FileProvider
 import android.os.Build
+import android.app.ActivityManager
+import android.content.Context
+import android.os.StatFs
+import android.os.Environment
+import java.io.RandomAccessFile
+import kotlin.concurrent.thread
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -51,6 +57,47 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("installer_error", e.message ?: "Could not open Android installer.", null)
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pcworkbg.pcwork_mobile/device_monitor")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "getDeviceMetrics") { result.notImplemented(); return@setMethodCallHandler }
+                thread(name = "pcwork-device-monitor") {
+                    try {
+                        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        val memory = ActivityManager.MemoryInfo()
+                        manager.getMemoryInfo(memory)
+                        val totalRam = memory.totalMem.coerceAtLeast(1L)
+                        val usedRam = (totalRam - memory.availMem).coerceAtLeast(0L)
+                        val stat = StatFs(Environment.getDataDirectory().path)
+                        val totalStorage = stat.totalBytes.coerceAtLeast(1L)
+                        val freeStorage = stat.availableBytes.coerceAtLeast(0L)
+                        val batteryIntent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                        val batteryLevel = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                        val batteryScale = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+                        val batteryPercent = if (batteryLevel >= 0 && batteryScale > 0) (batteryLevel * 100 / batteryScale) else -1
+                        val batteryTemp = (batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1) / 10.0
+                        val plugged = batteryIntent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+                        val cpu = readCpuUsage()
+                        val data = hashMapOf<String, Any>(
+                            "batteryPercent" to batteryPercent,
+                            "batteryTemperature" to if (batteryTemp >= 0) String.format(java.util.Locale.US, "%.1f", batteryTemp) else "—",
+                            "chargingState" to if (plugged != 0) "Charging" else "On battery",
+                            "ramUsedPercent" to (usedRam * 100 / totalRam).toInt(),
+                            "ramUsed" to formatBytes(usedRam),
+                            "ramTotal" to formatBytes(totalRam),
+                            "storageUsedPercent" to (((totalStorage - freeStorage).coerceAtLeast(0L) * 100) / totalStorage).toInt(),
+                            "storageFreePercent" to (freeStorage * 100.0 / totalStorage),
+                            "storageFree" to formatBytes(freeStorage),
+                            "storageTotal" to formatBytes(totalStorage),
+                            "cpuUsage" to cpu,
+                            "deviceModel" to ("${Build.MANUFACTURER} ${Build.MODEL}".trim()),
+                            "androidVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+                        )
+                        runOnUiThread { result.success(data) }
+                    } catch (e: Exception) {
+                        runOnUiThread { result.error("device_metrics_error", e.message ?: "Could not read device metrics.", null) }
+                    }
                 }
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pcworkbg.pcwork_mobile/phone")
@@ -124,6 +171,29 @@ class MainActivity : FlutterActivity() {
                     notificationRequestCode
                 )
             }
+    }
+
+    private fun readCpuUsage(): Int {
+        fun snapshot(): LongArray {
+            val line = RandomAccessFile("/proc/stat", "r").use { it.readLine() }
+            val values = line.trim().split(Regex("\\s+")).drop(1).mapNotNull { it.toLongOrNull() }
+            val idle = (values.getOrNull(3) ?: 0L) + (values.getOrNull(4) ?: 0L)
+            return longArrayOf(values.sum(), idle)
+        }
+        return try {
+            val first = snapshot()
+            Thread.sleep(140)
+            val second = snapshot()
+            val total = (second[0] - first[0]).coerceAtLeast(1L)
+            val idle = (second[1] - first[1]).coerceAtLeast(0L)
+            (((total - idle).coerceAtLeast(0L) * 100) / total).toInt().coerceIn(0, 100)
+        } catch (_: Exception) { -1 }
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+        return if (gb >= 1.0) String.format(java.util.Locale.US, "%.1f GB", gb)
+        else String.format(java.util.Locale.US, "%.0f MB", bytes / (1024.0 * 1024.0))
     }
 
     private fun showPcworkNotification(title: String, body: String, data: Map<String, Any>) {

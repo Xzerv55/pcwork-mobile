@@ -21,6 +21,8 @@ import '../screens/shop_screen.dart';
 import '../screens/notification_history_screen.dart';
 import '../screens/customer_center_screen.dart';
 import '../screens/visitor_analytics_screen.dart';
+import '../screens/device_monitor_screen.dart';
+import '../screens/internal_service_assistant_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -1586,6 +1588,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 6),
     Text(signedInUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
     if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
+    const SizedBox(height: 12), OutlinedButton.icon(onPressed: _openDeviceMonitor, icon: const Icon(Icons.monitor_heart_outlined), label: Text(tr('PCWork Device Monitor', 'PCWork Device Monitor'))),
     if (signedInUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
       const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.any((r) => ['pcwork_customer','customer','subscriber'].contains(r)) ? tr('Потребител', 'Customer') : signedInUser!.roles.join(', ')))),
@@ -1611,6 +1614,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ],
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 16),
+      FilledButton.icon(onPressed: _openInternalServiceAssistant, icon: const Icon(Icons.support_agent_rounded), label: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant'))),
+      const SizedBox(height: 8),
       FilledButton.icon(onPressed: _openStaffDashboard, icon: const Icon(Icons.dashboard_outlined), label: Text(tr('Отвори служебното табло', 'Open staff dashboard'))),
       const SizedBox(height: 8),
       FilledButton.icon(onPressed: _showIntakeForm, icon: const Icon(Icons.add_box_outlined), label: Text(tr('Приеми ново устройство', 'Register device intake'))),
@@ -1767,6 +1772,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } catch (_) {
       try { await AppSettings.openAppSettings(); } catch (e) { _message('${tr('Неуспешно отваряне на настройките:','Could not open settings:')} $e'); }
     }
+  }
+
+  Future<void> _openDeviceMonitor() async {
+    await _navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => DeviceMonitorScreen(english: english)));
+  }
+
+  Future<void> _openInternalServiceAssistant() async {
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty || !canSeeStaffUi) {
+      _message(tr('Необходим е оторизиран служебен профил.', 'An authorized staff account is required.'));
+      return;
+    }
+    await _navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => InternalServiceAssistantScreen(api: api, token: token, english: english)));
   }
 
   Future<void> _openStaffDashboard() async {
