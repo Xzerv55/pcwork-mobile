@@ -221,6 +221,15 @@ class ApiService {
     return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
   }
 
+  Future<Map<String, dynamic>> getLoyaltySummary(String token) async {
+    final response = await _httpClient.get(_uri('loyalty/summary'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалидни данни за програмата за лоялност.');
+    return Map<String, dynamic>.from(data);
+  }
+
   Future<Map<String, dynamic>> getShopOrder(String token, int id) async {
     http.Response response = await _httpClient.get(_uri('shop/orders/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
     if (response.statusCode == 404) {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 
@@ -154,6 +155,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     }
   }
 
+  Widget _quickPrompt(BuildContext context, String label, String value) => Padding(padding: const EdgeInsets.only(right: 7), child: ActionChip(visualDensity: VisualDensity.compact, label: Text(label, style: const TextStyle(fontSize: 11)), onPressed: () { _message.text = value; _message.selection = TextSelection.collapsed(offset: value.length); setState(() {}); }));
+
   @override
   void dispose() {
     _pollTimer?.cancel();
@@ -191,7 +194,12 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
                           final image = (row['attachment_url'] ?? '').toString();
                           return Align(
                             alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
+                            child: GestureDetector(
+                              onLongPress: text.isEmpty ? null : () async {
+                                await Clipboard.setData(ClipboardData(text: text));
+                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Съобщението е копирано.', 'Message copied.')), duration: const Duration(seconds: 1)));
+                              },
+                              child: Container(
                               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * .78),
                               margin: const EdgeInsets.symmetric(vertical: 3),
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -207,11 +215,17 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
                                 Text((row['created_at'] ?? '').toString(), style: TextStyle(fontSize: 10, color: mine || dark ? Colors.white60 : Colors.black54)),
                               ]),
                             ),
+                            ),
                           );
                         },
                       ),
       ),
       if (_error != null && _messages.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(tr('Временно няма връзка. Ще опитаме отново автоматично.', 'Connection temporarily unavailable. Retrying automatically.'), style: const TextStyle(color: Colors.orange, fontSize: 11))),
+      if (_message.text.trim().isEmpty && !_loading) SizedBox(height: 42, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+        _quickPrompt(context, tr('Статус на ремонт', 'Repair status'), tr('Здравейте, бих искал/а информация за статуса на моя ремонт.', 'Hello, I would like an update on my repair status.')),
+        _quickPrompt(context, tr('Оферта', 'Quote'), tr('Моля, изпратете ми оферта за ремонт.', 'Please send me a repair quote.')),
+        _quickPrompt(context, tr('Записване на час', 'Book a visit'), tr('Искам да запазя час за посещение.', 'I would like to book an appointment.')),
+      ])),
       Padding(
           padding: EdgeInsets.fromLTRB(7, 2, 7, MediaQuery.of(context).viewInsets.bottom > 0 ? 0 : 1),
           child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -224,6 +238,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
               textInputAction: TextInputAction.send,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(isDense: true, hintText: tr('Напиши съобщение…', 'Write a message…'), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+              onChanged: (_) { if (mounted) setState(() {}); },
               onSubmitted: (_) => _send(),
             )),
             const SizedBox(width: 6),
