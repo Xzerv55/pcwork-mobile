@@ -63,8 +63,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _pushDialogShowing = false;
   final Set<String> _marketingCampaignsHandled = <String>{};
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 86;
+  static const int _currentBuildNumber = 87;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
+  static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
+  Uri? _cachedBookingUri;
+  bool _exitDialogOpen = false;
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
   int? _pendingShopOrderId;
@@ -104,6 +107,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (mounted) unawaited(_restoreSession());
     });
     unawaited(_checkForAppUpdate());
+    unawaited(_prefetchBookingUrl());
   }
 
   Future<void> _restoreSession() async {
@@ -826,7 +830,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             });
           },
         );
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat);
+      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: canSeeStaffUi);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
@@ -897,7 +901,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         )),
       ),
-      home: Scaffold(
+      home: PopScope<Object?>(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) { if (!didPop) unawaited(_confirmExit()); },
+        child: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 36, height: 36, fit: BoxFit.contain)),
@@ -950,6 +957,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -994,7 +1002,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 8),
     Row(children: [
-      Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
+      Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), _callPhone)),
       const SizedBox(width: 10),
       Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
     ]),
@@ -1019,10 +1027,19 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
-    if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
+    if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.privacy_tip_outlined, tr('Общи условия GDPR', 'GDPR terms'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
   ]);
+
+  Future<void> _callPhone() async {
+    try {
+      final opened = await _phoneChannel.invokeMethod<bool>('callPhone', {'number': '0886638848'});
+      if (opened != true && mounted) _message(tr('Разрешете телефонните обаждания, за да се свържете с PCWork.', 'Allow phone calls to contact PCWork.'));
+    } on PlatformException catch (e) {
+      if (mounted) _message(e.message ?? tr('Телефонното обаждане не може да бъде стартирано.', 'Could not start the phone call.'));
+    } catch (e) { if (mounted) _message('$e'); }
+  }
 
   Future<void> _launchContact(Uri uri) async {
     try {
@@ -1418,9 +1435,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                     baseUrl: apiUrl, token: token, repairId: r.id, canEmail: isStaff,
                   )));
                 }), icon: const Icon(Icons.qr_code_2), label: Text(tr('Сервизен протокол · QR · PDF', 'Service protocol · QR · PDF'))),
-                OutlinedButton.icon(onPressed: () => openWithToken((token) async {
+                if (isStaff) OutlinedButton.icon(onPressed: () => openWithToken((token) async {
                   if (!ctx.mounted) return;
-                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: isStaff)));
+                  Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: apiUrl, token: token, repairId: r.id, repairNumber: r.number, isStaff: true)));
                 }), icon: const Icon(Icons.photo_camera_back_outlined), label: Text(tr('Снимки и подписи', 'Photos & signatures'))),
                 OutlinedButton.icon(onPressed: () => openWithToken((token) async {
                   if (!ctx.mounted) return;
@@ -1614,7 +1631,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           padding: const EdgeInsets.only(bottom: 9),
           child: TextField(controller: controller, readOnly: locked, keyboardType: keyboardType,
             onChanged: locked ? null : (_) => markChanged(),
-            decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true)),
+            decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: false, contentPadding: const EdgeInsets.fromLTRB(14, 18, 14, 16))),
         );
         return AlertDialog(
           title: Text(tr('Редакция на профила', 'Edit profile')),
@@ -1915,12 +1932,62 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openBookly() async {
+  Future<void> _prefetchBookingUrl() async {
     try {
-      final uri = await api.getBookingUrl();
-      if (uri == null) { _message(tr('Bookly не е конфигуриран. Проверете настройките в WordPress → PCWork настройки → Bookly.', 'Bookly is not configured. Check WordPress → PCWork Settings → Bookly.')); return; }
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) _message(tr('Страницата за резервации не може да бъде отворена.', 'Could not open the booking page.'));
+      final prefs = await SharedPreferences.getInstance();
+      final cached = Uri.tryParse(prefs.getString('pcwork_booking_url_v1') ?? '');
+      if (cached != null && cached.scheme == 'https' && cached.host.isNotEmpty) _cachedBookingUri = cached;
+      final fresh = await api.getBookingUrl();
+      if (fresh != null && fresh.scheme == 'https') {
+        _cachedBookingUri = fresh;
+        await prefs.setString('pcwork_booking_url_v1', fresh.toString());
+      }
+    } catch (_) { /* Cached booking page remains usable if the server is slow. */ }
+  }
+
+  Future<void> _openBookly() async {
+    var uri = _cachedBookingUri;
+    if (uri == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        uri = Uri.tryParse(prefs.getString('pcwork_booking_url_v1') ?? '');
+      } catch (_) {}
+    }
+    if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty) {
+      try {
+        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) _message(tr('Страницата за резервации не може да бъде отворена.', 'Could not open the booking page.'));
+        unawaited(_prefetchBookingUrl());
+        return;
+      } catch (e) { _message('$e'); return; }
+    }
+    // First-use fallback is asynchronous and does not block the booking tab itself.
+    try {
+      final fresh = await api.getBookingUrl();
+      if (fresh == null) { _message(tr('Bookly не е конфигуриран. Проверете настройките в WordPress → PCWork настройки → Bookly.', 'Bookly is not configured. Check WordPress → PCWork Settings → Bookly.')); return; }
+      _cachedBookingUri = fresh;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pcwork_booking_url_v1', fresh.toString());
+      if (!await launchUrl(fresh, mode: LaunchMode.externalApplication)) _message(tr('Страницата за резервации не може да бъде отворена.', 'Could not open the booking page.'));
     } catch (e) { _message('$e'); }
+  }
+
+  Future<void> _confirmExit() async {
+    if (_exitDialogOpen || !mounted) return;
+    _exitDialogOpen = true;
+    try {
+      final shouldExit = await showDialog<bool>(
+        context: _navigatorKey.currentState?.overlay?.context ?? context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(tr('Изход от приложението', 'Exit app')),
+          content: Text(tr('Наистина ли искате да излезете?', 'Do you really want to exit?')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Отказ', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Изход', 'Exit'))),
+          ],
+        ),
+      );
+      if (shouldExit == true && mounted) await SystemNavigator.pop();
+    } finally { _exitDialogOpen = false; }
   }
 
   Future<void> _openWebsite(String url) async {
@@ -2003,15 +2070,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                             SizedBox(
                               height: 128,
                               width: double.infinity,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: item.imageUrl.isNotEmpty
-                                      ? Image.network(item.imageUrl, fit: BoxFit.contain, width: double.infinity,
-                                          errorBuilder: (_, __, ___) => _locationImageFallback())
-                                      : _locationImageFallback(),
-                                ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: item.imageUrl.isNotEmpty
+                                    ? Image.network(item.imageUrl, fit: BoxFit.cover, width: double.infinity,
+                                        errorBuilder: (_, __, ___) => _locationImageFallback())
+                                    : _locationImageFallback(),
                               ),
                             ),
                             if (item.imageCaption.isNotEmpty)

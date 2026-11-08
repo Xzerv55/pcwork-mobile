@@ -5,7 +5,7 @@ import 'admin_pcwork_chat_screen.dart';
 
 /// First-party PCWork chat connected to the authenticated WordPress account.
 class ContactHubScreen extends StatelessWidget {
-  const ContactHubScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme, required this.isActive, this.isAdministrator = false});
+  const ContactHubScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme, required this.isActive, this.isAdministrator = false, this.canUploadFiles = false});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final int sessionKey;
@@ -13,6 +13,7 @@ class ContactHubScreen extends StatelessWidget {
   final bool isDarkTheme;
   final bool isActive;
   final bool isAdministrator;
+  final bool canUploadFiles;
 
   String tr(String bg, String en) => english ? en : bg;
 
@@ -30,6 +31,6 @@ class ContactHubScreen extends StatelessWidget {
     ),
     Expanded(child: isAdministrator
       ? AdminPCWorkChatScreen(api: api, tokenProvider: tokenProvider, sessionKey: sessionKey, english: english, isDarkTheme: isDarkTheme, isActive: isActive)
-      : PCWorkChatScreen(api: api, tokenProvider: tokenProvider, sessionKey: sessionKey, english: english, isDarkTheme: isDarkTheme, isActive: isActive)),
+      : PCWorkChatScreen(api: api, tokenProvider: tokenProvider, sessionKey: sessionKey, english: english, isDarkTheme: isDarkTheme, isActive: isActive, canUploadFiles: canUploadFiles)),
   ]);
 }

@@ -63,7 +63,7 @@ class _RepairProtocolScreenState extends State<RepairProtocolScreen> {
         pw.SizedBox(height: 12), pw.Divider(), pw.Text('PCWork · pcwork-bg.com', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
       ])));
       final pdfBytes = await doc.save();
-      if (widget.baseUrl.isNotEmpty && widget.token.isNotEmpty && widget.repairId > 0) {
+      if (widget.canEmail && widget.baseUrl.isNotEmpty && widget.token.isNotEmpty && widget.repairId > 0) {
         final uri = Uri.parse('${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/wp-json/pcwork/v1/repairs/${widget.repairId}/protocol');
         final request = http.MultipartRequest('POST', uri)..headers['Authorization'] = 'Bearer ${widget.token}'..files.add(http.MultipartFile.fromBytes('protocol_pdf', pdfBytes, filename: 'PCWork_${widget.repairNumber}.pdf'));
         if (_emailCustomer && widget.canEmail) request.fields['send_email'] = '1';
@@ -72,7 +72,9 @@ class _RepairProtocolScreenState extends State<RepairProtocolScreen> {
         if (response.statusCode < 200 || response.statusCode >= 300) throw Exception('Сървърът не записа PDF (HTTP ${response.statusCode}): $body');
         if (mounted) setState(() => _serverMessage = _emailCustomer ? 'PDF е записан. Заявено е изпращане по имейл.' : 'PDF е записан в защитеното досие на ремонта.');
       } else {
-        if (mounted) setState(() => _serverMessage = 'PDF е създаден локално. Няма конфигурирана сървърна сесия за архивиране.');
+        if (mounted) setState(() => _serverMessage = widget.canEmail
+            ? 'PDF е създаден локално. Няма конфигурирана сървърна сесия за архивиране.'
+            : 'PDF е създаден локално и може да бъде споделен. Качването в сервизния архив е достъпно само за служители.');
       }
       await Printing.sharePdf(bytes: pdfBytes, filename: 'PCWork_${widget.repairNumber}.pdf');
     } catch (e) {

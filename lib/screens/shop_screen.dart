@@ -409,39 +409,52 @@ class _ShopScreenState extends State<ShopScreen> {
       _message(tr('Влезте в профила си, за да видите поръчките.', 'Sign in to view your orders.'));
       return;
     }
-    try {
-      final rows = await widget.api.getShopOrders(token);
-      if (!mounted) return;
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        builder: (sheetContext) => SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(sheetContext).size.height * .72,
-            child: ListView(
-              padding: const EdgeInsets.all(18),
-              children: [
-                Text(tr('Моите поръчки', 'My orders'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                if (rows.isEmpty) Text(tr('Все още нямате поръчки.', 'You have no orders yet.')),
-                ...rows.map((o) => Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.receipt_long, color: Color(0xFF21D4D8)),
-                        title: Text('#${o['number'] ?? o['id']}'),
-                        subtitle: Text('${o['date'] ?? ''} · ${o['status'] ?? ''}'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _orderDetails(token, o),
-                      ),
-                    )),
-              ],
-            ),
+    final ordersFuture = widget.api.getShopOrders(token);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.of(sheetContext).size.height * .72,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 4, 8, 8),
+            child: Row(children: [
+              Expanded(child: Text(tr('Моите поръчки', 'My orders'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold))),
+              IconButton(tooltip: tr('Затвори', 'Close'), onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close_rounded)),
+            ]),
           ),
-        ),
-      );
-    } catch (e) {
-      _message('$e');
-    }
+          Expanded(child: FutureBuilder<List<Map<String, dynamic>>>(
+            future: ordersFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+              if (snapshot.hasError) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('${snapshot.error}', textAlign: TextAlign.center),
+                const SizedBox(height: 10), OutlinedButton.icon(onPressed: () { Navigator.pop(sheetContext); _orders(); }, icon: const Icon(Icons.refresh), label: Text(tr('Опитай отново', 'Retry'))),
+              ])));
+              final rows = snapshot.data ?? const <Map<String, dynamic>>[];
+              if (rows.isEmpty) return Center(child: Text(tr('Все още нямате поръчки.', 'You have no orders yet.')));
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+                itemCount: rows.length,
+                itemBuilder: (context, index) {
+                  final order = rows[index];
+                  return Card(child: ListTile(
+                    leading: const Icon(Icons.receipt_long, color: Color(0xFF21D4D8)),
+                    title: Text('#${order['number'] ?? order['id']}'),
+                    subtitle: Text('${order['date'] ?? ''} · ${order['status'] ?? ''}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _orderDetails(token, order),
+                  ));
+                },
+              );
+            },
+          )),
+        ]),
+      ),
+    );
   }
 
   Future<void> _orderDetails(String token, Map<String, dynamic> order) async {
@@ -663,7 +676,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   child: Column(mainAxisSize: MainAxisSize.min, children: shippingRates.map((rate) => RadioListTile<String>(
                     dense: true, contentPadding: EdgeInsets.zero, value: '${rate['id']}',
                     title: Text((rate['label'] ?? rate['method_id'] ?? '').toString()),
-                    subtitle: Text((rate['formatted_cost'] ?? '${rate['cost'] ?? ''}').toString()),
+                    subtitle: Text((rate['cost'] ?? '0.00').toString()),
                   )).toList()),
                 ),
                 if (shippingRateError != null) Align(alignment: Alignment.centerLeft, child: Text(shippingRateError!, style: const TextStyle(color: Colors.orange, fontSize: 11))),
@@ -691,7 +704,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final selectedAddress = address.text.trim();
     final selectedCity = city.text.trim();
     try {
-      final result = await widget.api.createShopOrder(
+      await widget.api.createShopOrder(
         token,
         items: orderItems,
         billing: {
@@ -708,9 +721,7 @@ class _ShopScreenState extends State<ShopScreen> {
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
-      _message(tr('Поръчката е създадена. Отварям страницата за плащане.', 'Order created. Opening payment page.'));
-      final paymentUrl = result['payment_url']?.toString() ?? '';
-      if (paymentUrl.isNotEmpty) await widget.api.openExternal(paymentUrl);
+      _message(tr('Поръчката е приета и започва обработка.', 'Your order has been accepted and is being processed.'));
     } catch (e) {
       _message('$e');
     } finally {

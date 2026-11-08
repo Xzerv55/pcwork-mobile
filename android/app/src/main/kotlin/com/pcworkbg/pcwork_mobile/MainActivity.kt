@@ -13,7 +13,10 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val notificationChannel = "com.pcworkbg.pcwork_mobile/notifications"
     private val notificationRequestCode = 7301
+    private val callRequestCode = 7302
     private var pendingNotificationResult: MethodChannel.Result? = null
+    private var pendingCallResult: MethodChannel.Result? = null
+    private var pendingCallNumber: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -45,6 +48,23 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("installer_error", e.message ?: "Could not open Android installer.", null)
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.pcworkbg.pcwork_mobile/phone")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "callPhone") { result.notImplemented(); return@setMethodCallHandler }
+                val number = call.argument<String>("number")?.trim().orEmpty()
+                if (number.isBlank()) { result.error("invalid_number", "Phone number is missing.", null); return@setMethodCallHandler }
+                if (checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_CALL, android.net.Uri.parse("tel:$number")))
+                        result.success(true)
+                    } catch (e: Exception) { result.error("call_failed", e.message ?: "Could not start call.", null) }
+                } else {
+                    if (pendingCallResult != null) { result.error("permission_in_progress", "Phone permission request is already running.", null); return@setMethodCallHandler }
+                    pendingCallResult = result
+                    pendingCallNumber = number
+                    requestPermissions(arrayOf(Manifest.permission.CALL_PHONE), callRequestCode)
                 }
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, notificationChannel)
@@ -88,6 +108,16 @@ class MainActivity : FlutterActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             pendingNotificationResult?.success(granted)
             pendingNotificationResult = null
+        } else if (requestCode == callRequestCode) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            val result = pendingCallResult
+            val number = pendingCallNumber
+            pendingCallResult = null
+            pendingCallNumber = null
+            if (granted && !number.isNullOrBlank()) {
+                try { startActivity(Intent(Intent.ACTION_CALL, android.net.Uri.parse("tel:$number"))); result?.success(true) }
+                catch (e: Exception) { result?.error("call_failed", e.message ?: "Could not start call.", null) }
+            } else result?.success(false)
         }
     }
 }
