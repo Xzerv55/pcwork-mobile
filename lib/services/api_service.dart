@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -37,11 +36,32 @@ String _responseMessage(dynamic decoded, int statusCode) {
   return 'HTTP $statusCode';
 }
 
+class _TimedShopCache {
+  const _TimedShopCache(this.expiresAt, this.rows);
+  final DateTime expiresAt;
+  final List<Map<String, dynamic>> rows;
+}
+
 class ApiService {
   ApiService({required this.baseUrl, this.userId = 0});
   final String baseUrl;
   final int userId;
   static const FlutterSecureStorage _offlineStorage = FlutterSecureStorage();
+  static final Map<String, _TimedShopCache> _shopCache = <String, _TimedShopCache>{};
+
+  List<Map<String, dynamic>> _copyShopRows(List<Map<String, dynamic>> rows) =>
+      rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
+
+  void _storeShopCache(String key, List<Map<String, dynamic>> rows, Duration ttl) {
+    final now = DateTime.now();
+    _shopCache.removeWhere((_, entry) => !entry.expiresAt.isAfter(now));
+    if (_shopCache.length >= 40 && !_shopCache.containsKey(key)) {
+      final oldestKey = _shopCache.entries.reduce((a, b) =>
+          a.value.expiresAt.isBefore(b.value.expiresAt) ? a : b).key;
+      _shopCache.remove(oldestKey);
+    }
+    _shopCache[key] = _TimedShopCache(now.add(ttl), rows);
+  }
 
   String _scope(String token) => userId > 0 ? 'user_$userId' : sha256.convert(utf8.encode(token)).toString();
   String _repairsCacheKey(String token) => 'pcwork_v37_repairs_${_scope(token)}';
@@ -115,6 +135,9 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
+    final cacheKey = '${baseUrl.trim()}:products:${categoryId}:${search.trim().toLowerCase()}';
+    final cached = _shopCache[cacheKey];
+    if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
     final params = <String, String>{'per_page': '20'};
     if (search.isNotEmpty) params['search'] = search;
     if (categoryId > 0) params['category'] = '$categoryId';
@@ -122,7 +145,9 @@ class ApiService {
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+    final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+    _storeShopCache(cacheKey, result, const Duration(seconds: 45));
+    return _copyShopRows(result);
   }
 
   Future<List<Map<String, dynamic>>> getShopProductVariations(int productId) async {
@@ -136,11 +161,16 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopCategories() async {
+    final cacheKey = '${baseUrl.trim()}:categories';
+    final cached = _shopCache[cacheKey];
+    if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
     final response = await http.get(_uri('shop/categories')).timeout(const Duration(seconds: 12));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+    final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+    _storeShopCache(cacheKey, result, const Duration(minutes: 10));
+    return _copyShopRows(result);
   }
 
   Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping}) async {

@@ -62,7 +62,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   final Set<String> _marketingCampaignsHandled = <String>{};
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
-  static const int _currentBuildNumber = 71;
+  static const int _currentBuildNumber = 73;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   bool _installingUpdate = false;
   List<Map<String, dynamic>> _notificationHistory = <Map<String, dynamic>>[];
