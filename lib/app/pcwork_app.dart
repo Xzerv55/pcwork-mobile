@@ -1283,6 +1283,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ),
       ));
 
+  Widget _infoTile(IconData icon, String title, VoidCallback onTap) =>
+      Card(
+        child: ListTile(
+          onTap: onTap,
+          leading: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: cyan.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: cyan, size: 20),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF93A4B8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      );
+
   Widget _repairs() {
     if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
