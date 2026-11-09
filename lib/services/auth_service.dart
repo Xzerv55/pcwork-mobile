@@ -84,6 +84,10 @@ class AuthService {
     String name = '',
     String phone = '',
     bool dataCollectionOptIn = false,
+    bool loyaltyOptIn = false,
+    bool marketingOptIn = false,
+    bool pushOptIn = false,
+    bool viberOptIn = false,
   }) async {
     final path = register ? 'auth/register/request' : 'auth/login/request';
     final body = <String, dynamic>{'email': email.trim()};
@@ -92,6 +96,10 @@ class AuthService {
       body['phone'] = phone.trim();
       body['terms_accepted'] = true;
       body['data_collection_opt_in'] = dataCollectionOptIn;
+      body['loyalty_opt_in'] = loyaltyOptIn;
+      body['marketing_opt_in'] = marketingOptIn;
+      body['push_opt_in'] = pushOptIn;
+      body['viber_opt_in'] = viberOptIn;
     }
     late final http.Response response;
     try {

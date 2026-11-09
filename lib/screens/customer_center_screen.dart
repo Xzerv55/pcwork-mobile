@@ -74,6 +74,37 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
       ]));
     }),
   );
+  Future<void> _manageGoldConsents(Map<String, dynamic> data) async {
+    final raw = data['consents'];
+    final initial = raw is Map ? Map<String, bool>.from(raw.map((k, v) => MapEntry(k.toString(), v == true))) : <String, bool>{};
+    for (final key in ['data_collection', 'loyalty', 'marketing', 'push', 'viber']) { initial.putIfAbsent(key, () => false); }
+    final selected = await showDialog<Map<String, bool>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, updateDialog) => AlertDialog(
+        title: Text(tr('Съгласия за PCWORK GOLD', 'PCWORK GOLD consents')),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          CheckboxListTile(value: initial['data_collection'], onChanged: (v) => updateDialog(() => initial['data_collection'] = v == true), title: Text(tr('Обработване на данни за функциите на приложението и обслужване', 'Data processing for app features and customer service')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
+          CheckboxListTile(value: initial['loyalty'], onChanged: (v) => updateDialog(() => initial['loyalty'] = v == true), title: Text(tr('Участие в PCWORK GOLD и приемане на правилата', 'PCWORK GOLD membership and rules')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
+          CheckboxListTile(value: initial['marketing'], onChanged: (v) => updateDialog(() => initial['marketing'] = v == true), title: Text(tr('Рекламни и промоционални съобщения', 'Advertising and promotional messages')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
+          CheckboxListTile(value: initial['push'], onChanged: (v) => updateDialog(() => initial['push'] = v == true), title: Text(tr('Маркетингови и информационни push известия', 'Marketing and informational push notifications')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
+          CheckboxListTile(value: initial['viber'], onChanged: (v) => updateDialog(() => initial['viber'] = v == true), title: Text(tr('Рекламни съобщения по Viber', 'Advertising messages via Viber')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
+          Text(tr('Всяко съгласие е доброволно. При оттегляне на което и да е от задължителните съгласия начисляването на нови точки се спира.', 'Each consent is optional. Withdrawing any required consent stops new point accrual.'), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, Map<String, bool>.from(initial)), child: Text(tr('Запази', 'Save'))],
+      )),
+    );
+    if (selected == null) return;
+    try {
+      await widget.api.updateGoldConsents(widget.token, selected);
+      if (!mounted) return;
+      setState(() => _loyaltyFuture = widget.api.getLoyaltySummary(widget.token));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Съгласията са запазени.', 'Consents saved.'))));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
   Widget _loyaltyCard(AsyncSnapshot<Map<String, dynamic>> loyalty) {
     const gold = Color(0xFFFFD76A);
     if (loyalty.connectionState == ConnectionState.waiting) {
@@ -116,6 +147,25 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
     }
 
     final data = loyalty.data!;
+    if (data['eligible'] == false) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: const Color(0xFF171C25), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD6A84A).withValues(alpha: .55))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [Icon(Icons.workspace_premium_rounded, color: Color(0xFFFFD76A), size: 28), SizedBox(width: 10), Text('PCWORK GOLD', style: TextStyle(color: Color(0xFFFFD76A), fontWeight: FontWeight.w900, letterSpacing: 1.2))]),
+          const SizedBox(height: 10),
+          Text(tr('В момента не си активен участник в PCWORK GOLD.', 'You are not currently active in PCWORK GOLD.'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          if ((int.tryParse('${data['points'] ?? 0}') ?? 0) > 0) ...[
+            const SizedBox(height: 5),
+            Text(tr('Запазен баланс: ${data['points']} точки. Новото начисляване е временно спряно.', 'Preserved balance: ${data['points']} points. New accrual is paused.'), style: const TextStyle(color: Color(0xFFFFD76A), fontSize: 12, fontWeight: FontWeight.w700)),
+          ],
+          const SizedBox(height: 5),
+          Text(tr('За участие е необходима регистрация в приложението и изрично потвърждение на всички условия и съгласия за програмата и известията.', 'Enrollment requires app registration and explicit acceptance of all program and notification consents.'), style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _manageGoldConsents(data), icon: const Icon(Icons.tune_rounded), label: Text(tr('Настройки на съгласията', 'Consent settings')))),
+        ]),
+      );
+    }
     final points = int.tryParse('${data['points'] ?? 0}') ?? 0;
     final next = int.tryParse('${data['next_tier_points'] ?? 500}') ?? 500;
     final remaining = int.tryParse('${data['points_to_next'] ?? (next - points)}') ?? (next - points);
@@ -151,6 +201,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           Row(children: [Expanded(child: Text(remaining > 0 ? tr('Още $remaining точки до следващото ниво', '$remaining points to the next tier') : tr('Достигнато е най-високото ниво!', 'Highest tier reached!'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))), Text(tr('1 € = 1 т.', '1 € = 1 pt'), style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800))]),
           const SizedBox(height: 13),
           Row(children: [const Icon(Icons.lock_rounded, color: Color(0xFFFFE29A), size: 13), const SizedBox(width: 5), Text(tr('ПЕРСОНАЛНА КЛИЕНТСКА КАРТА', 'PERSONAL MEMBER CARD'), style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w700)), const Spacer(), const Icon(Icons.stars_rounded, color: Color(0xFFFFE29A), size: 17)]),
+          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => _manageGoldConsents(data), icon: const Icon(Icons.tune_rounded, color: gold, size: 16), label: Text(tr('Настройки на съгласията', 'Consent settings'), style: const TextStyle(color: gold, fontSize: 11)))),
         ]),
       ]),
     );

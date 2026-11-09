@@ -292,6 +292,16 @@ class ApiService {
     return Map<String, dynamic>.from(data);
   }
 
+  Future<void> updateGoldConsents(String token, Map<String, bool> consents) async {
+    final body = <String, dynamic>{};
+    for (final key in ['data_collection', 'loyalty', 'marketing', 'push', 'viber']) {
+      body['${key}_opt_in'] = consents[key] == true;
+    }
+    final response = await _httpClient.post(_uri('loyalty/consents'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json'}, body: jsonEncode(body)).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
   Future<Map<String, dynamic>> getShopOrder(String token, int id) async {
     http.Response response = await _httpClient.get(_uri('shop/orders/$id'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 15));
     if (response.statusCode == 404) {

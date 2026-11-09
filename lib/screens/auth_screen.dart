@@ -33,6 +33,10 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _passwordMode = false;
   bool _acceptedTerms = false;
   bool _dataCollectionConsent = false;
+  bool _loyaltyConsent = false;
+  bool _marketingConsent = false;
+  bool _pushConsent = false;
+  bool _viberConsent = false;
   bool _busy = false;
   String? _error;
   String? _info;
@@ -101,6 +105,10 @@ class _AuthScreenState extends State<AuthScreen> {
           name: _name.text,
           phone: _phone.text,
           dataCollectionOptIn: _register && _dataCollectionConsent,
+          loyaltyOptIn: _register && _loyaltyConsent,
+          marketingOptIn: _register && _marketingConsent,
+          pushOptIn: _register && _pushConsent,
+          viberOptIn: _register && _viberConsent,
         );
         if (!mounted) return;
         setState(() {
@@ -133,6 +141,10 @@ class _AuthScreenState extends State<AuthScreen> {
         name: _name.text,
         phone: _phone.text,
         dataCollectionOptIn: _register && _dataCollectionConsent,
+        loyaltyOptIn: _register && _loyaltyConsent,
+        marketingOptIn: _register && _marketingConsent,
+        pushOptIn: _register && _pushConsent,
+        viberOptIn: _register && _viberConsent,
       );
       if (mounted) {
         setState(() => _info = message);
@@ -154,6 +166,10 @@ class _AuthScreenState extends State<AuthScreen> {
       _password.clear();
       _acceptedTerms = false;
       _dataCollectionConsent = false;
+      _loyaltyConsent = false;
+      _marketingConsent = false;
+      _pushConsent = false;
+      _viberConsent = false;
       _resendSeconds = 0;
       _code.clear();
       _error = null;
@@ -283,20 +299,14 @@ class _AuthScreenState extends State<AuthScreen> {
                               controlAffinity: ListTileControlAffinity.leading,
                               title: Text(tr('Съгласен/на съм с общите условия и политиката за поверителност.', 'I agree to the Terms and Privacy Policy.'), style: const TextStyle(fontSize: 12)),
                             ),
-                          if (_register && !_codeSent)
-                            CheckboxListTile(
-                              value: _dataCollectionConsent,
-                              onChanged: _busy ? null : (value) => setState(() => _dataCollectionConsent = value == true),
-                              contentPadding: EdgeInsets.zero,
-                              controlAffinity: ListTileControlAffinity.leading,
-                              title: Text(
-                                tr(
-                                  'Съгласен/на съм PCWork да използва данните от профила ми за обслужване и да получавам маркетингови push известия. Съгласието е доброволно и може да бъде оттеглено.',
-                                  'I agree that PCWork may use my profile data for customer service and send me marketing push notifications. This consent is optional and can be withdrawn.',
-                                ),
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
+                          if (_register && !_codeSent) ...[
+                            CheckboxListTile(value: _dataCollectionConsent, onChanged: _busy ? null : (v) => setState(() => _dataCollectionConsent = v == true), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: Text(tr('Съгласен/на съм с обработването на личните ми данни за функциите на приложението и клиентското обслужване.', 'I consent to processing my personal data for app features and customer service.'), style: const TextStyle(fontSize: 12))),
+                            CheckboxListTile(value: _loyaltyConsent, onChanged: _busy ? null : (v) => setState(() => _loyaltyConsent = v == true), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: Text(tr('Искам да участвам в програмата PCWORK GOLD и приемам правилата ѝ.', 'I want to join PCWORK GOLD and accept its rules.'), style: const TextStyle(fontSize: 12))),
+                            CheckboxListTile(value: _marketingConsent, onChanged: _busy ? null : (v) => setState(() => _marketingConsent = v == true), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: Text(tr('Съгласен/на съм да получавам рекламни и промоционални съобщения от PCWork.', 'I agree to receive advertising and promotional messages from PCWork.'), style: const TextStyle(fontSize: 12))),
+                            CheckboxListTile(value: _pushConsent, onChanged: _busy ? null : (v) => setState(() => _pushConsent = v == true), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: Text(tr('Разрешавам маркетингови и информационни push известия в приложението.', 'I consent to marketing and informational push notifications in the app.'), style: const TextStyle(fontSize: 12))),
+                            CheckboxListTile(value: _viberConsent, onChanged: _busy ? null : (v) => setState(() => _viberConsent = v == true), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading, title: Text(tr('Съгласен/на съм да получавам рекламни и промоционални съобщения по Viber на посочения телефон.', 'I agree to receive advertising and promotional messages via Viber at the phone number provided.'), style: const TextStyle(fontSize: 12))),
+                            const Padding(padding: EdgeInsets.only(left: 8, top: 2, bottom: 8), child: Text('Съгласията са доброволни и могат да бъдат оттеглени. PCWORK GOLD точки се начисляват само при всички активни съгласия.', style: TextStyle(fontSize: 11, color: Colors.white60))),
+                          ],
                           if (_codeSent && !_passwordMode)
                             TextFormField(
                               controller: _code,
