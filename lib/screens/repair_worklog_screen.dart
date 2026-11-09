@@ -39,7 +39,7 @@ class _RepairWorklogScreenState extends State<RepairWorklogScreen> {
   IconData _typeIcon(String type) => switch (type) {
     'diagnostic' => Icons.search, 'work' => Icons.build, 'part' => Icons.memory, 'payment' => Icons.payments, 'warranty' => Icons.verified_user, _ => Icons.receipt_long,
   };
-  String _money(dynamic value) => '${(value is num ? value : num.tryParse('$value') ?? 0).toStringAsFixed(2)} лв.';
+  String _money(dynamic value) => '${(value is num ? value : num.tryParse('$value') ?? 0).toStringAsFixed(2)} €';
 
   Future<void> _addEntry() async {
     final description = TextEditingController();
@@ -57,7 +57,7 @@ class _RepairWorklogScreenState extends State<RepairWorklogScreen> {
           const SizedBox(height: 10), TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Описание', hintText: 'Напр. смяна на вентилатор')),
           if (type != 'warranty') ...[
             const SizedBox(height: 10), if (type != 'payment') TextField(controller: quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Количество')),
-            const SizedBox(height: 10), TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: type == 'payment' ? 'Сума на плащането (лв.)' : 'Единична цена (лв.)')),
+            const SizedBox(height: 10), TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: type == 'payment' ? 'Сума на плащането (€)' : 'Единична цена (€)')),
           ] else ...[
             const SizedBox(height: 10), OutlinedButton.icon(onPressed: () async { final now = DateTime.now(); final date = await showDatePicker(context: context, initialDate: now, firstDate: DateTime(now.year - 1), lastDate: DateTime(now.year + 10)); if (date != null) refresh(() => warrantyDate = '${date.year.toString().padLeft(4,'0')}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}'); }, icon: const Icon(Icons.calendar_month), label: Text(warrantyDate.isEmpty ? 'Край на гаранцията (по желание)' : warrantyDate)),
           ],

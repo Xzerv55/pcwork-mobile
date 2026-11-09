@@ -1075,7 +1075,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         child: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 46, height: 46, padding: const EdgeInsets.all(1), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 44, height: 44, fit: BoxFit.contain)),
+            Container(width: 58, height: 58, padding: const EdgeInsets.all(1), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 56, height: 56, fit: BoxFit.contain)),
             const SizedBox(width: 10), const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
             const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
@@ -1193,7 +1193,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 52, height: 52, padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(16)), child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
+          Container(width: 64, height: 64, padding: const EdgeInsets.all(5), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(16)), child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),

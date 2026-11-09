@@ -35,7 +35,7 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _handledOrdersEntry = false;
 
   String tr(String bg, String en) => widget.english ? en : bg;
-  String get currencyCode => products.isNotEmpty ? (products.first['currency']?.toString() ?? 'BGN') : 'BGN';
+  String get currencyCode => '€';
   int get cartCount => cart.values.fold(0, (a, b) => a + b);
   double get cartTotal => cart.entries.fold<double>(0, (sum, entry) => sum + ((double.tryParse('${cartProducts[entry.key]?['price'] ?? 0}') ?? 0) * entry.value));
 
@@ -483,11 +483,11 @@ class _ShopScreenState extends State<ShopScreen> {
             if (detail['shipping_methods'] is List && (detail['shipping_methods'] as List).isNotEmpty) ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Куриерска услуга', 'Courier service')), subtitle: Text((detail['shipping_methods'] as List).join(', '))),
             ...(detail['items'] is List ? (detail['items'] as List).whereType<Map>().map((line) => ListTile(
               contentPadding: EdgeInsets.zero, title: Text('${line['name'] ?? ''}'),
-              subtitle: Text('${line['quantity'] ?? 1} × ${line['price'] ?? ''}'),
-              trailing: Text('${line['total'] ?? ''}'),
+              subtitle: Text('${line['quantity'] ?? 1} × ${line['price'] ?? ''} €'),
+              trailing: Text('${line['total'] ?? ''} €'),
             )) : <Widget>[]),
             const Divider(),
-            ListTile(title: Text(tr('Общо', 'Total')), trailing: Text('${detail['total'] ?? order['total'] ?? ''} ${detail['currency'] ?? currencyCode}', style: const TextStyle(color: Color(0xFF21D4D8), fontWeight: FontWeight.bold))),
+            ListTile(title: Text(tr('Общо', 'Total')), trailing: Text('${detail['total'] ?? order['total'] ?? ''} €', style: const TextStyle(color: Color(0xFF21D4D8), fontWeight: FontWeight.bold))),
             if ((detail['payment_url'] ?? '').toString().isNotEmpty)
               FilledButton.icon(onPressed: () => widget.api.openExternal(detail['payment_url'].toString()), icon: const Icon(Icons.payment), label: Text(tr('Плащане', 'Payment'))),
           ]),
@@ -522,7 +522,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   return ListTile(
                     leading: cartImage.isEmpty ? const SizedBox(width: 48, height: 48, child: Icon(Icons.devices_other)) : ClipRRect(borderRadius: BorderRadius.circular(8), child: Container(width: 48, height: 48, color: Colors.transparent, alignment: Alignment.center, child: Image.network(cartImage, fit: BoxFit.contain, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => const Icon(Icons.devices_other)))),
                     title: Text('${product['name']}'),
-                    subtitle: Text('${product['variation_label'] ?? ''} ${product['price']} × ${entry.value}'),
+                    subtitle: Text('${product['variation_label'] ?? ''} ${product['price']} € × ${entry.value}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

@@ -148,7 +148,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           const SizedBox(height: 17),
           ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 9, backgroundColor: Colors.white24, color: const Color(0xFFFFE29A))),
           const SizedBox(height: 8),
-          Row(children: [Expanded(child: Text(remaining > 0 ? tr('Още $remaining точки до следващото ниво', '$remaining points to the next tier') : tr('Достигнато е най-високото ниво!', 'Highest tier reached!'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))), Text(tr('1 лв. = 1 т.', '1 BGN = 1 pt'), style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800))]),
+          Row(children: [Expanded(child: Text(remaining > 0 ? tr('Още $remaining точки до следващото ниво', '$remaining points to the next tier') : tr('Достигнато е най-високото ниво!', 'Highest tier reached!'), style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600))), Text(tr('1 € = 1 т.', '1 € = 1 pt'), style: const TextStyle(color: gold, fontSize: 10, fontWeight: FontWeight.w800))]),
           const SizedBox(height: 13),
           Row(children: [const Icon(Icons.lock_rounded, color: Color(0xFFFFE29A), size: 13), const SizedBox(width: 5), Text(tr('ПЕРСОНАЛНА КЛИЕНТСКА КАРТА', 'PERSONAL MEMBER CARD'), style: const TextStyle(color: Colors.white70, fontSize: 9, letterSpacing: 1.1, fontWeight: FontWeight.w700)), const Spacer(), const Icon(Icons.stars_rounded, color: Color(0xFFFFE29A), size: 17)]),
         ]),
