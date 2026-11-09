@@ -33,6 +33,46 @@ jobs:
           channel: stable
           cache: true
 
+      # Install the exact NDK requested by Flutter before Gradle configures the
+      # Android project. Retry transient/corrupt SDK downloads on GitHub runners.
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v3
+
+      - name: Install and verify Flutter NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_VERSION="28.2.13676358"
+          SDKMANAGER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "ERROR: Android sdkmanager was not found."
+            exit 1
+          fi
+          NDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}/ndk/$NDK_VERSION"
+          for attempt in 1 2 3; do
+            if [[ -s "$NDK_DIR/source.properties" ]]; then
+              echo "NDK $NDK_VERSION is already installed and verified."
+              exit 0
+            fi
+            echo "Installing NDK $NDK_VERSION (attempt $attempt/3)..."
+            rm -rf "$NDK_DIR"
+            yes | "$SDKMANAGER" --licenses >/dev/null || true
+            if "$SDKMANAGER" --install "ndk;$NDK_VERSION"; then
+              if [[ -s "$NDK_DIR/source.properties" ]] && grep -q "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
+                echo "NDK $NDK_VERSION installed and verified."
+                exit 0
+              fi
+            fi
+            echo "NDK installation attempt $attempt failed verification."
+            rm -rf "$NDK_DIR"
+            sleep $((attempt * 10))
+          done
+          echo "ERROR: Could not install a valid NDK $NDK_VERSION after 3 attempts."
+          exit 1
+
       - name: Cache Pub packages
         uses: actions/cache@v5
         with:
@@ -169,7 +209,7 @@ jobs:
       - name: Upload APK files
         uses: actions/upload-artifact@v6
         with:
-          name: pcwork-android-v107-apks
+          name: pcwork-android-v112-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/app-*-release.apk
