@@ -59,16 +59,28 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
-      # The source archive intentionally excludes generated Gradle wrapper binaries.
-      # Recreate the wrapper in CI so Flutter can invoke the pinned Gradle version.
+      # The Flutter settings plugin reads android/local.properties while Gradle
+      # evaluates settings.gradle.kts. Create it immediately before invoking Gradle
+      # (including wrapper generation); it is machine-specific and must not be committed.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
 
       - name: Generate Gradle wrapper
-        working-directory: android
-        run: gradle wrapper --gradle-version 8.14.3 --distribution-type all
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_BIN="$(readlink -f "$(command -v flutter)")"
+          FLUTTER_ROOT="$(dirname "$(dirname "$FLUTTER_BIN")")"
+          test -d "$FLUTTER_ROOT/packages/flutter_tools/gradle"
+          mkdir -p "$GITHUB_WORKSPACE/android"
+          printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT" > "$GITHUB_WORKSPACE/android/local.properties"
+          test -s "$GITHUB_WORKSPACE/android/local.properties"
+          echo "Flutter SDK configured at: $FLUTTER_ROOT"
+          cd "$GITHUB_WORKSPACE/android"
+          test -f local.properties
+          gradle wrapper --gradle-version 8.14.3 --distribution-type all
 
       # Firebase client settings are read from the checked-out Android config.
       # These are app-side identifiers/API key, not a service-account private key.
