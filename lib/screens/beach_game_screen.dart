@@ -13,8 +13,17 @@ class BeachGameScreen extends StatefulWidget {
   State<BeachGameScreen> createState() => _BeachGameScreenState();
 }
 
-class _BeachGameScreenState extends State<BeachGameScreen> {
+class _BeachGameScreenState extends State<BeachGameScreen> with WidgetsBindingObserver {
   static const _recordKey = 'pcwork_beach_game_record_v1';
+  static const int _doorCount = 10;
+  // Centers of the ten illustrated doors in the supplied 941x1672 artwork.
+  static const List<Offset> _doorCenters = [
+    Offset(.365, .362), Offset(.635, .362),
+    Offset(.365, .448), Offset(.635, .448),
+    Offset(.365, .535), Offset(.635, .535),
+    Offset(.365, .622), Offset(.635, .622),
+    Offset(.365, .710), Offset(.635, .710),
+  ];
   final Random _random = Random();
   final Map<int, _BeachItem> _items = {};
   Timer? _clock;
@@ -25,14 +34,24 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   bool _finished = false;
   bool _paused = false;
   DateTime _nextSpawn = DateTime.now();
+  int _elapsedMs = 0;
 
   String tr(String bg, String en) => widget.english ? en : bg;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     _loadRecord();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _running && !_paused) {
+      _clock?.cancel();
+      if (mounted) setState(() => _paused = true);
+    }
   }
 
   Future<void> _loadRecord() async {
@@ -43,13 +62,8 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   void _start() {
     _clock?.cancel();
     setState(() {
-      _items.clear();
-      _seconds = 60;
-      _elapsedMs = 0;
-      _score = 0;
-      _running = true;
-      _finished = false;
-      _paused = false;
+      _items.clear(); _seconds = 60; _elapsedMs = 0; _score = 0;
+      _running = true; _finished = false; _paused = false;
       _nextSpawn = DateTime.now();
     });
     _clock = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
@@ -60,29 +74,19 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     final now = DateTime.now();
     setState(() {
       _items.removeWhere((_, item) => item.expiresAt.isBefore(now));
-      if (now.isAfter(_nextSpawn) && _items.length < 7) {
-        final empty = List<int>.generate(20, (i) => i).where((i) => !_items.containsKey(i)).toList();
+      if (now.isAfter(_nextSpawn) && _items.length < 4) {
+        final empty = List<int>.generate(_doorCount, (i) => i).where((i) => !_items.containsKey(i)).toList();
         if (empty.isNotEmpty) {
           final slot = empty[_random.nextInt(empty.length)];
-          _items[slot] = _BeachItem(_random.nextBool() ? '🥒' : '🌸', now.add(const Duration(milliseconds: 1500)));
+          _items[slot] = _BeachItem(_random.nextBool() ? '⭐' : '🐚', now.add(const Duration(milliseconds: 1450)));
         }
-        _nextSpawn = now.add(Duration(milliseconds: 350 + _random.nextInt(850)));
+        _nextSpawn = now.add(Duration(milliseconds: 450 + _random.nextInt(750)));
       }
-    });
-    if (now.millisecondsSinceEpoch % 1000 < 270) {
-      // The visible countdown is derived from the round start, avoiding timer drift.
-    }
-    if (_seconds > 0) {
       _elapsedMs += 250;
-      if (_elapsedMs >= 1000) {
-        _elapsedMs -= 1000;
-        setState(() => _seconds--);
-      }
-    }
+      if (_elapsedMs >= 1000) { _elapsedMs -= 1000; _seconds--; }
+    });
     if (_seconds <= 0) _finish();
   }
-
-  int _elapsedMs = 0;
 
   Future<void> _finish() async {
     _clock?.cancel();
@@ -90,257 +94,99 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_recordKey, best);
     if (!mounted) return;
-    setState(() {
-      _record = best;
-      _running = false;
-      _finished = true;
-      _items.clear();
-    });
+    setState(() { _record = best; _running = false; _finished = true; _items.clear(); });
   }
 
   void _catch(int index) {
     if (!_running || _paused || !_items.containsKey(index)) return;
-    setState(() {
-      _items.remove(index);
-      _score += 1;
-    });
+    setState(() { _items.remove(index); _score++; });
   }
 
   void _togglePause() {
     if (!_running) return;
-    setState(() => _paused = !_paused);
+    final resume = _paused;
+    setState(() => _paused = !resume);
+    if (resume) {
+      _clock?.cancel();
+      _clock = Timer.periodic(const Duration(milliseconds: 250), (_) => _tick());
+    } else {
+      _clock?.cancel();
+    }
   }
 
   @override
   void dispose() {
     _clock?.cancel();
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    WidgetsBinding.instance.removeObserver(this);
+    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp, DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr('Плажно приключение', 'Beach Adventure'))),
       body: SafeArea(
         child: LayoutBuilder(builder: (context, constraints) {
-          final compact = constraints.maxHeight < 700;
-          return Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF24B8E8), Color(0xFF7DE0E7), Color(0xFFFFD58A), Color(0xFFF1B765)],
-                stops: [0, .34, .72, 1],
+          // Keep the artwork and its interactive hit areas at the original
+          // portrait ratio on phones with different screen proportions.
+          final double gameWidth = min(constraints.maxWidth, constraints.maxHeight * (941 / 1672)).toDouble();
+          final gameHeight = gameWidth * (1672 / 941);
+          return Center(
+            child: SizedBox(
+              width: gameWidth,
+              height: gameHeight,
+              child: LayoutBuilder(builder: (context, gameConstraints) {
+                final w = gameConstraints.maxWidth;
+                final h = gameConstraints.maxHeight;
+                return Stack(fit: StackFit.expand, children: [
+            Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill),
+            // The artwork's wooden back button is made functional.
+            Positioned(left: w * .015, top: h * .008, width: w * .145, height: h * .075,
+              child: Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(40), onTap: () => Navigator.of(context).maybePop()))),
+            // Invisible hit areas exactly cover the ten doors; the background remains decorative.
+            for (var i = 0; i < _doorCount; i++)
+              Positioned(
+                left: w * (_doorCenters[i].dx - .135),
+                top: h * (_doorCenters[i].dy - .043),
+                width: w * .27,
+                height: h * .086,
+                child: Material(color: Colors.transparent, child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () => _catch(i),
+                  child: Center(child: _items[i] == null ? const SizedBox.expand() : FittedBox(
+                    child: Text(_items[i]!.emoji, style: const TextStyle(fontSize: 44, shadows: [Shadow(color: Colors.black87, blurRadius: 8)])),
+                  )),
+                )),
               ),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(compact ? 7 : 14, 8, compact ? 7 : 14, 8),
-                  child: Row(
-                    children: [
-                      Expanded(child: _hud(tr('ТОЧКИ', 'SCORE'), '$_score', Icons.stars_rounded, compact)),
-                      const SizedBox(width: 7),
-                      Expanded(child: _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds', Icons.timer_rounded, compact)),
-                      const SizedBox(width: 7),
-                      Expanded(child: _hud(tr('РЕКОРД', 'BEST'), '$_record', Icons.emoji_events_rounded, compact)),
-                      if (_running)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 5),
-                          child: Material(
-                            color: const Color(0xFFFF9F24),
-                            shape: const CircleBorder(),
-                            elevation: 3,
-                            child: IconButton(
-                              visualDensity: VisualDensity.compact,
-                              onPressed: _togglePause,
-                              icon: Icon(
-                                _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                                color: const Color(0xFF17364B),
-                                size: 27,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: LayoutBuilder(builder: (context, boardConstraints) {
-                      // The playfield itself is portrait (9:16); all 20 original doors
-                      // remain visible in the central illustrated beach scene.
-                      final boardWidth = min(
-                        boardConstraints.maxWidth,
-                        boardConstraints.maxHeight * (9 / 16),
-                      );
-                      final boardHeight = boardWidth * (16 / 9);
-                      return SizedBox(
-                        width: boardWidth,
-                        height: boardHeight,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withValues(alpha: .88), width: 2),
-                            boxShadow: [
-                              BoxShadow(color: const Color(0xFF14516B).withValues(alpha: .28), blurRadius: 20, offset: const Offset(0, 9)),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.cover),
-                              Positioned.fill(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [Colors.black.withValues(alpha: .02), Colors.transparent, const Color(0xFF7A3F13).withValues(alpha: .07)],
-                                      stops: const [0, .55, 1],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                left: boardWidth * .185,
-                                top: boardHeight * .265,
-                                width: boardWidth * .555,
-                                height: boardHeight * .145,
-                                child: GridView.builder(
-                                  padding: EdgeInsets.zero,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: 20,
-                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 5,
-                                    crossAxisSpacing: 2,
-                                    mainAxisSpacing: 2,
-                                    childAspectRatio: 1.72,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final item = _items[index];
-                                    return GestureDetector(
-                                      behavior: HitTestBehavior.translucent,
-                                      onTap: () => _catch(index),
-                                      child: Center(
-                                        child: item == null
-                                            ? const SizedBox.shrink()
-                                            : FittedBox(
-                                                fit: BoxFit.contain,
-                                                child: Text(
-                                                  item.emoji,
-                                                  style: TextStyle(
-                                                    fontSize: boardWidth * .055,
-                                                    shadows: const [Shadow(color: Colors.black54, blurRadius: 5)],
-                                                  ),
-                                                ),
-                                              ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              if (_paused || _finished || !_running)
-                                Positioned.fill(
-                                  child: Container(
-                                    color: const Color(0x990D2635),
-                                    child: Center(
-                                      child: Card(
-                                        margin: const EdgeInsets.all(18),
-                                        child: Padding(
-                                          padding: EdgeInsets.all(compact ? 12 : 20),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                _finished ? tr('Браво!', 'Well done!') : tr('Готов ли си за игра?', 'Ready to play?'),
-                                                style: TextStyle(fontSize: compact ? 17 : 23, fontWeight: FontWeight.w900),
-                                              ),
-                                              const SizedBox(height: 7),
-                                              Text(
-                                                _finished
-                                                    ? tr('Точки: $_score', 'Score: $_score')
-                                                    : tr('Хвани краставичките и цветенцата, преди да се скрият!', 'Catch the cucumbers and flowers before they hide!'),
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(fontSize: compact ? 11 : 14),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              FilledButton.icon(
-                                                onPressed: _start,
-                                                icon: const Icon(Icons.play_arrow_rounded),
-                                                label: Text(_finished ? tr('Играй отново', 'Play again') : tr('Започни игра', 'Start game')),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(14, 5, 14, compact ? 9 : 16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xDDFFF8E8),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFFFB84D), width: 1.2),
-                    ),
-                    child: Text(
-                      tr('Докосни вратичка, когато се покаже краставичка или цвете!', 'Tap a gate when a cucumber or flower appears!'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: const Color(0xFF573A22),
-                        fontWeight: FontWeight.w800,
-                        fontSize: compact ? 10 : 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            // Live score and timer replace the static values printed in the artwork.
+            Positioned(left: w * .265, top: h * .884, width: w * .205, height: h * .075,
+              child: Center(child: Text('$_score', style: TextStyle(fontSize: min(w * .085, 34), fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])))),
+            Positioned(left: w * .535, top: h * .884, width: w * .205, height: h * .075,
+              child: Center(child: Text('$_seconds', style: TextStyle(fontSize: min(w * .085, 34), fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])))),
+            if (_running) Positioned(right: 12, top: 10, child: Material(
+              color: const Color(0xDDFFF3D5), shape: const CircleBorder(), elevation: 4,
+              child: IconButton(onPressed: _togglePause, icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded), tooltip: tr('Пауза', 'Pause')),
+            )),
+            if (_paused || _finished || !_running)
+              Positioned.fill(child: Container(color: const Color(0x660A2030), child: Center(child: Card(
+                color: const Color(0xFFFFF7E5), margin: const EdgeInsets.all(28),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                child: Padding(padding: const EdgeInsets.all(22), child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_paused ? tr('Играта е на пауза', 'Game paused') : _finished ? tr('Браво!', 'Well done!') : tr('Готов ли си?', 'Ready to play?'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF70401C))),
+                  const SizedBox(height: 8),
+                  Text(_finished ? tr('Точки: $_score  •  Рекорд: $_record', 'Score: $_score  •  Best: $_record') : tr('Докосни вратите, когато се появят звездички и миди!', 'Tap the doors when stars and shells appear!'), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF70401C))),
+                  const SizedBox(height: 14),
+                  FilledButton.icon(onPressed: _paused ? _togglePause : _start, icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.play_circle_fill_rounded), label: Text(_paused ? tr('Продължи', 'Resume') : _finished ? tr('Играй отново', 'Play again') : tr('Започни игра', 'Start game'))),
+                ])),
+              )))),
+                ]);
+              }),
             ),
           );
         }),
       ),
     );
   }
-
-  Widget _hud(String label, String value, IconData icon, bool compact) => Container(
-    padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 11, vertical: compact ? 5 : 8),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFDFEFF), Color(0xFFEAF7FB)]),
-      borderRadius: BorderRadius.circular(15),
-      border: Border.all(color: const Color(0xFFFFFFFF), width: 1.2),
-      boxShadow: [BoxShadow(color: const Color(0xFF1C6884).withValues(alpha: .18), blurRadius: 9, offset: const Offset(0, 4))],
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: compact ? 15 : 19, color: const Color(0xFF138BAA)),
-        SizedBox(width: compact ? 3 : 6),
-        Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: compact ? 7 : 9, fontWeight: FontWeight.w900, color: const Color(0xFF426174), letterSpacing: .35)),
-          Text(value, style: TextStyle(fontSize: compact ? 14 : 19, height: 1.05, fontWeight: FontWeight.w900, color: const Color(0xFF17364B))),
-        ])),
-      ],
-    ),
-  );
 }
 
 class _BeachItem {

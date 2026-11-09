@@ -189,15 +189,20 @@ class _AuthScreenState extends State<AuthScreen> {
                         children: [
                           Center(
                             child: Container(
-                              width: 124,
-                              height: 124,
-                              padding: const EdgeInsets.all(8),
+                              width: 140,
+                              height: 140,
+                              padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF0B1724),
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(26),
-                                border: Border.all(color: cyan.withValues(alpha: .35)),
+                                boxShadow: [
+                                  BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 22, spreadRadius: 1),
+                                ],
                               ),
-                              child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(22),
+                                child: Image.asset('assets/images/pcwork_app_icon_white.png', fit: BoxFit.contain),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 18),

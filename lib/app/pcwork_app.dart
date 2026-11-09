@@ -71,7 +71,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 105;
+  static const int _currentBuildNumber = 107;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1075,6 +1075,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         child: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(width: 36, height: 36, child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
+            const SizedBox(width: 7),
             const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
             const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
@@ -1101,14 +1103,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               ]),
             ),
             IconButton(tooltip: tr('Настройки', 'Settings'), onPressed: _showSettings, icon: const Icon(Icons.tune_rounded)),
-            Padding(
-              padding: const EdgeInsets.only(left: 2, right: 10, top: 7, bottom: 7),
-              child: SizedBox(
-                width: 38,
-                height: 38,
-                child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain),
-              ),
-            ),
           ],
         ),
         body: DecoratedBox(

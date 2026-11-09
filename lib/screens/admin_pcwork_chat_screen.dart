@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
@@ -25,20 +26,76 @@ class _AdminPCWorkChatScreenState extends State<AdminPCWorkChatScreen> with Widg
   List<Map<String,dynamic>> _messages = [];
   int? _selected;
   int _lastId = 0;
+  int _messagePollDelaySeconds = 8;
+  int _messagePollFailures = 0;
+  String _threadSignature = '';
   bool _loading = true, _sending = false, _busy = false;
   bool _appResumed = true;
   bool get _dark => widget.isDarkTheme;
   String tr(String bg,String en) => widget.english ? en : bg;
   @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);_init();}
-  void _scrollToLatest(){WidgetsBinding.instance.addPostFrameCallback((_){if(!_scroll.hasClients)return;_scroll.jumpTo(_scroll.position.maxScrollExtent);Future<void>.delayed(const Duration(milliseconds:100),(){if(mounted&&_scroll.hasClients)_scroll.jumpTo(_scroll.position.maxScrollExtent);});});}
+  void _scrollToLatest(){WidgetsBinding.instance.addPostFrameCallback((_){if(!mounted||!_scroll.hasClients)return;final position=_scroll.position;if(position.hasContentDimensions)_scroll.jumpTo(position.maxScrollExtent);});}
   @override void didChangeMetrics(){if(widget.isActive)_scrollToLatest();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){final resumed=state==AppLifecycleState.resumed;if(_appResumed==resumed)return;_appResumed=resumed;if(!resumed){_timer?.cancel();_threadsTimer?.cancel();_timer=null;_threadsTimer=null;}else if(widget.isActive){_start();unawaited(_refresh());}}
   Future<void> _init() async { try { _token=await widget.tokenProvider(); if(_token==null||_token!.isEmpty) throw Exception(tr('Необходим е администраторски вход.','Administrator sign-in required.')); await _loadThreads(); if(widget.isActive)_start(); } catch(e){if(mounted)setState((){_error='$e';_loading=false;});} }
-  void _start(){_timer?.cancel();_threadsTimer?.cancel();_timer=null;_threadsTimer=null;if(widget.isActive&&_appResumed&&_token!=null){_timer=Timer.periodic(const Duration(seconds:6),(_){if(!_busy&&!_sending)unawaited(_loadMessages());});_threadsTimer=Timer.periodic(const Duration(seconds:30),(_){if(!_sending)unawaited(_loadThreads());});}}
-  @override void didUpdateWidget(covariant AdminPCWorkChatScreen old){super.didUpdateWidget(old);if(old.sessionKey!=widget.sessionKey){_timer?.cancel();_threadsTimer?.cancel();_token=null;_threads=[];_messages=[];_selected=null;_lastId=0;_loading=true;_init();}else if(old.isActive!=widget.isActive){_start();if(widget.isActive&&_appResumed){_scrollToLatest();unawaited(_refresh());}}}
-  Future<void> _loadThreads() async {final t=_token;if(t==null)return;final rows=await widget.api.getAdminChatThreads(t);if(!mounted)return;setState((){_threads=rows;_loading=false;_error=null;});if(_selected==null&&rows.isNotEmpty)await _select(int.tryParse('${rows.first['user_id']}')??0);}
-  Future<void> _select(int id) async {if(id<=0||_token==null)return;setState((){_selected=id;_messages=[];_lastId=0;_loading=true;});await _loadMessages(initial:true);}
-  Future<void> _loadMessages({bool initial=false}) async {final t=_token, id=_selected;if(t==null||id==null||_busy)return;_busy=true;try{final result=await widget.api.getAdminChatMessages(t,id,afterId:_lastId);final rows=(result['messages'] as List? ?? const[]).whereType<Map>().map((e)=>Map<String,dynamic>.from(e)).toList();if(!mounted)return;if(rows.isNotEmpty){setState((){_messages.addAll(rows);for(final row in rows){final n=int.tryParse('${row['id']}')??0;if(n>_lastId)_lastId=n;}});_scrollToLatest();}if(initial&&mounted)setState(()=>_loading=false);}catch(e){if(mounted){setState(()=>_error='$e');if(initial)setState(()=>_loading=false);}}finally{_busy=false;}}
+  void _start(){
+    _timer?.cancel();_threadsTimer?.cancel();_timer=null;_threadsTimer=null;
+    if(widget.isActive&&_appResumed&&_token!=null){
+      _scheduleMessagePoll();
+      _threadsTimer=Timer.periodic(const Duration(seconds:45),(_){if(!_sending)unawaited(_loadThreads());});
+    }
+  }
+  void _scheduleMessagePoll(){
+    _timer?.cancel();_timer=null;
+    if(!widget.isActive||!_appResumed||_token==null)return;
+    _timer=Timer(Duration(seconds:_messagePollDelaySeconds),(){
+      if(!_busy&&!_sending){unawaited(_loadMessages());}else{_scheduleMessagePoll();}
+    });
+  }
+  String _signatureForThreads(List<Map<String,dynamic>> rows)=>rows.map((row)=>[
+    row['user_id'],row['display_name'],row['email'],row['last_message'],row['last_at'],row['unread_count']
+  ].join('|')).join('\n');
+  @override void didUpdateWidget(covariant AdminPCWorkChatScreen old){super.didUpdateWidget(old);if(old.sessionKey!=widget.sessionKey){_timer?.cancel();_threadsTimer?.cancel();_token=null;_threads=[];_messages=[];_selected=null;_lastId=0;_threadSignature='';_messagePollDelaySeconds=8;_messagePollFailures=0;_loading=true;_init();}else if(old.isActive!=widget.isActive){_start();if(widget.isActive&&_appResumed){_scrollToLatest();unawaited(_refresh());}}}
+  Future<void> _loadThreads() async {
+    final t=_token;if(t==null)return;
+    try{
+      final rows=await widget.api.getAdminChatThreads(t);if(!mounted)return;
+      final signature=_signatureForThreads(rows);
+      if(signature!=_threadSignature||_loading||_error!=null){
+        setState((){_threads=rows;_threadSignature=signature;_loading=false;_error=null;});
+      }
+      if(_selected==null&&rows.isNotEmpty)await _select(int.tryParse('${rows.first['user_id']}')??0);
+    }catch(e){if(mounted)setState(()=>_error='$e');}
+  }
+  Future<void> _select(int id) async {if(id<=0||_token==null)return;setState((){_selected=id;_messages=[];_lastId=0;_loading=true;_error=null;_messagePollDelaySeconds=8;_messagePollFailures=0;});await _loadMessages(initial:true);}
+  Future<void> _loadMessages({bool initial=false}) async {
+    final t=_token, id=_selected;
+    if(t==null||id==null||_busy)return;
+    _busy=true;
+    try{
+      final result=await widget.api.getAdminChatMessages(t,id,afterId:_lastId);
+      final rows=(result['messages'] as List? ?? const[]).whereType<Map>().map((e)=>Map<String,dynamic>.from(e)).toList();
+      if(!mounted||_selected!=id)return;
+      _messagePollFailures=0;
+      _messagePollDelaySeconds=rows.isNotEmpty?5:(_messagePollDelaySeconds+2).clamp(8,20).toInt();
+      if(rows.isNotEmpty){
+        setState(()=>_messages.addAll(rows));
+        for(final row in rows){final n=int.tryParse('${row['id']}')??0;if(n>_lastId)_lastId=n;}
+        _scrollToLatest();
+      }
+      if(_error!=null)setState(()=>_error=null);
+      if(initial&&_loading)setState(()=>_loading=false);
+    }catch(e){
+      _messagePollFailures++;
+      _messagePollDelaySeconds=min(60,10*(1<<min(_messagePollFailures-1,3))).toInt();
+      if(mounted&&_selected==id){setState(()=>_error='$e');if(initial&&_loading)setState(()=>_loading=false);}
+    }finally{
+      _busy=false;
+      if(mounted&&widget.isActive&&_appResumed){
+        if(_selected!=id){unawaited(_loadMessages(initial:true));}else{_scheduleMessagePoll();}
+      }
+    }
+  }
   Future<void> _refresh() async {try{await _loadThreads();if(_selected!=null){await _loadMessages();}}catch(_){}}
   Future<void> _send() async {final text=_message.text.trim();final t=_token;final id=_selected;if(text.isEmpty||t==null||id==null||_sending)return;setState(()=>_sending=true);try{await widget.api.sendAdminChatMessage(t,id,text);_message.clear();await _loadMessages();await _loadThreads();}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e')));}finally{if(mounted)setState(()=>_sending=false);}}
   @override void dispose(){_timer?.cancel();_threadsTimer?.cancel();WidgetsBinding.instance.removeObserver(this);_message.dispose();_scroll.dispose();super.dispose();}

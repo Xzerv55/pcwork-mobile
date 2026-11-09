@@ -52,39 +52,27 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
 
   void _scrollToLatest() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) {
-        return;
+      if (!mounted || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.hasContentDimensions) {
+        _scroll.jumpTo(position.maxScrollExtent);
       }
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      Future<void>.delayed(const Duration(milliseconds: 100), () {
-        if (mounted && _scroll.hasClients) {
-          _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        }
-      });
     });
   }
 
   @override
   void didChangeMetrics() {
-    if (widget.isActive) {
-      _scrollToLatest();
-    }
+    if (widget.isActive) _scrollToLatest();
   }
 
   Future<void> _initialize() async {
     try {
       _token = await widget.tokenProvider();
-      if (_token == null || _token!.isEmpty) {
-        throw Exception(tr('Влезте в профила си, за да използвате чата.', 'Sign in to use the chat.'));
-      }
+      if (_token == null || _token!.isEmpty) throw Exception(tr('Влезте в профила си, за да използвате чата.', 'Sign in to use the chat.'));
       await _loadMessages();
-      if (widget.isActive) {
-        _startPolling();
-      }
+      if (widget.isActive) _startPolling();
     } catch (e) {
-      if (mounted) {
-        setState(() { _error = '$e'; _loading = false; });
-      }
+      if (mounted) setState(() { _error = '$e'; _loading = false; });
     }
   }
 
@@ -93,11 +81,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     _pollTimer = null;
     if (widget.isActive && _appResumed && _token != null) {
       _pollTimer = Timer(Duration(seconds: _pollDelaySeconds), () {
-        if (!_loadingMessages && !_sending) {
-          unawaited(_loadMessages(silent: true));
-        } else {
-          _startPolling();
-        }
+        if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true));
+        else _startPolling();
       });
     }
   }
@@ -105,9 +90,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final resumed = state == AppLifecycleState.resumed;
-    if (_appResumed == resumed) {
-      return;
-    }
+    if (_appResumed == resumed) return;
     _appResumed = resumed;
     if (!resumed) {
       _pollTimer?.cancel();
@@ -133,31 +116,21 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
         unawaited(_initialize());
       } else {
         _startPolling();
-        if (widget.isActive) {
-          unawaited(_loadMessages(silent: true, forceBottom: true));
-        }
+        if (widget.isActive) unawaited(_loadMessages(silent: true, forceBottom: true));
       }
     }
   }
 
   Future<void> _loadMessages({bool silent = false, bool forceBottom = false}) async {
     final token = _token;
-    if (token == null || _loadingMessages) {
-      return;
-    }
+    if (token == null || _loadingMessages) return;
     _loadingMessages = true;
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-      if (_lastId == 0) {
-        _hasOlder = result['has_more'] == true;
-      }
-      if (rows.isNotEmpty && _oldestId == 0) {
-        _oldestId = int.tryParse('${rows.first['id']}') ?? 0;
-      }
-      if (!mounted) {
-        return;
-      }
+      if (_lastId == 0) _hasOlder = result['has_more'] == true;
+      if (rows.isNotEmpty && _oldestId == 0) _oldestId = int.tryParse('${rows.first['id']}') ?? 0;
+      if (!mounted) return;
       _pollFailures = 0;
       _pollDelaySeconds = rows.isNotEmpty ? 5 : (_pollDelaySeconds + 2).clamp(8, 20).toInt();
       if (rows.isNotEmpty) {
@@ -172,106 +145,69 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
       } else if (mounted && _error != null) {
         setState(() => _error = null);
       }
-      if (forceBottom) {
-        _scrollToLatest();
-      }
-      if (mounted && _loading) {
-        setState(() => _loading = false);
-      }
+      if (forceBottom) _scrollToLatest();
+      if (mounted && _loading) setState(() => _loading = false);
     } catch (e) {
       _pollFailures++;
       _pollDelaySeconds = min(60, 10 * (1 << min(_pollFailures - 1, 3))).toInt();
-      if (mounted) {
-        setState(() { _error = '$e'; _loading = false; });
-      }
+      if (mounted) setState(() { _error = '$e'; _loading = false; });
     } finally {
       _loadingMessages = false;
-      if (mounted && widget.isActive && _appResumed && _token != null) {
-          _startPolling();
-        }
+      if (mounted && widget.isActive && _appResumed && _token != null) _startPolling();
     }
   }
 
   Future<void> _loadOlder() async {
-    if (_loadingOlder || !_hasOlder || _oldestId <= 0 || _token == null) {
-      return;
-    }
+    if (_loadingOlder || !_hasOlder || _oldestId <= 0 || _token == null) return;
     _loadingOlder = true;
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
     final oldExtent = _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0;
     final oldOffset = _scroll.hasClients ? _scroll.offset : 0.0;
     try {
       final result = await widget.api.getChatMessages(_token!, beforeId: _oldestId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       if (rows.isNotEmpty) {
         setState(() { _messages.insertAll(0, rows); _oldestId = int.tryParse('${rows.first['id']}') ?? _oldestId; _hasOlder = result['has_more'] == true; });
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) {
-              _scroll.jumpTo(_scroll.position.maxScrollExtent - oldExtent + oldOffset);
-            }
+          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent - oldExtent + oldOffset);
         });
       } else {
         setState(() => _hasOlder = false);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешно зареждане на по-стари съобщения:', 'Could not load older messages:')} $e')));
-      }
-    } finally {
-      _loadingOlder = false;
-      if (mounted) {
-        setState(() {});
-      }
-    }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешно зареждане на по-стари съобщения:', 'Could not load older messages:')} $e')));
+    } finally { _loadingOlder = false; if (mounted) setState(() {}); }
   }
 
   Future<void> _send({String? imageBase64, String? imageMime}) async {
     final text = _message.text.trim();
-    if (_sending || (text.isEmpty && imageBase64 == null)) {
-      return;
-    }
+    if (_sending || (text.isEmpty && imageBase64 == null)) return;
     final token = _token;
-    if (token == null) {
-      return;
-    }
+    if (token == null) return;
     setState(() => _sending = true);
     try {
       await widget.api.sendChatMessage(token, message: text, imageBase64: imageBase64, imageMime: imageMime);
       _message.clear();
       await _loadMessages(silent: true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Съобщението не беше изпратено:', 'Message was not sent:')} $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Съобщението не беше изпратено:', 'Message was not sent:')} $e')));
     } finally {
-      if (mounted) {
-        setState(() => _sending = false);
-      }
+      if (mounted) setState(() => _sending = false);
     }
   }
 
   Future<void> _pickImage() async {
     try {
       final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 78, maxWidth: 1600);
-      if (file == null) {
-        return;
-      }
+      if (file == null) return;
       final bytes = await File(file.path).readAsBytes();
-      if (bytes.length > 5 * 1024 * 1024) {
-        throw Exception(tr('Изображението трябва да е до 5 MB.', 'Image must be 5 MB or smaller.'));
-      }
+      if (bytes.length > 5 * 1024 * 1024) throw Exception(tr('Изображението трябва да е до 5 MB.', 'Image must be 5 MB or smaller.'));
       final ext = file.name.toLowerCase();
       final mime = ext.endsWith('.png') ? 'image/png' : ext.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
       await _send(imageBase64: base64Encode(bytes), imageMime: mime);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -318,9 +254,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
                             child: GestureDetector(
                               onLongPress: text.isEmpty ? null : () async {
                                 await Clipboard.setData(ClipboardData(text: text));
-                                if (!context.mounted) {
-                                  return;
-                                }
+                                if (!context.mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Съобщението е копирано.', 'Message copied.')), duration: const Duration(seconds: 1)));
                               },
                               child: Container(
@@ -334,7 +268,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
                               ),
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 if (text.isNotEmpty) Text(text, style: TextStyle(color: mine || dark ? Colors.white : const Color(0xFF172033))),
-                                if (image.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(image, width: 220, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Text(tr('Снимката не може да се зареди.', 'Image could not be loaded.'))))),
+                                if (image.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(image, width: 220, cacheWidth: 440, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Text(tr('Снимката не може да се зареди.', 'Image could not be loaded.'))))),
                                 const SizedBox(height: 4),
                                 Text((row['created_at'] ?? '').toString(), style: TextStyle(fontSize: 10, color: mine || dark ? Colors.white60 : Colors.black54)),
                               ]),
@@ -362,9 +296,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
               textInputAction: TextInputAction.send,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(isDense: true, hintText: tr('Напиши съобщение…', 'Write a message…'), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-              onChanged: (_) { if (mounted) {
-      setState(() {});
-    } },
+              onChanged: (_) { if (mounted) setState(() {}); },
               onSubmitted: (_) => _send(),
             )),
             const SizedBox(width: 6),
