@@ -71,7 +71,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 107;
+  static const int _currentBuildNumber = 110;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1184,11 +1184,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Widget _home() => ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 28), children: [
     Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDarkTheme ? null : Colors.white,
         gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]) : null,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: isDarkTheme ? const Color(0xFF2B7180).withValues(alpha: .55) : const Color(0xFF26364A).withValues(alpha: .45)),
         boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 24, spreadRadius: -9, offset: const Offset(0, 9))],
       ),
@@ -1196,16 +1196,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
-            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
           ])),
           Icon(Icons.auto_awesome_rounded, color: isDarkTheme ? const Color(0xFFB49BFF) : const Color(0xFF7952C7), size: 23),
         ]),
-        const SizedBox(height: 23),
-        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 25, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
-        const SizedBox(height: 9),
+        const SizedBox(height: 14),
+        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 21, height: 1.14, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+        const SizedBox(height: 6),
         Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: TextStyle(color: isDarkTheme ? const Color(0xFFC3D1E0) : const Color(0xFF68778B), fontSize: 13)),
-        const SizedBox(height: 20),
-        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        const SizedBox(height: 13),
+        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42), padding: const EdgeInsets.symmetric(vertical: 9)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],

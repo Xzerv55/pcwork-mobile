@@ -127,19 +127,16 @@ class _BeachGameScreenState extends State<BeachGameScreen> with WidgetsBindingOb
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(builder: (context, constraints) {
-          // Keep the artwork and its interactive hit areas at the original
-          // portrait ratio on phones with different screen proportions.
-          final double gameWidth = min(constraints.maxWidth, constraints.maxHeight * (941 / 1672)).toDouble();
-          final gameHeight = gameWidth * (1672 / 941);
-          return Center(
-            child: SizedBox(
-              width: gameWidth,
-              height: gameHeight,
+          // Use the complete safe viewport to avoid letterbox space between
+          // the game and the surrounding app interface.
+          return SizedBox(
+              width: constraints.maxWidth,
+              height: constraints.maxHeight,
               child: LayoutBuilder(builder: (context, gameConstraints) {
                 final w = gameConstraints.maxWidth;
                 final h = gameConstraints.maxHeight;
                 return Stack(fit: StackFit.expand, children: [
-            Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill),
+            Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill, width: w, height: h),
             // The artwork's wooden back button is made functional.
             Positioned(left: w * .015, top: h * .008, width: w * .145, height: h * .075,
               child: Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(40), onTap: () => Navigator.of(context).maybePop()))),
@@ -159,13 +156,45 @@ class _BeachGameScreenState extends State<BeachGameScreen> with WidgetsBindingOb
                 )),
               ),
             // Live score and timer replace the static values printed in the artwork.
-            Positioned(left: w * .265, top: h * .884, width: w * .205, height: h * .075,
-              child: Center(child: Text('$_score', style: TextStyle(fontSize: min(w * .085, 34), fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])))),
-            Positioned(left: w * .535, top: h * .884, width: w * .205, height: h * .075,
-              child: Center(child: Text('$_seconds', style: TextStyle(fontSize: min(w * .085, 34), fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])))),
-            if (_running) Positioned(right: 12, top: 10, child: Material(
-              color: const Color(0xDDFFF3D5), shape: const CircleBorder(), elevation: 4,
-              child: IconButton(onPressed: _togglePause, icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded), tooltip: tr('Пауза', 'Pause')),
+            Positioned(left: w * .265, top: h * .895, width: w * .205, height: h * .05,
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF9A4B12), Color(0xFF6D2F0B)]),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFD16A), width: 1.5),
+                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 5, offset: Offset(0, 2))],
+                ),
+                child: Text('$_score', style: TextStyle(fontSize: min(w * .075, 30), height: 1, fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])),
+              )),
+            Positioned(left: w * .535, top: h * .895, width: w * .205, height: h * .05,
+              child: Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF9A4B12), Color(0xFF6D2F0B)]),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFD16A), width: 1.5),
+                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 5, offset: Offset(0, 2))],
+                ),
+                child: Text('$_seconds', style: TextStyle(fontSize: min(w * .075, 30), height: 1, fontWeight: FontWeight.w900, color: const Color(0xFFFFD52A), shadows: const [Shadow(color: Colors.black87, blurRadius: 4)])),
+              )),
+            if (_running) Positioned(right: w * .035, top: h * .018, child: Material(
+              elevation: 6,
+              shape: const CircleBorder(),
+              color: Colors.transparent,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _togglePause,
+                child: Ink(
+                  width: min(w * .115, 48), height: min(w * .115, 48),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFE7A8), Color(0xFFD58A35)]),
+                    border: Border.all(color: const Color(0xFF7A3B13), width: 2.2),
+                  ),
+                  child: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded, color: const Color(0xFF63300F), size: 29),
+                ),
+              ),
             )),
             if (_paused || _finished || !_running)
               Positioned.fill(child: Container(color: const Color(0x660A2030), child: Center(child: Card(
@@ -181,7 +210,6 @@ class _BeachGameScreenState extends State<BeachGameScreen> with WidgetsBindingOb
               )))),
                 ]);
               }),
-            ),
           );
         }),
       ),

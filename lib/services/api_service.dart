@@ -141,7 +141,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '107',
+      'client_build': '110',
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
@@ -427,6 +427,42 @@ class ApiService {
   }
 
 
+  Future<Map<String, dynamic>> getFinancialReport(String token, {String? from, String? to}) async {
+    final query = <String, String>{};
+    if (from != null) query['from'] = from;
+    if (to != null) query['to'] = to;
+    final uri = _uri('financial/report').replace(queryParameters: query.isEmpty ? null : query);
+    final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 30));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
+  }
+
+  Future<List<Map<String, dynamic>>> getFinancialExpenses(String token, {String? from, String? to, int page = 1, int perPage = 50}) async {
+    final query = <String, String>{'page': '$page', 'per_page': '$perPage'};
+    if (from != null) query['from'] = from;
+    if (to != null) query['to'] = to;
+    final response = await _httpClient.get(_uri('financial/expenses').replace(queryParameters: query), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<Map<String, dynamic>> createFinancialExpense(String token, Map<String, dynamic> expense) async {
+    final response = await _httpClient.post(_uri('financial/expenses'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(expense)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    return decoded is Map && decoded['data'] is Map ? Map<String, dynamic>.from(decoded['data']) : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> updateFinancialExpense(String token, int id, Map<String, dynamic> changes) async {
+    final response = await _httpClient.patch(_uri('financial/expenses/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(changes)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    return decoded is Map && decoded['data'] is Map ? Map<String, dynamic>.from(decoded['data']) : <String, dynamic>{};
+  }
+
   Future<List<Map<String, dynamic>>> getStockItems(String token) async {
     final response = await _httpClient.get(_uri('stock'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
     final decoded = _decodeResponse(response);
@@ -445,6 +481,17 @@ class ApiService {
     final response = await _httpClient.patch(_uri('stock/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(item)).timeout(const Duration(seconds: 20));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<List<Map<String, dynamic>>> getStockMovements(String token, {int? itemId, int? repairId, int page = 1, int perPage = 50}) async {
+    final params = <String, String>{'page': '$page', 'per_page': '${perPage.clamp(1, 100)}'};
+    if (itemId != null && itemId > 0) params['item_id'] = '$itemId';
+    if (repairId != null && repairId > 0) params['repair_id'] = '$repairId';
+    final response = await _httpClient.get(_uri('stock/movements').replace(queryParameters: params), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
   }
 
   Future<void> moveStockItem(String token, int id, {required String type, required double quantity, String note = '', int? repairId}) async {
@@ -489,6 +536,62 @@ class ApiService {
       final message = decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}';
       throw Exception(message);
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getOverdueRepairs(String token, {int page = 1, int perPage = 50}) async {
+    final uri = _uri('staff/repairs/overdue').replace(queryParameters: {'page': '$page', 'per_page': '$perPage'});
+    final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<List<Map<String, dynamic>>> getStaffTasks(String token, {String status = 'all', int assignedUserId = 0, bool overdueOnly = false, int page = 1, int perPage = 50}) async {
+    final params = <String, String>{'page': '$page', 'per_page': '$perPage'};
+    if (status != 'all') params['status'] = status;
+    if (assignedUserId > 0) params['assigned_user_id'] = '$assignedUserId';
+    if (overdueOnly) params['overdue'] = '1';
+    final uri = _uri('staff/tasks').replace(queryParameters: params);
+    final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<List<Map<String, dynamic>>> getRepairTasks(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId/tasks'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<Map<String, dynamic>> createRepairTask(String token, int repairId, Map<String, dynamic> task) async {
+    final response = await _httpClient.post(_uri('repairs/$repairId/tasks'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(task)).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор при създаване на задачата.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> updateRepairTask(String token, int taskId, Map<String, dynamic> changes) async {
+    final response = await _httpClient.patch(_uri('tasks/$taskId'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(changes)).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор при обновяване на задачата.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getRepairTaskHistory(String token, int taskId) async {
+    final response = await _httpClient.get(_uri('tasks/$taskId/history'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
   }
 
   Future<Map<String, dynamic>> getStaffOverview(String token) async {

@@ -95,7 +95,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
       final candidates = data.techniciansByLocation[repair.locationCode] ?? [];
       final now = DateTime.now();
       final dueDate = _due(repair);
-      final availabilityAt = dueDate == null ? now : DateTime(dueDate.year, dueDate.month, dueDate.day, now.hour, now.minute);
+      final availabilityAt = dueDate ?? now;
       final eligible = candidates.where((t) => _techId(t) > 0 && _isAvailable(_techId(t), data.schedules, availabilityAt)).toList();
       if (eligible.isEmpty) {
         recommendations.add(_Recommendation(repair, null, null, null));
@@ -133,10 +133,12 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
   }
 
   Future<void> _editSchedule(int technicianId, String technicianName, Map<String, dynamic>? current) async {
-    final days = ((current?['working_days'] as List?) ?? [1, 2, 3, 4, 5]).map((e) => int.tryParse(e.toString()) ?? 0).where((e) => e > 0).toSet();
+    final configured = current?['schedule_configured'] != false;
+    final configuredDays = configured ? current?['working_days'] as List? : null;
+    final days = (configuredDays ?? [1, 2, 3, 4, 5]).map((e) => int.tryParse(e.toString()) ?? 0).where((e) => e > 0).toSet();
     final absences = TextEditingController(text: ((current?['absences'] as List?) ?? []).join(', '));
-    final start = TextEditingController(text: (current?['start_time'] ?? '09:00').toString());
-    final end = TextEditingController(text: (current?['end_time'] ?? '18:00').toString());
+    final start = TextEditingController(text: ((configured ? current?['start_time'] : null) ?? '09:00').toString());
+    final end = TextEditingController(text: ((configured ? current?['end_time'] : null) ?? '18:00').toString());
     const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
     final result = await showDialog<Map<String, dynamic>>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, refresh) => AlertDialog(
       title: Text(tr('График: $technicianName', 'Schedule: $technicianName')),

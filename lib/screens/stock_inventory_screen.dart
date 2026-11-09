@@ -54,6 +54,36 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
     for (final c in [sku,name,location,qty,minimum,cost,unit,description]) { c.dispose(); }
   }
 
+  Future<void> _history(Map<String, dynamic> item) async {
+    final future = widget.api.getStockMovements(widget.token, itemId: (item['id'] as num).toInt());
+    await showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(tr('История: ${item['name']}', 'History: ${item['name']}')),
+      content: SizedBox(width: 520, height: 420, child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return Center(child: Text('${tr('Грешка:', 'Error:')} ${snap.error}'));
+          final rows = snap.data ?? [];
+          if (rows.isEmpty) return Center(child: Text(tr('Няма записани движения.', 'No movements recorded.')));
+          return ListView.separated(itemCount: rows.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (context, index) {
+            final row = rows[index];
+            final delta = (row['quantity_delta'] as num?)?.toDouble() ?? 0;
+            final isIn = delta >= 0;
+            final cost = (row['total_cost'] as num?)?.toDouble() ?? 0;
+            final repair = row['repair_number']?.toString();
+            return ListTile(
+              dense: true,
+              leading: Icon(isIn ? Icons.call_received : Icons.call_made, color: isIn ? Colors.green : Colors.orange),
+              title: Text('${isIn ? '+' : ''}$delta ${row['unit'] ?? item['unit'] ?? ''} · ${cost.toStringAsFixed(2)}'),
+              subtitle: Text('${row['created_at'] ?? ''} · ${row['location_code'] ?? ''}${repair != null && repair.isNotEmpty ? '\n${tr('Ремонт', 'Repair')}: $repair' : ''}${(row['note'] ?? '').toString().isNotEmpty ? '\n${row['note']}' : ''}'),
+            );
+          });
+        },
+      )),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Затвори', 'Close')))],
+    ));
+  }
+
   Future<void> _movement(Map<String, dynamic> item, String type) async {
     final amount = TextEditingController(); final note = TextEditingController(); final repairId = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
@@ -96,10 +126,12 @@ class _StockInventoryScreenState extends State<StockInventoryScreen> {
           trailing: PopupMenuButton<String>(onSelected: (v) {
             if (v == 'in' || v == 'out') {
               _movement(item, v);
+            } else if (v == 'history') {
+              _history(item);
             } else {
               _edit(item);
             }
-          }, itemBuilder: (_) => [PopupMenuItem(value: 'in', child: Text(tr('Зареди', 'Receive'))), PopupMenuItem(value: 'out', child: Text(tr('Изпиши', 'Issue'))), PopupMenuItem(value: 'edit', child: Text(tr('Редактирай', 'Edit')))]),
+          }, itemBuilder: (_) => [PopupMenuItem(value: 'in', child: Text(tr('Зареди', 'Receive'))), PopupMenuItem(value: 'out', child: Text(tr('Изпиши', 'Issue'))), PopupMenuItem(value: 'history', child: Text(tr('История на движенията', 'Movement history'))), PopupMenuItem(value: 'edit', child: Text(tr('Редактирай', 'Edit')))]),
           onTap: () => _edit(item),
         ))),
       ]));

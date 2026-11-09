@@ -7,6 +7,8 @@ import 'technician_dispatch_screen.dart';
 import 'staff_management_screen.dart';
 import 'repair_statistics_screen.dart';
 import 'stock_inventory_screen.dart';
+import 'task_management_screen.dart';
+import 'financial_management_screen.dart';
 
 class StaffDashboardScreen extends StatefulWidget {
   const StaffDashboardScreen({super.key, required this.api, required this.token, required this.english});
@@ -25,6 +27,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   String priorityFilter = 'all';
   String technicianFilter = 'all';
   late Future<List<Repair>> future;
+  late Future<List<Map<String, dynamic>>> overdueFuture;
   bool busy = false;
   String tr(String bg, String en) => widget.english ? en : bg;
   static const statuses = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
@@ -34,10 +37,10 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     return (widget.english ? en[s] : bg[s]) ?? s;
   }
   @override
-  void initState() { super.initState(); future = widget.api.getRepairs(widget.token); }
+  void initState() { super.initState(); future = widget.api.getRepairs(widget.token); overdueFuture = widget.api.getOverdueRepairs(widget.token); }
   @override
   void dispose() { search.dispose(); super.dispose(); }
-  void reload() => setState(() => future = widget.api.getRepairs(widget.token, forceRefresh: true));
+  void reload() => setState(() { future = widget.api.getRepairs(widget.token, forceRefresh: true); overdueFuture = widget.api.getOverdueRepairs(widget.token); });
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -71,6 +74,20 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english),
           )),
           icon: const Icon(Icons.inventory_2_outlined),
+        ),
+        IconButton(
+          tooltip: tr('Финансови отчети', 'Financial reports'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => FinancialManagementScreen(api: widget.api, token: widget.token, english: widget.english),
+          )),
+          icon: const Icon(Icons.account_balance_wallet_outlined),
+        ),
+        IconButton(
+          tooltip: tr('Сервизни задачи', 'Service tasks'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english),
+          )),
+          icon: const Icon(Icons.task_alt_outlined),
         ),
         IconButton(
           tooltip: tr('Екип и работно време', 'Team & attendance'),
@@ -152,8 +169,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
         return RefreshIndicator(
           onRefresh: () async {
             final f = widget.api.getRepairs(widget.token, forceRefresh: true);
-            setState(() => future = f);
-            await f;
+            final overdue = widget.api.getOverdueRepairs(widget.token);
+            setState(() { future = f; overdueFuture = overdue; });
+            await Future.wait([f, overdue]);
           },
           child: ListView(
             padding: const EdgeInsets.all(16),
@@ -171,6 +189,34 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
               ),
               const SizedBox(height: 8),
               _buildWorkloadOverview(all, locationNames),
+              const SizedBox(height: 10),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: overdueFuture,
+                builder: (context, overdueSnap) {
+                  if (overdueSnap.connectionState == ConnectionState.waiting) return const SizedBox.shrink();
+                  if (overdueSnap.hasError) return Text(tr('Неуспешно зареждане на сървърния списък с просрочени ремонти.', 'Could not load server overdue repairs.'));
+                  final overdueRows = overdueSnap.data ?? [];
+                  if (overdueRows.isEmpty) return const SizedBox.shrink();
+                  return Card(
+                    child: ExpansionTile(
+                      leading: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                      title: Text(tr('Просрочени ремонти от сървъра (${overdueRows.length})', 'Server overdue repairs (${overdueRows.length})')),
+                      children: overdueRows.map((row) {
+                        final number = (row['repair_number'] ?? '').toString();
+                        final model = '${row['device_type'] ?? ''} ${row['device_model'] ?? ''}'.trim();
+                        final due = (row['due_at'] ?? '').toString();
+                        return ListTile(
+                          dense: true,
+                          title: Text(number.isEmpty ? tr('Ремонт', 'Repair') : '№ $number'),
+                          subtitle: Text('$model\n${tr('Срок:', 'Due:')} $due'),
+                          isThreeLine: true,
+                          trailing: const Icon(Icons.schedule, color: Colors.red),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 14),
               TextField(
                 controller: search,
