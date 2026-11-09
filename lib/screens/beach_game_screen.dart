@@ -136,7 +136,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> with WidgetsBindingOb
                 final w = gameConstraints.maxWidth;
                 final h = gameConstraints.maxHeight;
                 return Stack(fit: StackFit.expand, children: [
-            Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill, width: w, height: h),
+            Image.asset('assets/images/beach_game_background_portrait.webp', fit: BoxFit.fill, width: w, height: h),
             // The artwork's wooden back button is made functional.
             Positioned(left: w * .015, top: h * .008, width: w * .145, height: h * .075,
               child: Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(40), onTap: () => Navigator.of(context).maybePop()))),
