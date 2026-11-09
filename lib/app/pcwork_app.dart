@@ -25,6 +25,7 @@ import '../screens/visitor_analytics_screen.dart';
 import '../screens/device_monitor_screen.dart';
 import '../screens/internal_service_assistant_screen.dart';
 import '../screens/beach_game_screen.dart';
+import '../screens/booking_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -71,7 +72,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 110;
+  static const int _currentBuildNumber = 115;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -128,9 +129,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _initialize() async {
     await _loadSettings();
-    // Preload Bookly configuration so the booking action is immediate when
-    // the user reaches the reservation tab later in the session.
-    unawaited(api.getBookingUrl().catchError((_) => null));
     await _loadNotificationHistory();
     if (!mounted) return;
     // Do not make the server health check a startup dependency.
@@ -1619,27 +1617,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Widget _detailRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 125, child: Text(label, style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54))), Expanded(child: Text(value.isEmpty ? '—' : value))]));
 
-  Widget _booking() => ListView(padding: const EdgeInsets.all(20), children: [
-    Text(tr('Записване на час за сервиз', 'Book a service appointment'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
-    Text(tr('Първо изберете сервизен обект. Ще видите всички 9 обекта от мрежата на PCWork. Обектите с предстоящо откриване са обозначени и не могат да бъдат избирани за посещение.', 'First choose a service location. All 9 PCWork locations are listed. Upcoming locations are marked and cannot yet be selected for visits.')),
-    if (selectedLocation != null) ...[
-      const SizedBox(height: 12),
-      Card(child: ListTile(
-        leading: const Icon(Icons.location_on, color: cyan),
-        title: Text(selectedLocation!.name),
-        subtitle: Text(selectedLocation!.address),
-        trailing: IconButton(
-          tooltip: tr('Промени', 'Change'),
-          onPressed: _showLocations,
-          icon: const Icon(Icons.edit_location_alt_outlined),
-        ),
-      )),
-    ],
-    const SizedBox(height: 16), FilledButton.icon(onPressed: _showLocations, icon: const Icon(Icons.location_on_outlined), label: Text(tr('Избери сервизен обект', 'Choose a location'))),
-    const SizedBox(height: 10), FilledButton.icon(onPressed: selectedLocation == null ? null : _openBookly, icon: const Icon(Icons.open_in_browser), label: Text(tr('Продължи към резервация', 'Continue to booking'))),
-    if (selectedLocation == null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('Изборът на обект е задължителен, за да продължите.', 'Selecting a location is required to continue.'), style: const TextStyle(color: Colors.orangeAccent, fontSize: 12))),
-    const SizedBox(height: 12), Text(tr('Резервацията се довършва в защитената Bookly форма на сайта.', 'The reservation is completed in the secure Bookly form on the website.')),
-  ]);
+  Widget _booking() => BookingScreen(
+    api: api,
+    tokenProvider: () => auth.token,
+    location: selectedLocation,
+    onChooseLocation: _showLocations,
+    english: english,
+  );
 
   Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
     CircleAvatar(radius: 38, child: Icon(signedInUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
@@ -2078,14 +2062,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   );
 
   Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
-
-  Future<void> _openBookly() async {
-    try {
-      final uri = await api.getBookingUrl();
-      if (uri == null) { _message(tr('Bookly не е конфигуриран. Проверете настройките в WordPress → PCWork настройки → Bookly.', 'Bookly is not configured. Check WordPress → PCWork Settings → Bookly.')); return; }
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) _message(tr('Страницата за резервации не може да бъде отворена.', 'Could not open the booking page.'));
-    } catch (e) { _message('$e'); }
-  }
 
   Future<void> _openWebsite(String url) async {
     final uri = Uri.tryParse(url);

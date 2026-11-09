@@ -55,8 +55,6 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  static Uri? _cachedBookingUri;
-  static DateTime? _bookingCacheUntil;
   ApiService({required this.baseUrl, this.userId = 0});
   final String baseUrl;
   final int userId;
@@ -142,7 +140,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '113',
+      'client_build': '115',
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
@@ -900,8 +898,11 @@ class ApiService {
         : <Map<String, dynamic>>[];
   }
 
-  Future<Map<String, dynamic>> getAdminChatMessages(String token, int userId, {int afterId = 0}) async {
-    final uri = _uri('chat/admin/messages').replace(queryParameters: {'user_id': '$userId', 'after_id': '$afterId'});
+  Future<Map<String, dynamic>> getAdminChatMessages(String token, int userId, {int afterId = 0, int beforeId = 0}) async {
+    final params = <String, String>{'user_id': '$userId'};
+    if (afterId > 0) params['after_id'] = '$afterId';
+    if (beforeId > 0) params['before_id'] = '$beforeId';
+    final uri = _uri('chat/admin/messages').replace(queryParameters: params);
     final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
@@ -943,22 +944,56 @@ class ApiService {
     }
   }
 
-  Future<Uri?> getBookingUrl() async {
-    final now = DateTime.now();
-    if (_bookingCacheUntil != null && now.isBefore(_bookingCacheUntil!)) return _cachedBookingUri;
-    final response = await _httpClient.get(_uri('booking/config')).timeout(const Duration(seconds: 7));
-    if (response.statusCode != 200) return null;
+  Future<Map<String, dynamic>> getBookingConfig() async {
+    final response = await _httpClient.get(_uri('booking/config'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 10));
     final decoded = _decodeResponse(response);
-    if (decoded is! Map) return null;
-    final data = decoded['data'] is Map ? decoded['data'] as Map : decoded;
-    final enabled = data['enabled'] ?? data['active'] ?? data['bookly_enabled'];
-    final raw = data['booking_url'] ?? data['url'] ?? data['page_url'];
-    if (enabled == false || raw is! String || raw.isEmpty) return null;
-    final uri = Uri.tryParse(raw);
-    _cachedBookingUri = uri != null && (uri.scheme == 'https' || uri.scheme == 'http') ? uri : null;
-    _bookingCacheUntil = now.add(const Duration(minutes: 5));
-    return _cachedBookingUri;
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? Map<String, dynamic>.from(decoded['data']) : Map<String, dynamic>.from(decoded as Map);
+    return data;
   }
+
+  Future<List<Map<String, dynamic>>> getBookingServices() async {
+    final response = await _httpClient.get(_uri('booking/services'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 10));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] as Map : decoded as Map;
+    final rows = data['services'];
+    return rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> getBookingSlots({required String date, required String locationCode, required int serviceId}) async {
+    final uri = _uri('booking/slots').replace(queryParameters: {'date': date, 'location': locationCode, 'service_id': '$serviceId'});
+    final response = await _httpClient.get(uri, headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] as Map : decoded as Map;
+    final rows = data['slots'];
+    return rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> createBooking(String token, Map<String, dynamic> booking) async {
+    final response = await _httpClient.post(_uri('booking/bookings'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode(booking)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 201 && response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] as Map : decoded as Map;
+    return Map<String, dynamic>.from(data['booking'] is Map ? data['booking'] as Map : data);
+  }
+
+  Future<List<Map<String, dynamic>>> getMyBookings(String token) async {
+    final response = await _httpClient.get(_uri('booking/bookings'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] as Map : decoded as Map;
+    final rows = data['bookings'];
+    return rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<void> cancelBooking(String token, int id) async {
+    final response = await _httpClient.patch(_uri('booking/bookings/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'status': 'cancelled'})).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+  }
+
 }
 
 class ServiceLocation {
