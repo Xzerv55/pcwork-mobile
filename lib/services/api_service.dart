@@ -141,7 +141,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '105',
+      'client_build': '106',
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
@@ -730,9 +730,12 @@ class ApiService {
   }
 
 
-  Future<Map<String, dynamic>> getChatMessages(String token, {int afterId = 0}) async {
+  Future<Map<String, dynamic>> getChatMessages(String token, {int afterId = 0, int beforeId = 0}) async {
+    final params = <String, String>{};
+    if (afterId > 0) params['after_id'] = '$afterId';
+    if (beforeId > 0) params['before_id'] = '$beforeId';
     final response = await _httpClient.get(
-      _uri('chat/messages').replace(queryParameters: {'after_id': '$afterId'}),
+      _uri('chat/messages').replace(queryParameters: params),
       headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
     ).timeout(const Duration(seconds: 15));
     final decoded = _decodeResponse(response);
