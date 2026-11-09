@@ -31,10 +31,10 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
     final now = DateTime.now();
     month = DateTime(now.year, now.month);
     selectedDay = _day(now);
-    future = widget.api.getRepairs(widget.token);
+    future = widget.api.getRepairs(widget.token, forceRefresh: true);
   }
 
-  void _reload() => setState(() => future = widget.api.getRepairs(widget.token));
+  void _reload() => setState(() => future = widget.api.getRepairs(widget.token, forceRefresh: true));
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -64,7 +64,7 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
         }
 
         return RefreshIndicator(
-          onRefresh: () async { final request = widget.api.getRepairs(widget.token); setState(() => future = request); await request; },
+          onRefresh: () async { final request = widget.api.getRepairs(widget.token, forceRefresh: true); setState(() => future = request); await request; },
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -248,7 +248,7 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
         dueAt: '${_dateKey(due)} ${due.hour.toString().padLeft(2, '0')}:${due.minute.toString().padLeft(2, '0')}:00',
       );
       if (!mounted) return;
-      setState(() { selectedDay = _day(due); month = DateTime(due.year, due.month); showUnscheduled = false; future = widget.api.getRepairs(widget.token); });
+      setState(() { selectedDay = _day(due); month = DateTime(due.year, due.month); showUnscheduled = false; future = widget.api.getRepairs(widget.token, forceRefresh: true); });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Графикът е запазен.', 'Schedule saved.'))));
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Грешка при запис:', 'Could not save schedule:')} $error')));

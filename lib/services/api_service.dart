@@ -42,6 +42,12 @@ class _TimedShopCache {
   final List<Map<String, dynamic>> rows;
 }
 
+class _TimedRepairListCache {
+  const _TimedRepairListCache(this.expiresAt, this.rows);
+  final DateTime expiresAt;
+  final List<Repair> rows;
+}
+
 class _TimedRepairCache {
   const _TimedRepairCache(this.expiresAt, this.repair);
   final DateTime expiresAt;
@@ -60,7 +66,10 @@ class ApiService {
   static final Map<String, _TimedShopCache> _shopCache = <String, _TimedShopCache>{};
   static final Map<String, _TimedRepairCache> _repairDetailCache = <String, _TimedRepairCache>{};
   static final Map<String, _TimedShopCache> _customerHistoryCache = <String, _TimedShopCache>{};
+  static final Map<String, Future<List<Map<String, dynamic>>>> _shopOrdersInFlight = <String, Future<List<Map<String, dynamic>>>>{};
   static final Map<String, Future<List<Map<String, dynamic>>>> _customerHistoryInFlight = <String, Future<List<Map<String, dynamic>>>>{};
+  static final Map<String, _TimedRepairListCache> _repairsListCache = <String, _TimedRepairListCache>{};
+  static final Map<String, Future<List<Repair>>> _repairsInFlight = <String, Future<List<Repair>>>{};
 
   List<Map<String, dynamic>> _copyShopRows(List<Map<String, dynamic>> rows) =>
       rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
@@ -130,7 +139,16 @@ class ApiService {
   /// Public release manifest configured by a PCWork administrator in WordPress.
   /// Only HTTPS APK links are accepted by the app before they are opened.
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
-    final response = await _httpClient.get(_uri('app/update'), headers: const {'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+    final updateUri = _uri('app/update').replace(queryParameters: {
+      ..._uri('app/update').queryParameters,
+      'client_build': '99',
+      'ts': DateTime.now().millisecondsSinceEpoch.toString(),
+    });
+    final response = await _httpClient.get(updateUri, headers: const {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache, no-store, max-age=0',
+      'Pragma': 'no-cache',
+    }).timeout(const Duration(seconds: 12));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
     final data = decoded is Map ? (decoded['data'] ?? decoded) : null;
@@ -212,15 +230,28 @@ class ApiService {
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
     if (data is! Map) throw Exception('Невалиден отговор при създаване на поръчка.');
+    _shopCache.remove('${baseUrl.trim()}:orders:${_scope(token)}');
     return Map<String, dynamic>.from(data);
   }
 
-  Future<List<Map<String, dynamic>>> getShopOrders(String token) async {
-    final response = await _httpClient.get(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 12));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
-    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  Future<List<Map<String, dynamic>>> getShopOrders(String token, {bool forceRefresh = false}) async {
+    final cacheKey = '${baseUrl.trim()}:orders:${_scope(token)}';
+    final cached = _shopCache[cacheKey];
+    if (!forceRefresh && cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
+    final pending = _shopOrdersInFlight[cacheKey];
+    if (!forceRefresh && pending != null) return _copyShopRows(await pending);
+    final request = () async {
+      final response = await _httpClient.get(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+      final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
+      _storeShopCache(cacheKey, result, const Duration(seconds: 8));
+      return result;
+    }();
+    _shopOrdersInFlight[cacheKey] = request;
+    try { return _copyShopRows(await request); }
+    finally { if (identical(_shopOrdersInFlight[cacheKey], request)) _shopOrdersInFlight.remove(cacheKey); }
   }
 
   Future<Map<String, dynamic>> getLoyaltySummary(String token) async {
@@ -299,7 +330,21 @@ class ApiService {
   ];
 
 
-  Future<List<Repair>> getRepairs(String token) async {
+  Future<List<Repair>> getRepairs(String token, {bool forceRefresh = false}) async {
+    final key = '${baseUrl.trim()}:repairs:${_scope(token)}';
+    final cachedList = _repairsListCache[key];
+    if (!forceRefresh && cachedList != null && cachedList.expiresAt.isAfter(DateTime.now())) {
+      return List<Repair>.unmodifiable(cachedList.rows);
+    }
+    final pending = _repairsInFlight[key];
+    if (!forceRefresh && pending != null) return pending;
+    final request = _fetchRepairs(token, key);
+    _repairsInFlight[key] = request;
+    try { return await request; }
+    finally { if (identical(_repairsInFlight[key], request)) _repairsInFlight.remove(key); }
+  }
+
+  Future<List<Repair>> _fetchRepairs(String token, String key) async {
     try {
       final response = await _httpClient.get(_uri('repairs'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
       final decoded = _decodeResponse(response);
@@ -308,7 +353,9 @@ class ApiService {
       if (rows is! List) throw Exception('Невалиден формат на списъка с ремонти.');
       final normalized = rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
       await _offlineStorage.write(key: _repairsCacheKey(token), value: jsonEncode(normalized));
-      return normalized.map(Repair.fromJson).toList();
+      final result = normalized.map(Repair.fromJson).toList(growable: false);
+      _repairsListCache[key] = _TimedRepairListCache(DateTime.now().add(const Duration(seconds: 18)), result);
+      return result;
     } catch (error) {
       if (!_isNetworkError(error)) rethrow;
       final cached = await _offlineStorage.read(key: _repairsCacheKey(token));

@@ -37,7 +37,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   void initState() { super.initState(); future = widget.api.getRepairs(widget.token); }
   @override
   void dispose() { search.dispose(); super.dispose(); }
-  void reload() => setState(() => future = widget.api.getRepairs(widget.token));
+  void reload() => setState(() => future = widget.api.getRepairs(widget.token, forceRefresh: true));
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -151,7 +151,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
 
         return RefreshIndicator(
           onRefresh: () async {
-            final f = widget.api.getRepairs(widget.token);
+            final f = widget.api.getRepairs(widget.token, forceRefresh: true);
             setState(() => future = f);
             await f;
           },

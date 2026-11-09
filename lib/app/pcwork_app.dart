@@ -24,6 +24,7 @@ import '../screens/customer_center_screen.dart';
 import '../screens/visitor_analytics_screen.dart';
 import '../screens/device_monitor_screen.dart';
 import '../screens/internal_service_assistant_screen.dart';
+import '../screens/beach_game_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -70,7 +71,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 95;
+  static const int _currentBuildNumber = 99;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1074,7 +1075,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         child: Scaffold(
         appBar: AppBar(
           title: Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 40, height: 40, padding: const EdgeInsets.all(2), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 36, height: 36, fit: BoxFit.contain)),
+            Container(width: 46, height: 46, padding: const EdgeInsets.all(1), decoration: BoxDecoration(color: const Color(0xFF111B29), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF21D4D8).withValues(alpha: .28))), child: Image.asset('assets/images/LogoPCwork.webp', width: 44, height: 44, fit: BoxFit.contain)),
             const SizedBox(width: 10), const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
             const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
             const SizedBox(width: 8), Flexible(child: Text(labels[tab], overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF93A4B8), fontWeight: FontWeight.w500))),
@@ -1244,11 +1245,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
+    _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
     _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
     if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
     _infoTile(Icons.privacy_tip_outlined, 'GDPR · Защита на личните данни', () => _openWebsite('https://pcwork-bg.com/gdpr/')),
   ]);
+
+  Future<void> _openBeachGame() async {
+    await _navigatorKey.currentState?.push(MaterialPageRoute(
+      builder: (_) => BeachGameScreen(english: english),
+    ));
+  }
 
   Future<void> _launchContact(Uri uri) async {
     try {

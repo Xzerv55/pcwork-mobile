@@ -19,7 +19,7 @@ class _RepairStatisticsScreenState extends State<RepairStatisticsScreen> {
   };
   @override
   void initState() { super.initState(); _future = widget.api.getRepairs(widget.token); }
-  void _reload() => setState(() => _future = widget.api.getRepairs(widget.token));
+  void _reload() => setState(() => _future = widget.api.getRepairs(widget.token, forceRefresh: true));
 
   @override
   Widget build(BuildContext context) => Scaffold(

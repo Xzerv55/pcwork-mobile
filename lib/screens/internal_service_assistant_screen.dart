@@ -18,7 +18,7 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant')), actions: [IconButton(onPressed: () => setState(() => _future = widget.api.getRepairs(widget.token)), icon: const Icon(Icons.refresh))]),
+    appBar: AppBar(title: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant')), actions: [IconButton(onPressed: () => setState(() => _future = widget.api.getRepairs(widget.token, forceRefresh: true)), icon: const Icon(Icons.refresh))]),
     body: FutureBuilder<List<Repair>>(future: _future, builder: (context, snap) {
       if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
       if (snap.hasError) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('${tr('Неуспешно зареждане на сервизните задачи:', 'Could not load service tasks:')} ${snap.error}')));
@@ -44,7 +44,7 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
       if (waiting > 0) tips.add(tr('$waiting ремонта очакват одобрение от клиент.', '$waiting repairs are waiting for customer approval.'));
       if (overdue > 0) tips.add(tr('$overdue ремонта са след крайния срок. Провери приоритета и срока.', '$overdue repairs are past due. Review their priority and due date.'));
       if (tips.isEmpty) tips.add(tr('Няма критични задачи според текущите данни. Продължи с планираните ремонти.', 'No critical tasks based on current data. Continue with scheduled repairs.'));
-      return RefreshIndicator(onRefresh: () async { final f = widget.api.getRepairs(widget.token); setState(() => _future = f); await f; }, child: ListView(padding: const EdgeInsets.all(16), children: [
+      return RefreshIndicator(onRefresh: () async { final f = widget.api.getRepairs(widget.token, forceRefresh: true); setState(() => _future = f); await f; }, child: ListView(padding: const EdgeInsets.all(16), children: [
         Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF102C3A), Color(0xFF1B5360)]), borderRadius: BorderRadius.circular(20)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.support_agent_rounded, color: Color(0xFF21D4D8), size: 34), const SizedBox(height: 8), Text(tr('Сервизен контролен център', 'Service operations assistant'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 19)), const SizedBox(height: 5), Text(tr('Обобщение на текущите ремонти и следващи действия за екипа.', 'Live repair overview and suggested next actions for the team.'), style: const TextStyle(color: Colors.white70))])),
         const SizedBox(height: 14), Wrap(spacing: 8, runSpacing: 8, children: [ _metric(tr('Активни', 'Active'), active, Icons.build_circle_outlined), _metric(tr('Без техник', 'Unassigned'), unassigned, Icons.person_off_outlined), _metric(tr('Диагностика', 'Diagnostics'), diagnosis, Icons.search), _metric(tr('Просрочени', 'Overdue'), overdue, Icons.warning_amber_rounded) ]),
         const SizedBox(height: 18), Text(tr('Препоръчани действия', 'Recommended actions'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
