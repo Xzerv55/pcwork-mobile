@@ -81,8 +81,11 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     _pollTimer = null;
     if (widget.isActive && _appResumed && _token != null) {
       _pollTimer = Timer(Duration(seconds: _pollDelaySeconds), () {
-        if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true));
-        else _startPolling();
+        if (!_loadingMessages && !_sending) {
+          unawaited(_loadMessages(silent: true));
+        } else {
+          _startPolling();
+        }
       });
     }
   }
