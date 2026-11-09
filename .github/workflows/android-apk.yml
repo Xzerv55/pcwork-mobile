@@ -59,6 +59,17 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
+      # The source archive intentionally excludes generated Gradle wrapper binaries.
+      # Recreate the wrapper in CI so Flutter can invoke the pinned Gradle version.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Generate Gradle wrapper
+        working-directory: android
+        run: gradle wrapper --gradle-version 8.14.3 --distribution-type all
+
       # Firebase client settings are read from the checked-out Android config.
       # These are app-side identifiers/API key, not a service-account private key.
       - name: Read Firebase Android configuration
@@ -101,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${PCWORK_KEYSTORE_BASE64:-}" || -z "${PCWORK_KEYSTORE_PASSWORD:-}" || -z "${PCWORK_KEY_ALIAS:-}" || -z "${PCWORK_KEY_PASSWORD:-}" ]]; then
-            echo "ERROR: Configure all four GitHub Actions secrets: PCWORK_KEYSTORE_BASE64, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS, PCWORK_KEY_PASSWORD. See SIGNING_SETUP_BG.md."
+            echo "ERROR: Configure all four GitHub Actions secrets: PCWORK_KEYSTORE_BASE64, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS, PCWORK_KEY_PASSWORD. Configure the existing persistent signing secrets in the repository settings."
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/pcwork-signing"
@@ -146,7 +157,7 @@ jobs:
       - name: Upload APK files
         uses: actions/upload-artifact@v6
         with:
-          name: pcwork-android-v98-apks
+          name: pcwork-android-v104-apks
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
             build/app/outputs/flutter-apk/app-*-release.apk
