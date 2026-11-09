@@ -20,6 +20,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   int _seconds = 60;
   int _score = 0;
   int _record = 0;
+  int _elapsedMs = 0;
   bool _running = false;
   bool _finished = false;
   bool _paused = false;
@@ -59,28 +60,25 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     setState(() {
       _items.removeWhere((_, item) => item.expiresAt.isBefore(now));
       if (now.isAfter(_nextSpawn) && _items.length < 7) {
-        final empty = List<int>.generate(20, (i) => i).where((i) => !_items.containsKey(i)).toList();
+        final empty = List<int>.generate(20, (i) => i)
+            .where((i) => !_items.containsKey(i)).toList();
         if (empty.isNotEmpty) {
           final slot = empty[_random.nextInt(empty.length)];
-          _items[slot] = _BeachItem(_random.nextBool() ? '🥒' : '🌸', now.add(const Duration(milliseconds: 1500)));
+          _items[slot] = _BeachItem(
+            _random.nextBool() ? '🥒' : '🌸',
+            now.add(const Duration(milliseconds: 1500)),
+          );
         }
         _nextSpawn = now.add(Duration(milliseconds: 350 + _random.nextInt(850)));
       }
     });
-    if (now.millisecondsSinceEpoch % 1000 < 270) {
-      // The visible countdown is derived from the round start, avoiding timer drift.
-    }
-    if (_seconds > 0) {
-      _elapsedMs += 250;
-      if (_elapsedMs >= 1000) {
-        _elapsedMs -= 1000;
-        setState(() => _seconds--);
-      }
+    _elapsedMs += 250;
+    if (_elapsedMs >= 1000) {
+      _elapsedMs -= 1000;
+      setState(() => _seconds--);
     }
     if (_seconds <= 0) _finish();
   }
-
-  int _elapsedMs = 0;
 
   Future<void> _finish() async {
     _clock?.cancel();
@@ -100,7 +98,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     if (!_running || _paused || !_items.containsKey(index)) return;
     setState(() {
       _items.remove(index);
-      _score += 1;
+      _score++;
     });
   }
 
@@ -118,130 +116,207 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(tr('Плажно приключение', 'Beach Adventure'))),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Color(0xFF8DE4F2), Color(0xFFF5D88D), Color(0xFFE7B96D)]),
-        ),
-        child: SafeArea(
-          child: Column(children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-              child: Row(children: [
-                _hud(tr('ТОЧКИ', 'SCORE'), '$_score'),
-                const Spacer(),
-                _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds'),
-                const Spacer(),
-                _hud(tr('РЕКОРД', 'BEST'), '$_record'),
-                if (_running) IconButton(onPressed: _togglePause, icon: Icon(_paused ? Icons.play_arrow : Icons.pause, color: const Color(0xFF17364B))),
-              ]),
-            ),
-            Expanded(
-              child: Stack(children: [
-                Positioned.fill(child: CustomPaint(painter: _BeachBackdropPainter())),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 20,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 5, crossAxisSpacing: 7, mainAxisSpacing: 9, childAspectRatio: 1.05),
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      return GestureDetector(
-                        onTap: () => _catch(index),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFB96D37),
-                            borderRadius: BorderRadius.circular(13),
-                            border: Border.all(color: const Color(0xFF75401F), width: 3),
-                            boxShadow: const [BoxShadow(color: Color(0x553B2414), blurRadius: 4, offset: Offset(0, 3))],
+      appBar: AppBar(
+        title: Text(tr('Плажно приключение', 'Beach Adventure')),
+        backgroundColor: const Color(0xFF087EAA),
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Container(
+          color: const Color(0xFF53C9E8),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(9, 9, 9, 8),
+                child: Row(
+                  children: [
+                    Expanded(child: _hud(Icons.star_rounded, tr('ТОЧКИ', 'SCORE'), '$_score')),
+                    const SizedBox(width: 6),
+                    Expanded(child: _hud(Icons.hourglass_top_rounded, tr('ВРЕМЕ', 'TIME'), '$_seconds')),
+                    const SizedBox(width: 6),
+                    Expanded(child: _hud(Icons.emoji_events_rounded, tr('РЕКОРД', 'BEST'), '$_record')),
+                    const SizedBox(width: 5),
+                    Material(
+                      color: const Color(0xFFFF8B19),
+                      shape: const CircleBorder(),
+                      elevation: 5,
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _running ? _togglePause : null,
+                        child: SizedBox(
+                          width: 43,
+                          height: 43,
+                          child: Icon(
+                            _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                            color: Colors.white,
+                            size: 29,
                           ),
-                          child: Center(child: item == null
-                            ? Container(width: 25, height: 30, decoration: BoxDecoration(color: const Color(0xFF57331F), borderRadius: BorderRadius.circular(20)))
-                            : Text(item.emoji, style: const TextStyle(fontSize: 30))),
                         ),
-                      );
-                    },
-                  ),
-                ),
-                if (_paused || _finished || !_running)
-                  Positioned.fill(child: Container(
-                    color: const Color(0x880D2635),
-                    child: Center(child: Card(
-                      margin: const EdgeInsets.all(28),
-                      child: Padding(
-                        padding: const EdgeInsets.all(22),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Text(_finished ? tr('Браво!', 'Well done!') : tr('Готов ли си за игра?', 'Ready to play?'),
-                            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 8),
-                          Text(_finished ? tr('Точки: $_score', 'Score: $_score') :
-                            tr('Хвани краставичките и цветенцата, преди да се скрият!', 'Catch the cucumbers and flowers before they hide!'),
-                            textAlign: TextAlign.center),
-                          const SizedBox(height: 16),
-                          FilledButton.icon(onPressed: _start,
-                            icon: const Icon(Icons.play_arrow_rounded),
-                            label: Text(_finished ? tr('Играй отново', 'Play again') : tr('Започни игра', 'Start game'))),
-                        ]),
                       ),
-                    )),
-                  )),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              child: Text(tr('Докосни вратичка, когато се покаже краставичка или цвете!', 'Tap a gate when a cucumber or flower appears!'),
-                textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF573A22), fontWeight: FontWeight.w800)),
-            ),
-          ]),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.asset(
+                          'assets/images/beach_game_background.png',
+                          fit: BoxFit.fill,
+                          filterQuality: FilterQuality.high,
+                        ),
+                        // Transparent hit targets line up with the 5 x 4 castle doors.
+                        Positioned(
+                          left: constraints.maxWidth * .185,
+                          top: constraints.maxHeight * .175,
+                          width: constraints.maxWidth * .635,
+                          height: constraints.maxHeight * .615,
+                          child: GridView.builder(
+                            padding: EdgeInsets.zero,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: 20,
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 5,
+                              crossAxisSpacing: 2,
+                              mainAxisSpacing: 2,
+                              childAspectRatio: .96,
+                            ),
+                            itemBuilder: (context, index) {
+                              final item = _items[index];
+                              return GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onTap: () => _catch(index),
+                                child: Center(
+                                  child: item == null
+                                      ? const SizedBox.expand()
+                                      : AnimatedScale(
+                                          scale: 1,
+                                          duration: const Duration(milliseconds: 120),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(alpha: .94),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: const Color(0xFFFFC44D), width: 3),
+                                              boxShadow: const [
+                                                BoxShadow(color: Color(0x77000000), blurRadius: 7, offset: Offset(0, 3)),
+                                              ],
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: FittedBox(
+                                              child: Text(item.emoji, style: const TextStyle(fontSize: 39)),
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        if (_paused || _finished || !_running)
+                          Positioned.fill(
+                            child: Container(
+                              color: const Color(0x99052D49),
+                              alignment: Alignment.center,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 28),
+                                padding: const EdgeInsets.fromLTRB(22, 23, 22, 22),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFFFE6A6), Color(0xFFF5B95F)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(color: const Color(0xFF9A5423), width: 4),
+                                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 18, offset: Offset(0, 8))],
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _paused
+                                          ? tr('ПАУЗА', 'PAUSED')
+                                          : _finished
+                                              ? tr('Браво!', 'Well done!')
+                                              : tr('Готов ли си за игра?', 'Ready to play?'),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF713B16)),
+                                    ),
+                                    const SizedBox(height: 9),
+                                    Text(
+                                      _finished
+                                          ? tr('Точки: $_score', 'Score: $_score')
+                                          : tr('Хвани краставичките и цветенцата, преди да се скрият!', 'Catch the cucumbers and flowers before they hide!'),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF71451F)),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFF168A45),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 23, vertical: 13),
+                                      ),
+                                      onPressed: _paused ? _togglePause : _start,
+                                      icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.sports_esports_rounded),
+                                      label: Text(
+                                        _paused
+                                            ? tr('Продължи', 'Resume')
+                                            : _finished
+                                                ? tr('Играй отново', 'Play again')
+                                                : tr('Започни игра', 'Start game'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _hud(String label, String value) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-    decoration: BoxDecoration(color: Colors.white.withValues(alpha: .88), borderRadius: BorderRadius.circular(14)),
-    child: Column(children: [
-      Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
-      Text(value, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
-    ]),
-  );
+  Widget _hud(IconData icon, String label, String value) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFFB86B2B), Color(0xFF7D3C19)]),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: const Color(0xFFFFD27A), width: 2),
+          boxShadow: const [BoxShadow(color: Color(0x55000000), blurRadius: 4, offset: Offset(0, 3))],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: const Color(0xFFFFD54F), size: 22),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, maxLines: 1, overflow: TextOverflow.clip,
+                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.white)),
+                  Text(value, style: const TextStyle(fontSize: 18, height: 1.05, fontWeight: FontWeight.w900, color: Color(0xFFFFF2C8))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _BeachItem {
   const _BeachItem(this.emoji, this.expiresAt);
   final String emoji;
   final DateTime expiresAt;
-}
-
-class _BeachBackdropPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final sand = Paint()..color = const Color(0xFFE7BC73);
-    canvas.drawRect(Offset.zero & size, sand);
-    final castle = Paint()..color = const Color(0xFFF4D69A);
-    final outline = Paint()..color = const Color(0xFFB77A42)..style = PaintingStyle.stroke..strokeWidth = 4;
-    final rect = Rect.fromLTWH(size.width * .07, size.height * .08, size.width * .86, size.height * .82);
-    final path = Path()..moveTo(rect.left, rect.bottom)..lineTo(rect.left, rect.top + 35)
-      ..lineTo(rect.left + 35, rect.top + 35)..lineTo(rect.left + 35, rect.top)
-      ..lineTo(rect.left + 75, rect.top)..lineTo(rect.left + 75, rect.top + 35)
-      ..lineTo(rect.right - 75, rect.top + 35)..lineTo(rect.right - 75, rect.top)
-      ..lineTo(rect.right - 35, rect.top)..lineTo(rect.right - 35, rect.top + 35)
-      ..lineTo(rect.right, rect.top + 35)..lineTo(rect.right, rect.bottom)..close();
-    canvas.drawPath(path, castle);
-    canvas.drawPath(path, outline);
-    final sea = Paint()..color = const Color(0xFF55C5D9);
-    canvas.drawRect(Rect.fromLTWH(0, size.height * .91, size.width, size.height * .09), sea);
-    final ball = Paint()..color = const Color(0xFFE76F51);
-    canvas.drawCircle(Offset(size.width * .10, size.height * .93), 12, ball);
-    final shell = Paint()..color = const Color(0xFFFFF0CE);
-    canvas.drawCircle(Offset(size.width * .87, size.height * .93), 9, shell);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
