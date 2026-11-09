@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BeachGameScreen extends StatefulWidget {
@@ -30,6 +31,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     _loadRecord();
   }
 
@@ -112,6 +114,11 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
   @override
   void dispose() {
     _clock?.cancel();
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     super.dispose();
   }
 
@@ -121,88 +128,171 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
       appBar: AppBar(title: Text(tr('Плажно приключение', 'Beach Adventure'))),
       body: SafeArea(
         child: LayoutBuilder(builder: (context, constraints) {
-          final compact = constraints.maxHeight < 520 || constraints.maxWidth > constraints.maxHeight * 1.25;
+          final compact = constraints.maxHeight < 700;
           return Container(
-            decoration: const BoxDecoration(gradient: LinearGradient(
-              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [Color(0xFF61D7F4), Color(0xFFF7D48B), Color(0xFFE8B66B)])),
-            child: Column(children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(compact ? 6 : 12, 6, compact ? 6 : 12, 4),
-                child: Row(children: [
-                  Expanded(child: _hud(tr('ТОЧКИ', 'SCORE'), '$_score', compact)),
-                  const SizedBox(width: 5),
-                  Expanded(child: _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds', compact)),
-                  const SizedBox(width: 5),
-                  Expanded(child: _hud(tr('РЕКОРД', 'BEST'), '$_record', compact)),
-                  if (_running) IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(width: 42, height: 42),
-                    onPressed: _togglePause,
-                    icon: Icon(_paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                      color: const Color(0xFF17364B), size: 30),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF54D5F3), Color(0xFFF8D995), Color(0xFFE8B66B)],
+              ),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(compact ? 7 : 14, 8, compact ? 7 : 14, 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: _hud(tr('ТОЧКИ', 'SCORE'), '$_score', compact)),
+                      const SizedBox(width: 7),
+                      Expanded(child: _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds', compact)),
+                      const SizedBox(width: 7),
+                      Expanded(child: _hud(tr('РЕКОРД', 'BEST'), '$_record', compact)),
+                      if (_running)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 5),
+                          child: Material(
+                            color: const Color(0xFFFF9F24),
+                            shape: const CircleBorder(),
+                            elevation: 3,
+                            child: IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: _togglePause,
+                              icon: Icon(
+                                _paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                                color: const Color(0xFF17364B),
+                                size: 27,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ]),
-              ),
-              Expanded(child: Center(child: LayoutBuilder(builder: (context, boardConstraints) {
-                // Keep the illustrated board at its native 16:9 ratio on every device.
-                final boardWidth = min(boardConstraints.maxWidth, boardConstraints.maxHeight * (16 / 9));
-                final boardHeight = boardWidth * (9 / 16);
-                return SizedBox(width: boardWidth, height: boardHeight,
-                  child: Stack(fit: StackFit.expand, children: [
-                    Image.asset('assets/images/beach_game_background.png', fit: BoxFit.fill),
-                    // Transparent hit targets align with the twenty castle doors.
-                    Positioned(left: boardWidth * .205, top: boardHeight * .315,
-                      width: boardWidth * .60, height: boardHeight * .51,
-                      child: GridView.builder(
-                        padding: EdgeInsets.zero,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: 20,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 5, crossAxisSpacing: 2, mainAxisSpacing: 2,
-                          childAspectRatio: 1.0),
-                        itemBuilder: (context, index) {
-                          final item = _items[index];
-                          return GestureDetector(
-                            behavior: HitTestBehavior.translucent,
-                            onTap: () => _catch(index),
-                            child: Center(child: item == null ? const SizedBox.shrink() :
-                              FittedBox(fit: BoxFit.contain, child: Text(item.emoji,
-                                style: TextStyle(fontSize: boardWidth * .055,
-                                  shadows: const [Shadow(color: Colors.black54, blurRadius: 5)])))),
-                          );
-                        },
-                      )),
-                    if (_paused || _finished || !_running)
-                      Positioned.fill(child: Container(
-                        color: const Color(0x990D2635),
-                        child: Center(child: Card(
-                          margin: const EdgeInsets.all(18),
-                          child: Padding(padding: EdgeInsets.all(compact ? 12 : 20),
-                            child: Column(mainAxisSize: MainAxisSize.min, children: [
-                              Text(_finished ? tr('Браво!', 'Well done!') : tr('Готов ли си за игра?', 'Ready to play?'),
-                                style: TextStyle(fontSize: compact ? 17 : 23, fontWeight: FontWeight.w900)),
-                              const SizedBox(height: 7),
-                              Text(_finished ? tr('Точки: $_score', 'Score: $_score') :
-                                tr('Хвани краставичките и цветенцата, преди да се скрият!', 'Catch the cucumbers and flowers before they hide!'),
-                                textAlign: TextAlign.center, style: TextStyle(fontSize: compact ? 11 : 14)),
-                              const SizedBox(height: 12),
-                              FilledButton.icon(onPressed: _start,
-                                icon: const Icon(Icons.play_arrow_rounded),
-                                label: Text(_finished ? tr('Играй отново', 'Play again') : tr('Започни игра', 'Start game'))),
-                            ])),
-                        )),
-                      )),
-                  ]));
-              }))),
-              if (!compact) Padding(
-                padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
-                child: Text(tr('Докосни вратичка, когато се покаже краставичка или цвете!',
-                  'Tap a gate when a cucumber or flower appears!'), textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFF573A22), fontWeight: FontWeight.w800, fontSize: 12)),
-              ),
-            ]),
+                ),
+                Expanded(
+                  child: Center(
+                    child: LayoutBuilder(builder: (context, boardConstraints) {
+                      // The playfield itself is portrait (9:16); all 20 original doors
+                      // remain visible in the central illustrated beach scene.
+                      final boardWidth = min(
+                        boardConstraints.maxWidth,
+                        boardConstraints.maxHeight * (9 / 16),
+                      );
+                      final boardHeight = boardWidth * (16 / 9);
+                      return SizedBox(
+                        width: boardWidth,
+                        height: boardHeight,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill),
+                              Positioned(
+                                left: boardWidth * .205,
+                                top: boardHeight * .33,
+                                width: boardWidth * .60,
+                                height: boardHeight * .138,
+                                child: GridView.builder(
+                                  padding: EdgeInsets.zero,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: 20,
+                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 5,
+                                    crossAxisSpacing: 2,
+                                    mainAxisSpacing: 2,
+                                    childAspectRatio: 1.0,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final item = _items[index];
+                                    return GestureDetector(
+                                      behavior: HitTestBehavior.translucent,
+                                      onTap: () => _catch(index),
+                                      child: Center(
+                                        child: item == null
+                                            ? const SizedBox.shrink()
+                                            : FittedBox(
+                                                fit: BoxFit.contain,
+                                                child: Text(
+                                                  item.emoji,
+                                                  style: TextStyle(
+                                                    fontSize: boardWidth * .055,
+                                                    shadows: const [Shadow(color: Colors.black54, blurRadius: 5)],
+                                                  ),
+                                                ),
+                                              ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              if (_paused || _finished || !_running)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: const Color(0x990D2635),
+                                    child: Center(
+                                      child: Card(
+                                        margin: const EdgeInsets.all(18),
+                                        child: Padding(
+                                          padding: EdgeInsets.all(compact ? 12 : 20),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                _finished ? tr('Браво!', 'Well done!') : tr('Готов ли си за игра?', 'Ready to play?'),
+                                                style: TextStyle(fontSize: compact ? 17 : 23, fontWeight: FontWeight.w900),
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Text(
+                                                _finished
+                                                    ? tr('Точки: $_score', 'Score: $_score')
+                                                    : tr('Хвани краставичките и цветенцата, преди да се скрият!', 'Catch the cucumbers and flowers before they hide!'),
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(fontSize: compact ? 11 : 14),
+                                              ),
+                                              const SizedBox(height: 12),
+                                              FilledButton.icon(
+                                                onPressed: _start,
+                                                icon: const Icon(Icons.play_arrow_rounded),
+                                                label: Text(_finished ? tr('Играй отново', 'Play again') : tr('Започни игра', 'Start game')),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(14, 5, 14, compact ? 9 : 16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xDDFFF8E8),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFFFB84D), width: 1.2),
+                    ),
+                    child: Text(
+                      tr('Докосни вратичка, когато се покаже краставичка или цвете!', 'Tap a gate when a cucumber or flower appears!'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: const Color(0xFF573A22),
+                        fontWeight: FontWeight.w800,
+                        fontSize: compact ? 10 : 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
         }),
       ),
@@ -214,11 +304,11 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     decoration: BoxDecoration(color: Colors.white.withValues(alpha: .88), borderRadius: BorderRadius.circular(14)),
     child: Column(children: [
       Text(label, style: compact
-          ? const TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: Color(0xFF426174))
-          : const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
+        ? const TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: Color(0xFF426174))
+        : const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
       Text(value, style: compact
-          ? const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF17364B))
-          : const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
+        ? const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF17364B))
+        : const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
     ]),
   );
 }

@@ -60,7 +60,7 @@ tasks.configureEach {
     if (name.contains("Release", ignoreCase = true) && name.startsWith("package", ignoreCase = true)) {
         doFirst {
             if (!hasReleaseSigning) {
-                throw GradleException("Release signing is not configured. Add the four PCWORK_* GitHub Actions secrets described in SIGNING_SETUP_BG.md.")
+                throw GradleException("Release signing is not configured. Add the four PCWORK_* GitHub Actions secrets configured as PCWORK_KEYSTORE_FILE, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS and PCWORK_KEY_PASSWORD.")
             }
         }
     }
