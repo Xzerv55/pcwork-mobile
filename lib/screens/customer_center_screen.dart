@@ -16,9 +16,10 @@ class CustomerCenterScreen extends StatefulWidget {
 class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
   late Future<_CenterData> _future;
   late Future<Map<String, dynamic>> _loyaltyFuture;
+  late Future<List<Map<String, dynamic>>> _serviceHistoryFuture;
   String tr(String bg, String en) => widget.english ? en : bg;
   @override
-  void initState() { super.initState(); _future = _load(); _loyaltyFuture = widget.api.getLoyaltySummary(widget.token); }
+  void initState() { super.initState(); _future = _load(); _loyaltyFuture = widget.api.getLoyaltySummary(widget.token); _serviceHistoryFuture = widget.api.getCustomerServiceHistory(widget.token); }
   Future<_CenterData> _load() async {
     final values = await Future.wait<dynamic>([
       widget.api.getRepairs(widget.token),
@@ -30,12 +31,12 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(tr('Клиентски център', 'Customer center')), actions: [IconButton(tooltip: tr('Обнови', 'Refresh'), onPressed: () => setState(() { _future = _load(); _loyaltyFuture = widget.api.getLoyaltySummary(widget.token); }), icon: const Icon(Icons.refresh_rounded))]),
+    appBar: AppBar(title: Text(tr('Клиентски център', 'Customer center')), actions: [IconButton(tooltip: tr('Обнови', 'Refresh'), onPressed: () => setState(() { _future = _load(); _loyaltyFuture = widget.api.getLoyaltySummary(widget.token); _serviceHistoryFuture = widget.api.getCustomerServiceHistory(widget.token, forceRefresh: true); }), icon: const Icon(Icons.refresh_rounded))]),
     body: FutureBuilder<_CenterData>(future: _future, builder: (context, snapshot) {
       final data = snapshot.data;
       final active = data?.repairs.where((r) => !['completed','cancelled'].contains(r.status)).length ?? 0;
       final ready = data?.repairs.where((r) => r.status == 'ready').length ?? 0;
-      return RefreshIndicator(onRefresh: () async { final next = _load(); final loyalty = widget.api.getLoyaltySummary(widget.token); setState(() { _future = next; _loyaltyFuture = loyalty; }); await next; }, child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 28), children: [
+      return RefreshIndicator(onRefresh: () async { final next = _load(); final loyalty = widget.api.getLoyaltySummary(widget.token); final history = widget.api.getCustomerServiceHistory(widget.token, forceRefresh: true); setState(() { _future = next; _loyaltyFuture = loyalty; _serviceHistoryFuture = history; }); await next; }, child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 28), children: [
         Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF123B4A), Color(0xFF24233E)]), borderRadius: BorderRadius.circular(22)), child: Row(children: [const CircleAvatar(radius: 27, backgroundColor: Color(0x3321D4D8), child: Icon(Icons.person_rounded, color: Color(0xFF21D4D8), size: 30)), const SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Здравейте,', 'Welcome,'), style: const TextStyle(color: Colors.white70)), Text(widget.user.name.isEmpty ? widget.user.email : widget.user.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 19)), Text(widget.user.email, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 12))]))])),
         const SizedBox(height: 14),
         FutureBuilder<Map<String, dynamic>>(
@@ -46,6 +47,19 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
         if (snapshot.connectionState == ConnectionState.waiting && data == null) const LinearProgressIndicator(),
         if (snapshot.hasError) Card(child: Padding(padding: const EdgeInsets.all(14), child: Text(tr('Не успяхме да заредим обобщението. Издърпайте надолу за нов опит.', 'We could not load your overview. Pull down to retry.'), style: const TextStyle(color: Colors.orangeAccent)))),
         Row(children: [Expanded(child: _metric(tr('Ремонти','Repairs'), '${data?.repairs.length ?? '—'}', Icons.build_circle_outlined)), const SizedBox(width: 6), Expanded(child: _metric(tr('Активни','Active'), '$active', Icons.autorenew_rounded)), const SizedBox(width: 6), Expanded(child: _metric(tr('Готови','Ready'), '$ready', Icons.task_alt_rounded)), const SizedBox(width: 6), Expanded(child: _metric(tr('Поръчки','Orders'), '${data?.orders.length ?? '—'}', Icons.shopping_bag_outlined))]),
+        const SizedBox(height: 18),
+        Text(tr('Моите устройства и сервизна история', 'My devices & service history'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        FutureBuilder<List<Map<String, dynamic>>>(future: _serviceHistoryFuture, builder: (context, history) {
+          if (history.connectionState == ConnectionState.waiting) return const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator());
+          if (history.hasError) return Card(child: ListTile(leading: const Icon(Icons.info_outline), title: Text(tr('Историята временно не е достъпна', 'Service history is temporarily unavailable')), trailing: IconButton(onPressed: () => setState(() => _serviceHistoryFuture = widget.api.getCustomerServiceHistory(widget.token, forceRefresh: true)), icon: const Icon(Icons.refresh))));
+          final rows = history.data ?? const <Map<String, dynamic>>[];
+          if (rows.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(tr('Все още няма регистрирани ремонти.', 'No repairs have been registered yet.'))));
+          return Column(children: rows.map((row) {
+            final warranty = (row['warranty_until'] ?? '').toString();
+            final activeWarranty = row['warranty_active'] == true;
+            return Card(child: ListTile(leading: Icon(activeWarranty ? Icons.verified_user_outlined : Icons.devices_other, color: activeWarranty ? const Color(0xFF21D4D8) : null), title: Text('${row['device_type'] ?? ''} ${row['device_model'] ?? ''}'.trim()), subtitle: Text(['${row['repair_number'] ?? ''} · ${row['status'] ?? ''}', if (warranty.isNotEmpty) tr('Гаранция до: ', 'Warranty until: ') + warranty else tr('Няма активна гаранционна карта', 'No active warranty card')].join('\n')), isThreeLine: true, onTap: widget.onRepairs));
+          }).toList());
+        }),
         const SizedBox(height: 18), Text(tr('Моите услуги','My services'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         _action(Icons.handyman_outlined, tr('Моите ремонти','My repairs'), tr('Статус, история и документи на устройствата','Repair status, history and documents'), widget.onRepairs),
         _action(Icons.shopping_bag_outlined, tr('Моите поръчки','My orders'), tr('Поръчки и информация за доставката','Orders and delivery information'), widget.onOrders),

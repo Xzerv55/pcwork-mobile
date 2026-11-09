@@ -25,7 +25,7 @@ class _VisitorAnalyticsScreenState extends State<VisitorAnalyticsScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final rows = await widget.api.getAdminChatThreads(widget.token);
+      final rows = await widget.api.getVisitorAnalyticsCustomers(widget.token);
       if (!mounted) return;
       setState(() { _visitors = rows; _loading = false; });
       if (rows.isNotEmpty) await _select(int.tryParse('${rows.first['user_id']}') ?? 0);

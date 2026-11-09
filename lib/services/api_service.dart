@@ -59,6 +59,8 @@ class ApiService {
   static const FlutterSecureStorage _offlineStorage = FlutterSecureStorage();
   static final Map<String, _TimedShopCache> _shopCache = <String, _TimedShopCache>{};
   static final Map<String, _TimedRepairCache> _repairDetailCache = <String, _TimedRepairCache>{};
+  static final Map<String, _TimedShopCache> _customerHistoryCache = <String, _TimedShopCache>{};
+  static final Map<String, Future<List<Map<String, dynamic>>>> _customerHistoryInFlight = <String, Future<List<Map<String, dynamic>>>>{};
 
   List<Map<String, dynamic>> _copyShopRows(List<Map<String, dynamic>> rows) =>
       rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
@@ -499,6 +501,46 @@ class ApiService {
     return Repair.fromJson(Map<String, dynamic>.from(data));
   }
 
+  Future<List<Map<String, dynamic>>> getCustomerServiceHistory(String token, {int page = 1, int perPage = 50, bool forceRefresh = false}) async {
+    final safePage = page < 1 ? 1 : page;
+    final safePerPage = perPage.clamp(1, 50);
+    final key = '${baseUrl.trim()}:${_scope(token)}:customer-history:$safePage:$safePerPage';
+    final now = DateTime.now();
+    final cached = _customerHistoryCache[key];
+    if (!forceRefresh && cached != null && cached.expiresAt.isAfter(now)) return _copyShopRows(cached.rows);
+    final pending = _customerHistoryInFlight[key];
+    if (pending != null) return _copyShopRows(await pending);
+    final request = () async {
+      final uri = _uri('customer/service-history').replace(queryParameters: {'page': '$safePage', 'per_page': '$safePerPage'});
+      final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      final rows = decoded is Map ? decoded['data'] : null;
+      final result = rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : <Map<String, dynamic>>[];
+      _customerHistoryCache.removeWhere((_, entry) => !entry.expiresAt.isAfter(DateTime.now()));
+      if (_customerHistoryCache.length >= 30 && !_customerHistoryCache.containsKey(key)) _customerHistoryCache.remove(_customerHistoryCache.keys.first);
+      _customerHistoryCache[key] = _TimedShopCache(DateTime.now().add(const Duration(seconds: 12)), result);
+      return result;
+    }();
+    _customerHistoryInFlight[key] = request;
+    try { return _copyShopRows(await request); }
+    finally { _customerHistoryInFlight.remove(key); }
+  }
+
+  Future<Map<String, dynamic>> getRepairChecklist(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId/checklist'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? decoded['data'] : null;
+    return {'items': rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[], 'editable': decoded is Map && decoded['editable'] == true};
+  }
+
+  Future<void> saveRepairChecklist(String token, int repairId, List<Map<String, dynamic>> items) async {
+    final response = await _httpClient.post(_uri('repairs/$repairId/checklist'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items})).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
   Future<Map<String, dynamic>> getRepairWorklog(String token, int repairId) async {
     final response = await _httpClient.get(_uri('repairs/$repairId/worklog'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
     final decoded = _decodeResponse(response);
@@ -661,6 +703,19 @@ class ApiService {
     return data is List ? data.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
   }
 
+  Future<List<Map<String, dynamic>>> getVisitorAnalyticsCustomers(String token) async {
+    final response = await _httpClient.get(
+      _uri('visitors/customers'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map ? decoded['data'] : null;
+    return data is List
+        ? data.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
   Future<Map<String, dynamic>> getAdminChatMessages(String token, int userId, {int afterId = 0}) async {
     final uri = _uri('chat/admin/messages').replace(queryParameters: {'user_id': '$userId', 'after_id': '$afterId'});
     final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
@@ -774,11 +829,12 @@ class ServiceLocation {
 
 
 class Repair {
-  const Repair({required this.id, required this.number, required this.status, this.device = '', this.model = '', this.location = '', this.createdAt = '', this.updatedAt = '', this.problem = '', this.phone = '', this.serial = '', this.customer = '', this.locationCode = '', this.technicianId = 0, this.technicianName = '', this.priority = 'normal', this.dueAt = '', this.history = const [], this.pendingSync = false, this.fromCache = false});
+  const Repair({required this.id, required this.number, required this.status, this.device = '', this.model = '', this.location = '', this.createdAt = '', this.updatedAt = '', this.problem = '', this.phone = '', this.serial = '', this.customer = '', this.locationCode = '', this.technicianId = 0, this.technicianName = '', this.priority = 'normal', this.dueAt = '', this.history = const [], this.warrantyCards = const [], this.pendingSync = false, this.fromCache = false});
   final int id;
   final String number, status, device, model, location, createdAt, updatedAt, problem, phone, serial, customer, locationCode, technicianName, priority, dueAt;
   final int technicianId;
   final List<RepairHistory> history;
+  final List<Map<String, dynamic>> warrantyCards;
   final bool pendingSync;
   final bool fromCache;
   factory Repair.fromJson(Map<String, dynamic> j) => Repair(
@@ -793,6 +849,7 @@ class Repair {
     phone: (j['customer_phone'] ?? '').toString(), serial: (j['serial_number'] ?? '').toString(), customer: (j['customer_name'] ?? '').toString(),
     locationCode: (j['location_code'] ?? '').toString(), technicianId: (j['assigned_technician_id'] as num?)?.toInt() ?? 0, technicianName: (j['assigned_technician_name'] ?? '').toString(), priority: (j['priority'] ?? 'normal').toString(), dueAt: (j['due_at'] ?? '').toString(),
     history: (j['history'] as List? ?? []).whereType<Map>().map((e) => RepairHistory.fromJson(Map<String,dynamic>.from(e))).toList(),
+    warrantyCards: (j['warranty_cards'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(),
     pendingSync: j['_pending_sync'] == true, fromCache: j['_offline_cached'] == true,
   );
 }
