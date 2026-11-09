@@ -134,7 +134,8 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF54D5F3), Color(0xFFF8D995), Color(0xFFE8B66B)],
+                colors: [Color(0xFF24B8E8), Color(0xFF7DE0E7), Color(0xFFFFD58A), Color(0xFFF1B765)],
+                stops: [0, .34, .72, 1],
               ),
             ),
             child: Column(
@@ -143,11 +144,11 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
                   padding: EdgeInsets.fromLTRB(compact ? 7 : 14, 8, compact ? 7 : 14, 8),
                   child: Row(
                     children: [
-                      Expanded(child: _hud(tr('ТОЧКИ', 'SCORE'), '$_score', compact)),
+                      Expanded(child: _hud(tr('ТОЧКИ', 'SCORE'), '$_score', Icons.stars_rounded, compact)),
                       const SizedBox(width: 7),
-                      Expanded(child: _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds', compact)),
+                      Expanded(child: _hud(tr('ВРЕМЕ', 'TIME'), '$_seconds', Icons.timer_rounded, compact)),
                       const SizedBox(width: 7),
-                      Expanded(child: _hud(tr('РЕКОРД', 'BEST'), '$_record', compact)),
+                      Expanded(child: _hud(tr('РЕКОРД', 'BEST'), '$_record', Icons.emoji_events_rounded, compact)),
                       if (_running)
                         Padding(
                           padding: const EdgeInsets.only(left: 5),
@@ -182,17 +183,37 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
                       return SizedBox(
                         width: boardWidth,
                         height: boardHeight,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: Stack(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withValues(alpha: .88), width: 2),
+                            boxShadow: [
+                              BoxShadow(color: const Color(0xFF14516B).withValues(alpha: .28), blurRadius: 20, offset: const Offset(0, 9)),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.fill),
+                              Image.asset('assets/images/beach_game_background_portrait.png', fit: BoxFit.cover),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [Colors.black.withValues(alpha: .02), Colors.transparent, const Color(0xFF7A3F13).withValues(alpha: .07)],
+                                      stops: const [0, .55, 1],
+                                    ),
+                                  ),
+                                ),
+                              ),
                               Positioned(
-                                left: boardWidth * .205,
-                                top: boardHeight * .33,
-                                width: boardWidth * .60,
-                                height: boardHeight * .138,
+                                left: boardWidth * .185,
+                                top: boardHeight * .265,
+                                width: boardWidth * .555,
+                                height: boardHeight * .145,
                                 child: GridView.builder(
                                   padding: EdgeInsets.zero,
                                   physics: const NeverScrollableScrollPhysics(),
@@ -201,7 +222,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
                                     crossAxisCount: 5,
                                     crossAxisSpacing: 2,
                                     mainAxisSpacing: 2,
-                                    childAspectRatio: 1.0,
+                                    childAspectRatio: 1.72,
                                   ),
                                   itemBuilder: (context, index) {
                                     final item = _items[index];
@@ -265,6 +286,7 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
                                 ),
                             ],
                           ),
+                          ),
                         ),
                       );
                     }),
@@ -299,17 +321,25 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     );
   }
 
-  Widget _hud(String label, String value, bool compact) => Container(
-    padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 12, vertical: compact ? 4 : 7),
-    decoration: BoxDecoration(color: Colors.white.withValues(alpha: .88), borderRadius: BorderRadius.circular(14)),
-    child: Column(children: [
-      Text(label, style: compact
-        ? const TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: Color(0xFF426174))
-        : const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
-      Text(value, style: compact
-        ? const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF17364B))
-        : const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
-    ]),
+  Widget _hud(String label, String value, IconData icon, bool compact) => Container(
+    padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 11, vertical: compact ? 5 : 8),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFDFEFF), Color(0xFFEAF7FB)]),
+      borderRadius: BorderRadius.circular(15),
+      border: Border.all(color: const Color(0xFFFFFFFF), width: 1.2),
+      boxShadow: [BoxShadow(color: const Color(0xFF1C6884).withValues(alpha: .18), blurRadius: 9, offset: const Offset(0, 4))],
+    ),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: compact ? 15 : 19, color: const Color(0xFF138BAA)),
+        SizedBox(width: compact ? 3 : 6),
+        Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: compact ? 7 : 9, fontWeight: FontWeight.w900, color: const Color(0xFF426174), letterSpacing: .35)),
+          Text(value, style: TextStyle(fontSize: compact ? 14 : 19, height: 1.05, fontWeight: FontWeight.w900, color: const Color(0xFF17364B))),
+        ])),
+      ],
+    ),
   );
 }
 

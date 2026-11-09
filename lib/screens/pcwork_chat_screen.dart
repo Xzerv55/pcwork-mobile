@@ -33,6 +33,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   bool _loading = true;
   bool _sending = false;
   bool _loadingMessages = false;
+  bool _appResumed = true;
 
   String tr(String bg, String en) => widget.english ? en : bg;
 
@@ -71,8 +72,25 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
 
   void _startPolling() {
     _pollTimer?.cancel();
-    if (widget.isActive && _token != null) {
-      _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) { if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true)); });
+    _pollTimer = null;
+    if (widget.isActive && _appResumed && _token != null) {
+      _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+        if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true));
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (_appResumed == resumed) return;
+    _appResumed = resumed;
+    if (!resumed) {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+    } else if (widget.isActive) {
+      _startPolling();
+      unawaited(_loadMessages(silent: true, forceBottom: true));
     }
   }
 
