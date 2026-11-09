@@ -1,7 +1,7 @@
 pluginManagement {
     val flutterSdkPath = run {
         val properties = java.util.Properties()
-        val localPropertiesFile = file("local.properties")
+        val localPropertiesFile = settingsDir.resolve("local.properties")
         if (localPropertiesFile.isFile) {
             localPropertiesFile.inputStream().use { properties.load(it) }
         }
