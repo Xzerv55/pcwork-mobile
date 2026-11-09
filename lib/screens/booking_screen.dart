@@ -107,14 +107,14 @@ class _BookingScreenState extends State<BookingScreen> {
     final location=widget.location;
     return RefreshIndicator(onRefresh:_load, child: ListView(padding:const EdgeInsets.all(18), children:[
       Text(tr('Записване на час за сервиз','Book a service appointment'),style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
-      const SizedBox(height:6), Text(tr('Изберете услуга, обект, дата и свободен час. Резервацията се записва директно в PCWork.','Choose a service, location, date and available time. Your booking is saved directly in PCWork.'),style:TextStyle(color:Colors.white70)),
+      const SizedBox(height:6), Text(tr('Изберете услуга, обект, дата и свободен час. Резервацията се записва директно в PCWork.','Choose a service, location, date and available time. Your booking is saved directly in PCWork.'),style:const TextStyle(color:Colors.white70)),
       const SizedBox(height:14),
       Card(child:ListTile(leading:const Icon(Icons.location_on_outlined,color:cyan),title:Text(location?.name ?? tr('Не е избран сервизен обект','No service location selected')),subtitle:Text(location?.address ?? tr('Изберете обект, за да видите свободните часове.','Choose a location to see available times.')),trailing:TextButton(onPressed:widget.onChooseLocation,child:Text(tr('Промени','Change'))))),
       if(loading) const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator()))
       else if(error!=null) Card(child:Padding(padding:const EdgeInsets.all(14),child:Text(error!,style:const TextStyle(color:Colors.orangeAccent))))
       else ...[
         const SizedBox(height:12), Text(tr('Услуга','Service'),style:const TextStyle(fontWeight:FontWeight.bold)),
-        DropdownButtonFormField<int>(value:serviceId, isExpanded:true, decoration:const InputDecoration(border:OutlineInputBorder()), items:services.map((s)=>DropdownMenuItem<int>(value:int.tryParse('${s['id']}'),child:Text('${s['name']} · ${s['duration']} мин.'))).toList(), onChanged:(v) async {setState(()=>serviceId=v); await _loadSlots();}),
+        DropdownButtonFormField<int>(initialValue:serviceId, isExpanded:true, decoration:const InputDecoration(border:OutlineInputBorder()), items:services.map((s)=>DropdownMenuItem<int>(value:int.tryParse('${s['id']}'),child:Text('${s['name']} · ${s['duration']} мин.'))).toList(), onChanged:(v) async {setState(()=>serviceId=v); await _loadSlots();}),
         const SizedBox(height:14), Text(tr('Дата','Date'),style:const TextStyle(fontWeight:FontWeight.bold)),
         OutlinedButton.icon(onPressed:_chooseDate,icon:const Icon(Icons.calendar_month),label:Text(_displayDate(_dateKey(selectedDate)))),
         const SizedBox(height:8), Text(tr('Свободни часове','Available times'),style:const TextStyle(fontWeight:FontWeight.bold)),
