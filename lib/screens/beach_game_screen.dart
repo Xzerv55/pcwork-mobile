@@ -213,8 +213,12 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 12, vertical: compact ? 4 : 7),
     decoration: BoxDecoration(color: Colors.white.withValues(alpha: .88), borderRadius: BorderRadius.circular(14)),
     child: Column(children: [
-      Text(label, style: TextStyle(fontSize: compact ? 7 : 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
-      Text(value, style: TextStyle(fontSize: compact ? 14 : 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
+      Text(label, style: compact
+          ? const TextStyle(fontSize: 7, fontWeight: FontWeight.w900, color: Color(0xFF426174))
+          : const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
+      Text(value, style: compact
+          ? const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF17364B))
+          : const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
     ]),
   );
 }
