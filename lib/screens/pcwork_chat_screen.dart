@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,11 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   bool _sending = false;
   bool _loadingMessages = false;
   bool _appResumed = true;
+  bool _hasOlder = false;
+  bool _loadingOlder = false;
+  int _oldestId = 0;
+  int _pollDelaySeconds = 8;
+  int _pollFailures = 0;
 
   String tr(String bg, String en) => widget.english ? en : bg;
 
@@ -74,8 +80,12 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     _pollTimer?.cancel();
     _pollTimer = null;
     if (widget.isActive && _appResumed && _token != null) {
-      _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
-        if (!_loadingMessages && !_sending) unawaited(_loadMessages(silent: true));
+      _pollTimer = Timer(Duration(seconds: _pollDelaySeconds), () {
+        if (!_loadingMessages && !_sending) {
+          unawaited(_loadMessages(silent: true));
+        } else {
+          _startPolling();
+        }
       });
     }
   }
@@ -103,6 +113,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
         _token = null;
         _lastId = 0;
         _messages.clear();
+        _hasOlder = false; _oldestId = 0; _pollFailures = 0; _pollDelaySeconds = 8;
         _loading = true;
         _error = null;
         unawaited(_initialize());
@@ -120,7 +131,11 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      if (_lastId == 0) _hasOlder = result['has_more'] == true;
+      if (rows.isNotEmpty && _oldestId == 0) _oldestId = int.tryParse('${rows.first['id']}') ?? 0;
       if (!mounted) return;
+      _pollFailures = 0;
+      _pollDelaySeconds = rows.isNotEmpty ? 5 : (_pollDelaySeconds + 2).clamp(8, 20).toInt();
       if (rows.isNotEmpty) {
         setState(() {
           _messages.addAll(rows);
@@ -130,16 +145,42 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
         // Keep the conversation anchored to the newest message on initial load,
         // after every incoming message and after sending a reply.
         _scrollToLatest();
-      } else if (!silent && mounted) {
+      } else if (mounted && _error != null) {
         setState(() => _error = null);
       }
       if (forceBottom) _scrollToLatest();
       if (mounted && _loading) setState(() => _loading = false);
     } catch (e) {
-      if (mounted && !silent) setState(() { _error = '$e'; _loading = false; });
+      _pollFailures++;
+      _pollDelaySeconds = min(60, 10 * (1 << min(_pollFailures - 1, 3))).toInt();
+      if (mounted) setState(() { _error = '$e'; _loading = false; });
     } finally {
       _loadingMessages = false;
+      if (mounted && widget.isActive && _appResumed && _token != null) _startPolling();
     }
+  }
+
+  Future<void> _loadOlder() async {
+    if (_loadingOlder || !_hasOlder || _oldestId <= 0 || _token == null) return;
+    _loadingOlder = true;
+    if (mounted) setState(() {});
+    final oldExtent = _scroll.hasClients ? _scroll.position.maxScrollExtent : 0.0;
+    final oldOffset = _scroll.hasClients ? _scroll.offset : 0.0;
+    try {
+      final result = await widget.api.getChatMessages(_token!, beforeId: _oldestId);
+      final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      if (!mounted) return;
+      if (rows.isNotEmpty) {
+        setState(() { _messages.insertAll(0, rows); _oldestId = int.tryParse('${rows.first['id']}') ?? _oldestId; _hasOlder = result['has_more'] == true; });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent - oldExtent + oldOffset);
+        });
+      } else {
+        setState(() => _hasOlder = false);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешно зареждане на по-стари съобщения:', 'Could not load older messages:')} $e')));
+    } finally { _loadingOlder = false; if (mounted) setState(() {}); }
   }
 
   Future<void> _send({String? imageBase64, String? imageMime}) async {
@@ -188,6 +229,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   Widget build(BuildContext context) {
     final dark = widget.isDarkTheme;
     return Column(children: [
+      if (_hasOlder && !_loading) Align(alignment: Alignment.center, child: TextButton.icon(onPressed: _loadingOlder ? null : _loadOlder, icon: _loadingOlder ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.history_rounded, size: 17), label: Text(tr('Зареди по-стари съобщения', 'Load older messages')))),
       Expanded(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
