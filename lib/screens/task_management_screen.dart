@@ -69,6 +69,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     List<Map<String, dynamic>> technicians = [];
     try { technicians = await widget.api.getTechnicians(widget.token, selectedRepair.locationCode); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); return; }
+    if (!mounted) return;
 
     final title = TextEditingController();
     final description = TextEditingController();
@@ -80,7 +81,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
       title: Text(tr('Нова сервизна задача', 'New service task')),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        DropdownButtonFormField<int>(value: selectedRepair.id, isExpanded: true, decoration: InputDecoration(labelText: tr('Ремонт *', 'Repair *')), items: repairs.map((r) => DropdownMenuItem(value: r.id, child: Text('${r.number.isEmpty ? '#${r.id}' : r.number} · ${r.device} ${r.model}'.trim(), overflow: TextOverflow.ellipsis))).toList(), onChanged: (id) async {
+        DropdownButtonFormField<int>(initialValue: selectedRepair.id, isExpanded: true, decoration: InputDecoration(labelText: tr('Ремонт *', 'Repair *')), items: repairs.map((r) => DropdownMenuItem(value: r.id, child: Text('${r.number.isEmpty ? '#${r.id}' : r.number} · ${r.device} ${r.model}'.trim(), overflow: TextOverflow.ellipsis))).toList(), onChanged: (id) async {
           final next = repairs.firstWhere((r) => r.id == id);
           setDialogState(() { selectedRepair = next; loadingTechnicians = true; technicians = []; selectedAssignee = 0; });
           try {
@@ -92,9 +93,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
         TextField(controller: description, maxLines: 2, decoration: InputDecoration(labelText: tr('Описание', 'Description'))),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Автоматично разпределение', 'Automatic assignment')), subtitle: Text(tr('Избира служител според графика и текущата натовареност.', 'Selects staff based on schedule and current workload.')), value: autoAssign, onChanged: (v) => setDialogState(() => autoAssign = v)),
         if (loadingTechnicians) const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator())
-        else if (!autoAssign) DropdownButtonFormField<int>(value: technicians.any((t) => (t['id'] as num?)?.toInt() == selectedAssignee) ? selectedAssignee : null, isExpanded: true, decoration: InputDecoration(labelText: tr('Отговорен служител *', 'Assigned staff *')), items: technicians.map((t) => DropdownMenuItem(value: (t['id'] as num).toInt(), child: Text('${t['name'] ?? t['display_name'] ?? t['id']}'))).toList(), onChanged: (v) => setDialogState(() => selectedAssignee = v ?? 0)),
+        else if (!autoAssign) DropdownButtonFormField<int>(initialValue: technicians.any((t) => (t['id'] as num?)?.toInt() == selectedAssignee) ? selectedAssignee : null, isExpanded: true, decoration: InputDecoration(labelText: tr('Отговорен служител *', 'Assigned staff *')), items: technicians.map((t) => DropdownMenuItem(value: (t['id'] as num).toInt(), child: Text('${t['name'] ?? t['display_name'] ?? t['id']}'))).toList(), onChanged: (v) => setDialogState(() => selectedAssignee = v ?? 0)),
         TextField(controller: due, decoration: InputDecoration(labelText: tr('Краен срок (YYYY-MM-DD HH:MM)', 'Deadline (YYYY-MM-DD HH:MM)'))),
-        DropdownButtonFormField<String>(value: priority, decoration: InputDecoration(labelText: tr('Приоритет', 'Priority')), items: [DropdownMenuItem(value:'low',child:Text(tr('Нисък','Low'))),DropdownMenuItem(value:'normal',child:Text(tr('Нормален','Normal'))),DropdownMenuItem(value:'high',child:Text(tr('Висок','High'))),DropdownMenuItem(value:'urgent',child:Text(tr('Спешен','Urgent')))], onChanged: (v) => setDialogState(() => priority = v ?? 'normal')),
+        DropdownButtonFormField<String>(initialValue: priority, decoration: InputDecoration(labelText: tr('Приоритет', 'Priority')), items: [DropdownMenuItem(value:'low',child:Text(tr('Нисък','Low'))),DropdownMenuItem(value:'normal',child:Text(tr('Нормален','Normal'))),DropdownMenuItem(value:'high',child:Text(tr('Висок','High'))),DropdownMenuItem(value:'urgent',child:Text(tr('Спешен','Urgent')))], onChanged: (v) => setDialogState(() => priority = v ?? 'normal')),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: loadingTechnicians || (!autoAssign && selectedAssignee <= 0) ? null : () => Navigator.pop(dialogContext, true), child: Text(tr('Създай','Create')))],
     )));
@@ -136,9 +137,9 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: title, maxLength: 190, decoration: InputDecoration(labelText: tr('Заглавие *','Title *'))),
         TextField(controller: description, maxLines: 3, decoration: InputDecoration(labelText: tr('Описание','Description'))),
-        DropdownButtonFormField<int>(value: technicians.any((t) => (t['id'] as num?)?.toInt() == selected) ? selected : null, decoration: InputDecoration(labelText: tr('Отговорен служител','Assigned staff')), items: technicians.map((t) => DropdownMenuItem<int>(value: (t['id'] as num).toInt(), child: Text('${t['name'] ?? t['display_name'] ?? t['id']}'))).toList(), onChanged: (v) => setDialogState(() => selected = v ?? selected)),
+        DropdownButtonFormField<int>(initialValue: technicians.any((t) => (t['id'] as num?)?.toInt() == selected) ? selected : null, decoration: InputDecoration(labelText: tr('Отговорен служител','Assigned staff')), items: technicians.map((t) => DropdownMenuItem<int>(value: (t['id'] as num).toInt(), child: Text('${t['name'] ?? t['display_name'] ?? t['id']}'))).toList(), onChanged: (v) => setDialogState(() => selected = v ?? selected)),
         TextField(controller: due, decoration: InputDecoration(labelText: tr('Краен срок (YYYY-MM-DD HH:MM)','Deadline (YYYY-MM-DD HH:MM)'))),
-        DropdownButtonFormField<String>(value: ['low','normal','high','urgent'].contains(priority) ? priority : 'normal', decoration: InputDecoration(labelText: tr('Приоритет','Priority')), items: [DropdownMenuItem(value:'low',child:Text(tr('Нисък','Low'))),DropdownMenuItem(value:'normal',child:Text(tr('Нормален','Normal'))),DropdownMenuItem(value:'high',child:Text(tr('Висок','High'))),DropdownMenuItem(value:'urgent',child:Text(tr('Спешен','Urgent')))], onChanged: (v) => setDialogState(() => priority = v ?? 'normal')),
+        DropdownButtonFormField<String>(initialValue: ['low','normal','high','urgent'].contains(priority) ? priority : 'normal', decoration: InputDecoration(labelText: tr('Приоритет','Priority')), items: [DropdownMenuItem(value:'low',child:Text(tr('Нисък','Low'))),DropdownMenuItem(value:'normal',child:Text(tr('Нормален','Normal'))),DropdownMenuItem(value:'high',child:Text(tr('Висок','High'))),DropdownMenuItem(value:'urgent',child:Text(tr('Спешен','Urgent')))], onChanged: (v) => setDialogState(() => priority = v ?? 'normal')),
       ])),
       actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Отказ','Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Запази','Save')))],
     )));
@@ -171,7 +172,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
     appBar: AppBar(title: Text(tr('Сервизни задачи','Service tasks')), actions:[IconButton(tooltip:tr('Нова задача','New task'),onPressed:busy?null:_createTask,icon:const Icon(Icons.add_task)),IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh))]),
     body: Column(children:[
       Padding(padding: const EdgeInsets.fromLTRB(16,12,16,4), child: Row(children:[
-        Expanded(child: DropdownButtonFormField<String>(value: status, decoration: InputDecoration(labelText: tr('Статус','Status')), items:[DropdownMenuItem(value:'all',child:Text(tr('Всички','All'))), ...statuses.map((s)=>DropdownMenuItem(value:s,child:Text(statusLabel(s))))], onChanged:(v)=>setState((){status=v??'all';_load();}))),
+        Expanded(child: DropdownButtonFormField<String>(initialValue: status, decoration: InputDecoration(labelText: tr('Статус','Status')), items:[DropdownMenuItem(value:'all',child:Text(tr('Всички','All'))), ...statuses.map((s)=>DropdownMenuItem(value:s,child:Text(statusLabel(s))))], onChanged:(v)=>setState((){status=v??'all';_load();}))),
         const SizedBox(width:12),
         Expanded(child: FilterChip(label: Text(tr('Само просрочени','Overdue only')), selected: overdueOnly, onSelected:(v)=>setState((){overdueOnly=v;_load();}))),
       ])),
@@ -181,7 +182,7 @@ class _TaskManagementScreenState extends State<TaskManagementScreen> {
         final rows=snap.data??[];
         if(rows.isEmpty) return Center(child:Text(tr('Няма задачи за избраните филтри.','No tasks match these filters.')));
         return RefreshIndicator(onRefresh:_refresh, child:ListView.separated(padding:const EdgeInsets.all(12),itemCount:rows.length,separatorBuilder:(_,__)=>const SizedBox(height:8),itemBuilder:(context,index){
-          final task=rows[index]; final id=int.tryParse('${task['id']}')??0;
+          final task=rows[index];
           final due='${task['due_at']??''}'; final parsed=DateTime.tryParse('${due.replaceFirst(' ','T') }Z')?.toLocal();
           final isOverdue=parsed!=null && parsed.isBefore(DateTime.now()) && !['completed','cancelled'].contains('${task['status']}');
           final repair='${task['repair_number']??task['repair_id']??''}';

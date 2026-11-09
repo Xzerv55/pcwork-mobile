@@ -61,7 +61,7 @@ class _FinancialManagementScreenState extends State<FinancialManagementScreen> {
         TextField(controller:location,decoration:InputDecoration(labelText:tr('Код на сервизен обект','Service location code'))),
         TextField(controller:description,decoration:InputDecoration(labelText:tr('Описание','Description'))),
         TextField(controller:amount,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:tr('Сума (лв.)','Amount (BGN)'))),
-        DropdownButtonFormField<String>(value:category,decoration:InputDecoration(labelText:tr('Категория','Category')),items:const ['rent','utilities','salary','parts','transport','marketing','other'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),onChanged:(v)=>setState(()=>category=v??'other')),
+        DropdownButtonFormField<String>(initialValue:category,decoration:InputDecoration(labelText:tr('Категория','Category')),items:const ['rent','utilities','salary','parts','transport','marketing','other'].map((v)=>DropdownMenuItem(value:v,child:Text(v))).toList(),onChanged:(v)=>setState(()=>category=v??'other')),
       ])),
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx),child:Text(tr('Отказ','Cancel'))),FilledButton(onPressed:saving?null:_addExpense,child:Text(tr('Запиши','Save')))],
     ));

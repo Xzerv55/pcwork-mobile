@@ -134,11 +134,21 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
 
   Future<void> _editSchedule(int technicianId, String technicianName, Map<String, dynamic>? current) async {
     final configured = current?['schedule_configured'] != false;
-    final configuredDays = configured ? current?['working_days'] as List? : null;
-    final days = (configuredDays ?? [1, 2, 3, 4, 5]).map((e) => int.tryParse(e.toString()) ?? 0).where((e) => e > 0).toSet();
-    final absences = TextEditingController(text: ((current?['absences'] as List?) ?? []).join(', '));
-    final start = TextEditingController(text: ((configured ? current?['start_time'] : null) ?? '09:00').toString());
-    final end = TextEditingController(text: ((configured ? current?['end_time'] : null) ?? '18:00').toString());
+    final List<dynamic>? configuredDays = current == null || !configured
+        ? null
+        : current['working_days'] as List<dynamic>?;
+    final days = (configuredDays ?? <int>[1, 2, 3, 4, 5])
+        .map((e) => int.tryParse(e.toString()) ?? 0)
+        .where((e) => e > 0)
+        .toSet();
+    final List<dynamic> absenceDates = current == null
+        ? <dynamic>[]
+        : (current['absences'] as List<dynamic>? ?? <dynamic>[]);
+    final absences = TextEditingController(text: absenceDates.join(', '));
+    final startValue = current == null || !configured ? null : current['start_time'];
+    final endValue = current == null || !configured ? null : current['end_time'];
+    final start = TextEditingController(text: (startValue ?? '09:00').toString());
+    final end = TextEditingController(text: (endValue ?? '18:00').toString());
     const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
     final result = await showDialog<Map<String, dynamic>>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (context, refresh) => AlertDialog(
       title: Text(tr('График: $technicianName', 'Schedule: $technicianName')),
