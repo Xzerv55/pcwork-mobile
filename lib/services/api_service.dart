@@ -64,6 +64,7 @@ class ApiService {
   static final http.Client _httpClient = http.Client();
   static const FlutterSecureStorage _offlineStorage = FlutterSecureStorage();
   static final Map<String, _TimedShopCache> _shopCache = <String, _TimedShopCache>{};
+  static final Map<String, Future<List<Map<String, dynamic>>>> _shopRowsInFlight = <String, Future<List<Map<String, dynamic>>>>{};
   static final Map<String, _TimedRepairCache> _repairDetailCache = <String, _TimedRepairCache>{};
   static final Map<String, _TimedShopCache> _customerHistoryCache = <String, _TimedShopCache>{};
   static final Map<String, Future<List<Map<String, dynamic>>>> _shopOrdersInFlight = <String, Future<List<Map<String, dynamic>>>>{};
@@ -141,7 +142,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '112',
+      'client_build': '113',
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
@@ -178,42 +179,72 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> getShopProducts({String search = '', int categoryId = 0}) async {
-    final cacheKey = '${baseUrl.trim()}:products:$categoryId:${search.trim().toLowerCase()}';
+    final normalizedSearch = search.trim();
+    final cacheKey = '${baseUrl.trim()}:products:$categoryId:${normalizedSearch.toLowerCase()}';
     final cached = _shopCache[cacheKey];
     if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
-    final params = <String, String>{'per_page': '20'};
-    if (search.isNotEmpty) params['search'] = search;
-    if (categoryId > 0) params['category'] = '$categoryId';
-    final response = await _httpClient.get(_uri('shop/products').replace(queryParameters: params)).timeout(const Duration(seconds: 15));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
-    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
-    _storeShopCache(cacheKey, result, const Duration(seconds: 45));
-    return _copyShopRows(result);
+    final pending = _shopRowsInFlight[cacheKey];
+    if (pending != null) return _copyShopRows(await pending);
+
+    final request = () async {
+      final params = <String, String>{'per_page': '20'};
+      if (normalizedSearch.isNotEmpty) params['search'] = normalizedSearch;
+      if (categoryId > 0) params['category'] = '$categoryId';
+      final response = await _httpClient.get(_uri('shop/products').replace(queryParameters: params)).timeout(const Duration(seconds: 15));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+      final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(growable: false) : <Map<String, dynamic>>[];
+      _storeShopCache(cacheKey, result, const Duration(seconds: 45));
+      return result;
+    }();
+    _shopRowsInFlight[cacheKey] = request;
+    try { return _copyShopRows(await request); }
+    finally { if (identical(_shopRowsInFlight[cacheKey], request)) _shopRowsInFlight.remove(cacheKey); }
   }
 
   Future<List<Map<String, dynamic>>> getShopProductVariations(int productId) async {
-    final response = await _httpClient.get(_uri('shop/products/$productId/variations')).timeout(const Duration(seconds: 15));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200) {
-      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
-    }
-    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+    final cacheKey = '${baseUrl.trim()}:variations:$productId';
+    final cached = _shopCache[cacheKey];
+    if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
+    final pending = _shopRowsInFlight[cacheKey];
+    if (pending != null) return _copyShopRows(await pending);
+
+    final request = () async {
+      final response = await _httpClient.get(_uri('shop/products/$productId/variations')).timeout(const Duration(seconds: 15));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200) {
+        throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      }
+      final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+      final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(growable: false) : <Map<String, dynamic>>[];
+      _storeShopCache(cacheKey, result, const Duration(seconds: 60));
+      return result;
+    }();
+    _shopRowsInFlight[cacheKey] = request;
+    try { return _copyShopRows(await request); }
+    finally { if (identical(_shopRowsInFlight[cacheKey], request)) _shopRowsInFlight.remove(cacheKey); }
   }
 
   Future<List<Map<String, dynamic>>> getShopCategories() async {
     final cacheKey = '${baseUrl.trim()}:categories';
     final cached = _shopCache[cacheKey];
     if (cached != null && cached.expiresAt.isAfter(DateTime.now())) return _copyShopRows(cached.rows);
-    final response = await _httpClient.get(_uri('shop/categories')).timeout(const Duration(seconds: 12));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
-    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
-    final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
-    _storeShopCache(cacheKey, result, const Duration(minutes: 10));
-    return _copyShopRows(result);
+    final pending = _shopRowsInFlight[cacheKey];
+    if (pending != null) return _copyShopRows(await pending);
+
+    final request = () async {
+      final response = await _httpClient.get(_uri('shop/categories')).timeout(const Duration(seconds: 12));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+      final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(growable: false) : <Map<String, dynamic>>[];
+      _storeShopCache(cacheKey, result, const Duration(minutes: 10));
+      return result;
+    }();
+    _shopRowsInFlight[cacheKey] = request;
+    try { return _copyShopRows(await request); }
+    finally { if (identical(_shopRowsInFlight[cacheKey], request)) _shopRowsInFlight.remove(cacheKey); }
   }
 
   Future<List<Map<String, dynamic>>> getShopShippingRates(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> shipping}) async {
