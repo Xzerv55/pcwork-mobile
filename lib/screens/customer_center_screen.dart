@@ -90,7 +90,7 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           CheckboxListTile(value: initial['viber'], onChanged: (v) => updateDialog(() => initial['viber'] = v == true), title: Text(tr('Рекламни съобщения по Viber', 'Advertising messages via Viber')), controlAffinity: ListTileControlAffinity.leading, contentPadding: EdgeInsets.zero),
           Text(tr('Всяко съгласие е доброволно. При оттегляне на което и да е от задължителните съгласия начисляването на нови точки се спира.', 'Each consent is optional. Withdrawing any required consent stops new point accrual.'), style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ])),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, Map<String, bool>.from(initial)), child: Text(tr('Запази', 'Save'))],
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, Map<String, bool>.from(initial)), child: Text(tr('Запази', 'Save')))],
       )),
     );
     if (selected == null) return;
