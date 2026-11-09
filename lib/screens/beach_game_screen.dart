@@ -213,8 +213,8 @@ class _BeachGameScreenState extends State<BeachGameScreen> {
     padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 12, vertical: compact ? 4 : 7),
     decoration: BoxDecoration(color: Colors.white.withValues(alpha: .88), borderRadius: BorderRadius.circular(14)),
     child: Column(children: [
-      Text(label, style: const TextStyle(fontSize: compact ? 7 : 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
-      Text(value, style: const TextStyle(fontSize: compact ? 14 : 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
+      Text(label, style: TextStyle(fontSize: compact ? 7 : 9, fontWeight: FontWeight.w900, color: Color(0xFF426174))),
+      Text(value, style: TextStyle(fontSize: compact ? 14 : 19, fontWeight: FontWeight.w900, color: Color(0xFF17364B))),
     ]),
   );
 }
@@ -223,32 +223,4 @@ class _BeachItem {
   const _BeachItem(this.emoji, this.expiresAt);
   final String emoji;
   final DateTime expiresAt;
-}
-
-class _BeachBackdropPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final sand = Paint()..color = const Color(0xFFE7BC73);
-    canvas.drawRect(Offset.zero & size, sand);
-    final castle = Paint()..color = const Color(0xFFF4D69A);
-    final outline = Paint()..color = const Color(0xFFB77A42)..style = PaintingStyle.stroke..strokeWidth = 4;
-    final rect = Rect.fromLTWH(size.width * .07, size.height * .08, size.width * .86, size.height * .82);
-    final path = Path()..moveTo(rect.left, rect.bottom)..lineTo(rect.left, rect.top + 35)
-      ..lineTo(rect.left + 35, rect.top + 35)..lineTo(rect.left + 35, rect.top)
-      ..lineTo(rect.left + 75, rect.top)..lineTo(rect.left + 75, rect.top + 35)
-      ..lineTo(rect.right - 75, rect.top + 35)..lineTo(rect.right - 75, rect.top)
-      ..lineTo(rect.right - 35, rect.top)..lineTo(rect.right - 35, rect.top + 35)
-      ..lineTo(rect.right, rect.top + 35)..lineTo(rect.right, rect.bottom)..close();
-    canvas.drawPath(path, castle);
-    canvas.drawPath(path, outline);
-    final sea = Paint()..color = const Color(0xFF55C5D9);
-    canvas.drawRect(Rect.fromLTWH(0, size.height * .91, size.width, size.height * .09), sea);
-    final ball = Paint()..color = const Color(0xFFE76F51);
-    canvas.drawCircle(Offset(size.width * .10, size.height * .93), 12, ball);
-    final shell = Paint()..color = const Color(0xFFFFF0CE);
-    canvas.drawCircle(Offset(size.width * .87, size.height * .93), 9, shell);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
