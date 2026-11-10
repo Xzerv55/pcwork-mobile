@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'staff_dashboard_screen.dart';
+import 'technician_dispatch_screen.dart';
+import 'repair_worklog_screen.dart';
+import 'repair_evidence_screen.dart';
 import 'ai_assistant_chat_screen.dart';
 
 class InternalServiceAssistantScreen extends StatefulWidget {
@@ -16,6 +19,39 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
   @override
   void initState() { super.initState(); _future = widget.api.getRepairs(widget.token); }
   void _openDashboard() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffDashboardScreen(api: widget.api, token: widget.token, english: widget.english)));
+  void _openDispatch() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english)));
+
+  Future<Repair?> _chooseRepair() async {
+    final repairs = await _future;
+    if (!mounted) return null;
+    if (repairs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Няма налични ремонти.', 'No repairs are available.'))));
+      return null;
+    }
+    return showDialog<Repair>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(tr('Избери ремонт', 'Select a repair')),
+      content: SizedBox(width: double.maxFinite, child: ListView(shrinkWrap: true, children: repairs.map((repair) => ListTile(
+        leading: const Icon(Icons.build_circle_outlined),
+        title: Text(repair.number.isEmpty ? 'PCW-${repair.id}' : repair.number),
+        subtitle: Text([repair.device, repair.model, repair.status].where((v) => v.isNotEmpty).join(' · ')),
+        onTap: () => Navigator.pop(ctx, repair),
+      )).toList())),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Отказ', 'Cancel')))],
+    ));
+  }
+
+  Future<void> _openWorklog() async {
+    final repair = await _chooseRepair();
+    if (repair == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairWorklogScreen(api: widget.api, token: widget.token, repairId: repair.id, repairNumber: repair.number.isEmpty ? 'PCW-${repair.id}' : repair.number, isStaff: true)));
+  }
+
+  Future<void> _openEvidence() async {
+    final repair = await _chooseRepair();
+    if (repair == null || !mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairEvidenceScreen(baseUrl: widget.api.baseUrl, token: widget.token, repairId: repair.id, repairNumber: repair.number.isEmpty ? 'PCW-${repair.id}' : repair.number, isStaff: true)));
+  }
+
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -54,9 +90,9 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
         Card(child: ListTile(leading: const Icon(Icons.auto_awesome, color: Color(0xFF21D4D8)), title: Text(tr('Попитай PCWork AI', 'Ask PCWork AI')), subtitle: Text(tr('Локален модел LM Studio за технически и сервизни въпроси', 'Local LM Studio model for technical and service questions')), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AiAssistantChatScreen(api: widget.api, token: widget.token, english: widget.english, staffMode: true))))),
         const SizedBox(height: 12), Text(tr('Работни инструменти', 'Work tools'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
         Card(child: ListTile(leading: const Icon(Icons.assignment_outlined), title: Text(tr('Ремонти и статуси', 'Repairs and statuses')), subtitle: Text(tr('Списък, диагностика, статуси и клиентски данни', 'Repair list, diagnostics, statuses and customer details')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
-        Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
-        Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Диагностика, вложени части, труд, плащания и гаранции', 'Diagnostics, parts, labor, payments and warranties')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
-        Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Прикачване на снимки към ремонт', 'Attach photos to a repair')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
+        Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openDispatch)),
+        Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Диагностика, вложени части, труд, плащания и гаранции', 'Diagnostics, parts, labor, payments and warranties')), trailing: const Icon(Icons.chevron_right), onTap: _openWorklog)),
+        Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Прикачване на снимки към ремонт', 'Attach photos to a repair')), trailing: const Icon(Icons.chevron_right), onTap: _openEvidence)),
         const SizedBox(height: 10), FilledButton.icon(onPressed: _openDashboard, icon: const Icon(Icons.dashboard_customize_outlined), label: Text(tr('Отвори пълното сервизно табло', 'Open full service dashboard'))),
         const SizedBox(height: 8), const Text('PCWork Internal Service Assistant • Сървърните права се проверяват от WordPress.', style: TextStyle(color: Colors.grey, fontSize: 11)),
       ]));

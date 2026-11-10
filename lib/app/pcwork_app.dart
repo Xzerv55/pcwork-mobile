@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
@@ -71,8 +72,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
-  // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 119;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -154,10 +153,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Future<void> _checkForAppUpdate() async {
     try {
-      final info = await api.getAppUpdateInfo();
+      // Read the actual installed Android/iOS package version instead of a
+      // duplicated constant. This prevents offering the build already installed.
+      final packageInfo = await PackageInfo.fromPlatform();
+      final installedBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+      final info = await api.getAppUpdateInfo(clientBuild: installedBuild);
       if (!mounted) return;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
-      setState(() => _appUpdateInfo = availableBuild > _currentBuildNumber ? info : null);
+      setState(() => _appUpdateInfo = availableBuild > installedBuild ? info : null);
     } catch (_) {
       // Update checks are optional and must never block app startup.
     }
@@ -1233,8 +1236,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     const SizedBox(height: 8),
-    SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-    if (signedInUser != null) ...[const SizedBox(height: 8), SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app')))],
+    if (signedInUser != null) Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+      const SizedBox(width: 10),
+      Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
+    ]) else SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 21),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -1340,10 +1346,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ListView(padding: const EdgeInsets.all(16), children: [
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          if (!canSeeStaffUi) ...[
-            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showCustomerRepairRequest, icon: const Icon(Icons.add_circle_outline), label: Text(tr('Нова заявка за ремонт','New repair request')))),
-            const SizedBox(height: 10),
-          ],
+          SizedBox(width: double.infinity, child: FilledButton.icon(
+            onPressed: canSeeStaffUi ? _showIntakeForm : _showCustomerRepairRequest,
+            icon: const Icon(Icons.add_circle_outline_rounded),
+            label: Text(canSeeStaffUi ? tr('Приеми устройство', 'Device intake') : tr('Нова заявка за ремонт', 'New repair request')),
+          )),
+          const SizedBox(height: 10),
           if (_pendingSyncCount > 0) Card(color: const Color(0xFF3A2B16), child: ListTile(leading: const Icon(Icons.cloud_upload_outlined, color: Colors.orangeAccent), title: Text(tr('Чакащи синхронизации: $_pendingSyncCount', 'Pending sync: $_pendingSyncCount')), subtitle: Text(tr('Ще бъдат изпратени автоматично при възстановяване на интернет.', 'They will sync automatically when internet is restored.')), trailing: IconButton(onPressed: _syncOfflineQueue, icon: const Icon(Icons.sync)))),
           if ((snapshot.data ?? []).any((r) => r.fromCache)) Card(color: const Color(0xFF17283D), child: ListTile(leading: const Icon(Icons.cloud_off, color: cyan), title: Text(tr('Офлайн копие', 'Offline copy')), subtitle: Text(tr('Показват се последно запазените ремонти. Данните може да не са актуални.', 'Showing the last saved repairs. Data may be out of date.')))),
           Row(children: [Expanded(child: _repairMetric(tr('Всички','Total'), rows.length)), Expanded(child: _repairMetric(tr('Активни','Active'), active)), Expanded(child: _repairMetric(tr('Готови','Ready'), ready))]),
@@ -1788,10 +1796,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Text(tr('Входът е с еднократен код по имейл; за избрани профили администраторът може да разреши и вход с WordPress парола. Не използваме SMS или Viber.', 'Sign-in uses email one-time codes; an administrator may also enable WordPress password login for selected accounts. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
     if (signedInUser != null && canSeeStaffUi) ...[
-      const SizedBox(height: 16),
-      FilledButton.icon(onPressed: _openInternalServiceAssistant, icon: const Icon(Icons.support_agent_rounded), label: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant'))),
-      const SizedBox(height: 8),
-
       const SizedBox(height: 8),
       Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 12)),
     ],
@@ -2168,15 +2172,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             ),
             if (canSeeStaffUi) ...[
               const SizedBox(height: 10),
-              SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _openInternalServiceAssistant, icon: const Icon(Icons.support_agent_rounded), label: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant')))),
+              SizedBox(width: double.infinity, child: FilledButton.icon(
+                onPressed: _openInternalServiceAssistant,
+                icon: const Icon(Icons.support_agent_rounded),
+                label: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant')),
+              )),
             ],
           ]),
         ),
       ),
-      const SizedBox(height: 12),
-      Row(children: [
-        _dashboardAction(Icons.add_circle_outline_rounded, canSeeStaffUi ? tr('Приеми устройство', 'Device intake') : tr('Нова заявка', 'New request'), () { if (canSeeStaffUi) { _showIntakeForm(); } else { _showCustomerRepairRequest(); } }),
-      ]),
     ]);
   }
 
@@ -2185,8 +2189,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     decoration: BoxDecoration(color: isDarkTheme ? const Color(0xFF172536) : const Color(0xFFF0F5F8), borderRadius: BorderRadius.circular(14)),
     child: Column(children: [Icon(icon, color: cyan, size: 19), const SizedBox(height: 5), Text('$value', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8), fontWeight: FontWeight.w600))]),
   );
-
-  Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
 
   Future<void> _openWebsite(String url) async {
     final uri = Uri.tryParse(url);

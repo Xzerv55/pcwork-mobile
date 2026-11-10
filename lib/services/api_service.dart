@@ -137,10 +137,10 @@ class ApiService {
 
   /// Public release manifest configured by a PCWork administrator in WordPress.
   /// Only HTTPS APK links are accepted by the app before they are opened.
-  Future<Map<String, dynamic>?> getAppUpdateInfo() async {
+  Future<Map<String, dynamic>?> getAppUpdateInfo({required int clientBuild}) async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '120',
+      'client_build': clientBuild.toString(),
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
