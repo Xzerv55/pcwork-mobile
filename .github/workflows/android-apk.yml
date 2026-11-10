@@ -65,6 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
             echo "ERROR: Android SDK directory was not found (ANDROID_SDK_ROOT/ANDROID_HOME)."
@@ -83,21 +84,26 @@ jobs:
           NDK_VERSION="28.2.13676358"
           NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
 
-          # Remove the failed/partial installation and stale SDK download cache.
+          echo "Cleaning previous NDK installation and download cache..."
           rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
-          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
 
-          # Retry cleanly in case the package mirror returns a damaged archive.
+          echo "Accepting Android SDK licenses..."
+          LICENSE_INPUT="$(printf 'y\\n%.0s' {1..100})"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses <<< "$LICENSE_INPUT" >/dev/null
+
           installed=false
           for attempt in 1 2 3; do
             echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)..."
             rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
-            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION" --verbose \\
-              && [[ -s "$NDK_DIR/source.properties" ]] \\
-              && grep -q "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
-              installed=true
-              break
+
+            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION" --verbose; then
+              if [[ -s "$NDK_DIR/source.properties" ]] &&
+                 grep -q "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
+                installed=true
+                break
+              fi
             fi
+
             echo "NDK installation attempt $attempt failed; retrying with a clean download cache."
           done
 
@@ -105,6 +111,7 @@ jobs:
             echo "ERROR: Could not install a valid Android NDK $NDK_VERSION."
             exit 1
           fi
+
           echo "Android NDK $NDK_VERSION installed and verified."
 
       # The Flutter settings plugin reads android/local.properties while Gradle
