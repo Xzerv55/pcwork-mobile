@@ -22,7 +22,8 @@ class _BookingScreenState extends State<BookingScreen> {
   String? error;
   List<Map<String, dynamic>> services = [];
   List<Map<String, dynamic>> slots = [];
-  List<Map<String, dynamic>> bookings = [];\n  bool _bookingConfigLoaded = false;
+  List<Map<String, dynamic>> bookings = [];
+  bool _bookingConfigLoaded = false;
   int? serviceId;
   DateTime selectedDate = DateTime.now();
   String? selectedStart;
