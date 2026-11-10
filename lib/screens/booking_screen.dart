@@ -23,7 +23,6 @@ class _BookingScreenState extends State<BookingScreen> {
   List<Map<String, dynamic>> services = [];
   List<Map<String, dynamic>> slots = [];
   List<Map<String, dynamic>> bookings = [];
-  bool _bookingConfigLoaded = false;
   int? serviceId;
   DateTime selectedDate = DateTime.now();
   String? selectedStart;
@@ -38,41 +37,18 @@ class _BookingScreenState extends State<BookingScreen> {
   void dispose() { deviceController.dispose(); issueController.dispose(); super.dispose(); }
   String _dateKey(DateTime d) => '${d.year.toString().padLeft(4,'0')}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
 
-  Future<void> _load({bool refreshCatalog = false}) async {
+  Future<void> _load() async {
     setState(() { loading = true; error = null; });
     try {
+      final config = await widget.api.getBookingConfig();
+      if (config['enabled'] == false) throw Exception(tr('Системата за записване е временно изключена.','The booking system is currently disabled.'));
+      final list = await widget.api.getBookingServices();
       final token = await widget.tokenProvider();
-      final needConfig = !_bookingConfigLoaded || refreshCatalog;
-      final needServices = services.isEmpty || refreshCatalog;
-      final futures = <Future<dynamic>>[
-        if (needConfig) widget.api.getBookingConfig(),
-        if (needServices) widget.api.getBookingServices(),
-        if (token != null && token.isNotEmpty) widget.api.getMyBookings(token),
-      ];
-      final results = await Future.wait(futures);
-      var index = 0;
-      if (needConfig) {
-        final config = results[index++] as Map<String, dynamic>;
-        if (config['enabled'] == false) {
-          throw Exception(tr('Системата за записване е временно изключена.','The booking system is currently disabled.'));
-        }
-        _bookingConfigLoaded = true;
-      }
-      if (needServices) services = results[index++] as List<Map<String, dynamic>>;
-      bookings = token == null || token.isEmpty
-        ? <Map<String, dynamic>>[]
-        : results[index++] as List<Map<String, dynamic>>;
+      final mine = token == null || token.isEmpty ? <Map<String,dynamic>>[] : await widget.api.getMyBookings(token);
       if (!mounted) return;
-      setState(() {
-        serviceId = services.any((s) => int.tryParse('${s['id']}') == serviceId)
-          ? serviceId
-          : (services.isNotEmpty ? int.tryParse('${services.first['id']}') : null);
-        loading = false;
-      });
+      setState(() { services = list; bookings = mine; serviceId = list.isNotEmpty ? int.tryParse('${list.first['id']}') : null; loading = false; });
       await _loadSlots();
-    } catch (e) {
-      if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ',''); loading = false; });
-    }
+    } catch (e) { if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ',''); loading = false; }); }
   }
 
   Future<void> _loadSlots() async {
@@ -140,7 +116,7 @@ class _BookingScreenState extends State<BookingScreen> {
   @override
   Widget build(BuildContext context) {
     final location=widget.location;
-    return RefreshIndicator(onRefresh:() => _load(refreshCatalog: true), child: ListView(padding:const EdgeInsets.all(18), children:[
+    return RefreshIndicator(onRefresh:_load, child: ListView(padding:const EdgeInsets.all(18), children:[
       Text(tr('Записване на час за сервиз','Book a service appointment'),style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
       const SizedBox(height:6), Text(tr('Изберете услуга, обект, дата и свободен час. Резервацията се записва директно в PCWork.','Choose a service, location, date and available time. Your booking is saved directly in PCWork.'),style:const TextStyle(color:Colors.white70)),
       const SizedBox(height:14),

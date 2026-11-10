@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'staff_dashboard_screen.dart';
 import 'ai_assistant_chat_screen.dart';
-import 'technician_dispatch_screen.dart';
-import 'repair_worklog_screen.dart';
-import 'repair_evidence_screen.dart';
 
 class InternalServiceAssistantScreen extends StatefulWidget {
   const InternalServiceAssistantScreen({super.key, required this.api, required this.token, required this.english});
@@ -19,56 +16,6 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
   @override
   void initState() { super.initState(); _future = widget.api.getRepairs(widget.token); }
   void _openDashboard() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffDashboardScreen(api: widget.api, token: widget.token, english: widget.english)));
-
-  void _openTechnicianDispatch() => Navigator.of(context).push(MaterialPageRoute(
-    builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english),
-  ));
-
-  Future<void> _chooseRepairAndOpen({required bool evidence}) async {
-    try {
-      final repairs = await widget.api.getRepairs(widget.token, forceRefresh: true);
-      if (!mounted) return;
-      final eligible = repairs.where((r) => r.status != 'cancelled').toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      if (eligible.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Няма активни ремонти за избор.', 'There are no active repairs to select.'))));
-        return;
-      }
-      final selected = await showDialog<Repair>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(tr('Избери ремонт', 'Select a repair')),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: eligible.length,
-              itemBuilder: (_, index) {
-                final repair = eligible[index];
-                final number = repair.number.isEmpty ? 'PCW-${repair.id}' : repair.number;
-                return ListTile(
-                  leading: const Icon(Icons.build_circle_outlined),
-                  title: Text(number),
-                  subtitle: Text('${repair.device} ${repair.model}'.trim()),
-                  onTap: () => Navigator.of(dialogContext).pop(repair),
-                );
-              },
-            ),
-          ),
-          actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text(tr('Отказ', 'Cancel')))],
-        ),
-      );
-      if (selected == null || !mounted) return;
-      final number = selected.number.isEmpty ? 'PCW-${selected.id}' : selected.number;
-      await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => evidence
-          ? RepairEvidenceScreen(baseUrl: widget.api.baseUrl, token: widget.token, repairId: selected.id, repairNumber: number, isStaff: true)
-          : RepairWorklogScreen(api: widget.api, token: widget.token, repairId: selected.id, repairNumber: number, isStaff: true),
-      ));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
-    }
-  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -107,9 +54,9 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
         Card(child: ListTile(leading: const Icon(Icons.auto_awesome, color: Color(0xFF21D4D8)), title: Text(tr('Попитай PCWork AI', 'Ask PCWork AI')), subtitle: Text(tr('Локален модел LM Studio за технически и сервизни въпроси', 'Local LM Studio model for technical and service questions')), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AiAssistantChatScreen(api: widget.api, token: widget.token, english: widget.english, staffMode: true))))),
         const SizedBox(height: 12), Text(tr('Работни инструменти', 'Work tools'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
         Card(child: ListTile(leading: const Icon(Icons.assignment_outlined), title: Text(tr('Ремонти и статуси', 'Repairs and statuses')), subtitle: Text(tr('Списък, диагностика, статуси и клиентски данни', 'Repair list, diagnostics, statuses and customer details')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
-        Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openTechnicianDispatch)),
-        Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Избери ремонт, за да отвориш дневника и калкулацията', 'Select a repair to open its worklog and cost calculation')), trailing: const Icon(Icons.chevron_right), onTap: () => _chooseRepairAndOpen(evidence: false))),
-        Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Избери ремонт, за да добавиш снимки и доказателства', 'Select a repair to add photos and evidence')), trailing: const Icon(Icons.chevron_right), onTap: () => _chooseRepairAndOpen(evidence: true))),
+        Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
+        Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Диагностика, вложени части, труд, плащания и гаранции', 'Diagnostics, parts, labor, payments and warranties')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
+        Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Прикачване на снимки към ремонт', 'Attach photos to a repair')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
         const SizedBox(height: 10), FilledButton.icon(onPressed: _openDashboard, icon: const Icon(Icons.dashboard_customize_outlined), label: Text(tr('Отвори пълното сервизно табло', 'Open full service dashboard'))),
         const SizedBox(height: 8), const Text('PCWork Internal Service Assistant • Сървърните права се проверяват от WordPress.', style: TextStyle(color: Colors.grey, fontSize: 11)),
       ]));

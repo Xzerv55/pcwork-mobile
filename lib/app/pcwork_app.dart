@@ -72,7 +72,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 123;
+  static const int _currentBuildNumber = 119;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1233,47 +1233,30 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     const SizedBox(height: 8),
-    if (signedInUser != null)
-      Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-        const SizedBox(width: 10),
-        Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
-      ])
-    else
-      SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-    // Keep every section below the social buttons in one explicit content
-    // column. This avoids conditional list-child expansion changing the
-    // scroll extent when the signed-in account/role is restored asynchronously.
-    _homeAdditionalSections(),
-  ]);
-
-  Widget _homeAdditionalSections() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (signedInUser != null && canSeeStaffUi) ...[
-        const SizedBox(height: 21),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
-        ]),
-        const SizedBox(height: 7),
-        Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
-          const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
-          IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
-        ]))),
-      ],
-      const SizedBox(height: 16),
-      Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-      const SizedBox(height: 6),
-      if (isCustomerAccount) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
-      if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
-      _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
-      if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
-      if (canSeeStaffUi) _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
-      const SizedBox(height: 12),
+    SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+    if (signedInUser != null) ...[const SizedBox(height: 8), SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app')))],
+    if (signedInUser != null && canSeeStaffUi) ...[
+      const SizedBox(height: 21),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
+      ]),
+      const SizedBox(height: 7),
+      Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
+        Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
+        const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
+        IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
+      ]))),
     ],
-  );
+    const SizedBox(height: 16),
+    Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+    const SizedBox(height: 6),
+    if (isCustomerAccount) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
+    if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
+    _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
+    if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
+    if (canSeeStaffUi) _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+  ]);
 
   Future<void> _openBeachGame() async {
     await _navigatorKey.currentState?.push(MaterialPageRoute(
@@ -1357,10 +1340,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ListView(padding: const EdgeInsets.all(16), children: [
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          if (canSeeStaffUi) ...[
-            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showIntakeForm, icon: const Icon(Icons.add_circle_outline_rounded), label: Text(tr('Приеми устройство', 'Device intake')))),
-            const SizedBox(height: 10),
-          ],
           if (!canSeeStaffUi) ...[
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showCustomerRepairRequest, icon: const Icon(Icons.add_circle_outline), label: Text(tr('Нова заявка за ремонт','New repair request')))),
             const SizedBox(height: 10),
@@ -1809,6 +1788,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Text(tr('Входът е с еднократен код по имейл; за избрани профили администраторът може да разреши и вход с WordPress парола. Не използваме SMS или Viber.', 'Sign-in uses email one-time codes; an administrator may also enable WordPress password login for selected accounts. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
     if (signedInUser != null && canSeeStaffUi) ...[
+      const SizedBox(height: 16),
+      FilledButton.icon(onPressed: _openInternalServiceAssistant, icon: const Icon(Icons.support_agent_rounded), label: Text(tr('Вътрешен сервизен асистент', 'Internal Service Assistant'))),
+      const SizedBox(height: 8),
+
       const SizedBox(height: 8),
       Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 12)),
     ],
@@ -2190,6 +2173,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           ]),
         ),
       ),
+      const SizedBox(height: 12),
+      Row(children: [
+        _dashboardAction(Icons.add_circle_outline_rounded, canSeeStaffUi ? tr('Приеми устройство', 'Device intake') : tr('Нова заявка', 'New request'), () { if (canSeeStaffUi) { _showIntakeForm(); } else { _showCustomerRepairRequest(); } }),
+      ]),
     ]);
   }
 
@@ -2199,6 +2186,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: Column(children: [Icon(icon, color: cyan, size: 19), const SizedBox(height: 5), Text('$value', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8), fontWeight: FontWeight.w600))]),
   );
 
+  Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
 
   Future<void> _openWebsite(String url) async {
     final uri = Uri.tryParse(url);
