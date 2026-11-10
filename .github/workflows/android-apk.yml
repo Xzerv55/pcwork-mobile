@@ -59,6 +59,75 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
+      # Remove any incomplete NDK download and install the exact version required
+      # by the Android project before Gradle evaluates the Android build.
+      - name: Repair and install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
+            echo "ERROR: Android SDK directory was not found (ANDROID_SDK_ROOT/ANDROID_HOME)."
+            exit 1
+          fi
+
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "ERROR: Android sdkmanager was not found."
+            exit 1
+          fi
+
+          NDK_VERSION="28.2.13676358"
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+
+          # Keep sdkmanager and every later Gradle step on the exact same SDK root.
+          {
+            printf 'ANDROID_SDK_ROOT=%s\n' "$SDK_ROOT"
+            printf 'ANDROID_HOME=%s\n' "$SDK_ROOT"
+          } >> "$GITHUB_ENV"
+
+          echo "Cleaning previous/partial NDK installation and download cache..."
+          rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+
+          echo "Accepting Android SDK licenses..."
+          LICENSE_INPUT="$(printf 'y\n%.0s' {1..100})"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses <<< "$LICENSE_INPUT" >/dev/null
+
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)..."
+            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+
+            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION" --verbose; then
+              # source.properties alone can exist in a damaged/partial extraction.
+              # Require the package manifest and executable NDK tool as well.
+              if [[ -s "$NDK_DIR/source.properties" &&
+                    -s "$NDK_DIR/package.xml" &&
+                    -x "$NDK_DIR/ndk-build" ]] &&
+                 grep -Fq "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
+                installed=true
+                break
+              fi
+            fi
+
+            echo "NDK installation attempt $attempt did not produce a complete package."
+            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+          done
+
+          if [[ "$installed" != true ]]; then
+            echo "ERROR: NDK $NDK_VERSION download/extraction is invalid or incomplete."
+            echo "Gradle build was stopped before project configuration to avoid a misleading secondary error."
+            exit 1
+          fi
+
+          echo "Android NDK $NDK_VERSION installed and verified at $NDK_DIR."
+          test -s "$NDK_DIR/package.xml"
+          test -x "$NDK_DIR/ndk-build"
+
       # The Flutter settings plugin reads android/local.properties while Gradle
       # evaluates settings.gradle.kts. Create it immediately before invoking Gradle
       # (including wrapper generation); it is machine-specific and must not be committed.
