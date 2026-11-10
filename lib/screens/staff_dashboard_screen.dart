@@ -43,67 +43,46 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   void dispose() { search.dispose(); super.dispose(); }
   void reload() => setState(() { future = widget.api.getRepairs(widget.token, forceRefresh: true); overdueFuture = widget.api.getOverdueRepairs(widget.token); });
 
+  Widget _toolActionButton(String tooltip, IconData icon, VoidCallback onPressed) =>
+    Expanded(child: IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 22),
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 42, minHeight: 40),
+    ));
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(tr('Табло на сервиза', 'Service dashboard')),
       actions: [
-        IconButton(
-          tooltip: tr('Сканирай QR на ремонт', 'Scan repair QR'),
-          onPressed: _scanRepairQr,
-          icon: const Icon(Icons.qr_code_scanner_rounded),
-        ),
-        IconButton(
-          tooltip: tr('Календар на ремонтите', 'Repair calendar'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => RepairCalendarScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.calendar_month_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Разпределяне на ремонти', 'Technician dispatch'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.auto_awesome_motion_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Статистика и отчети', 'Statistics & reports'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => RepairStatisticsScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.query_stats_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Склад и резервни части', 'Stock & spare parts'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.inventory_2_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Финансови отчети', 'Financial reports'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => FinancialManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.account_balance_wallet_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Сервизни задачи', 'Service tasks'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.task_alt_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Екип и работно време', 'Team & attendance'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => StaffManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.groups_2_outlined),
-        ),
-        IconButton(onPressed: reload, icon: const Icon(Icons.refresh)),
+        IconButton(onPressed: reload, tooltip: tr('Обнови', 'Refresh'), icon: const Icon(Icons.refresh)),
       ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(92),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(children: [
+                _toolActionButton(tr('Сканирай QR на ремонт', 'Scan repair QR'), Icons.qr_code_scanner_rounded, _scanRepairQr),
+                _toolActionButton(tr('Календар на ремонтите', 'Repair calendar'), Icons.calendar_month_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairCalendarScreen(api: widget.api, token: widget.token, english: widget.english)))),
+                _toolActionButton(tr('Разпределяне на ремонти', 'Technician dispatch'), Icons.auto_awesome_motion_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english)))),
+                _toolActionButton(tr('Статистика и отчети', 'Statistics & reports'), Icons.query_stats_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairStatisticsScreen(api: widget.api, token: widget.token, english: widget.english)))),
+              ]),
+              Row(children: [
+                _toolActionButton(tr('Склад и резервни части', 'Stock & spare parts'), Icons.inventory_2_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english)))),
+                _toolActionButton(tr('Финансови отчети', 'Financial reports'), Icons.account_balance_wallet_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FinancialManagementScreen(api: widget.api, token: widget.token, english: widget.english)))),
+                _toolActionButton(tr('Сервизни задачи', 'Service tasks'), Icons.task_alt_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english)))),
+                _toolActionButton(tr('Екип и работно време', 'Team & attendance'), Icons.groups_2_outlined, () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffManagementScreen(api: widget.api, token: widget.token, english: widget.english)))),
+              ]),
+            ],
+          ),
+        ),
+      ),
     ),
     body: FutureBuilder<List<Repair>>(
       future: future,
