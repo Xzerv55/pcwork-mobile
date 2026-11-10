@@ -1,0 +1,262 @@
+name: PCWork Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcwork-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build installable Android APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle dependencies and wrapper
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # The icon/splash generators update both platform asset catalogs.
+      - name: Generate iOS asset catalog for shared branding assets
+        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+
+      - name: Generate Android project
+        run: bash ./scripts/prepare_android.sh
+
+      # Remove any incomplete NDK download and install the exact version required
+      # by the Android project before Gradle evaluates the Android build.
+      - name: Repair and install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
+            echo "ERROR: Android SDK directory was not found (ANDROID_SDK_ROOT/ANDROID_HOME)."
+            exit 1
+          fi
+
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "ERROR: Android sdkmanager was not found."
+            exit 1
+          fi
+
+          NDK_VERSION="28.2.13676358"
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+
+          # Keep sdkmanager and every later Gradle step on the exact same SDK root.
+          {
+            printf 'ANDROID_SDK_ROOT=%s\n' "$SDK_ROOT"
+            printf 'ANDROID_HOME=%s\n' "$SDK_ROOT"
+          } >> "$GITHUB_ENV"
+
+          echo "Cleaning previous/partial NDK installation and download cache..."
+          rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+
+          echo "Accepting Android SDK licenses..."
+          LICENSE_INPUT="$(printf 'y\n%.0s' {1..100})"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses <<< "$LICENSE_INPUT" >/dev/null
+
+          installed=false
+          for attempt in 1 2 3; do
+            echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)..."
+            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+
+            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION" --verbose; then
+              # source.properties alone can exist in a damaged/partial extraction.
+              # Require the package manifest and executable NDK tool as well.
+              if [[ -s "$NDK_DIR/source.properties" &&
+                    -s "$NDK_DIR/package.xml" &&
+                    -x "$NDK_DIR/ndk-build" ]] &&
+                 grep -Fq "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
+                installed=true
+                break
+              fi
+            fi
+
+            echo "NDK installation attempt $attempt did not produce a complete package."
+            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+          done
+
+          if [[ "$installed" != true ]]; then
+            echo "ERROR: NDK $NDK_VERSION download/extraction is invalid or incomplete."
+            echo "Gradle build was stopped before project configuration to avoid a misleading secondary error."
+            exit 1
+          fi
+
+          echo "Android NDK $NDK_VERSION installed and verified at $NDK_DIR."
+          test -s "$NDK_DIR/package.xml"
+          test -x "$NDK_DIR/ndk-build"
+
+      # The Flutter settings plugin reads android/local.properties while Gradle
+      # evaluates settings.gradle.kts. Create it immediately before invoking Gradle
+      # (including wrapper generation); it is machine-specific and must not be committed.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Generate Gradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_BIN="$(readlink -f "$(command -v flutter)")"
+          FLUTTER_ROOT="$(dirname "$(dirname "$FLUTTER_BIN")")"
+          test -d "$FLUTTER_ROOT/packages/flutter_tools/gradle"
+          mkdir -p "$GITHUB_WORKSPACE/android"
+          printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT" > "$GITHUB_WORKSPACE/android/local.properties"
+          test -s "$GITHUB_WORKSPACE/android/local.properties"
+          echo "Flutter SDK configured at: $FLUTTER_ROOT"
+          cd "$GITHUB_WORKSPACE/android"
+          test -f local.properties
+          gradle wrapper --gradle-version 8.14.3 --distribution-type all
+
+      # Firebase client settings are read from the checked-out Android config.
+      # These are app-side identifiers/API key, not a service-account private key.
+      - name: Read Firebase Android configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_FILE="android/app/google-services.json"
+          if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "ERROR: $CONFIG_FILE is missing. Add the real Firebase Android configuration to the repository (do not commit service-account credentials)."
+            exit 1
+          fi
+          PACKAGE_NAME="com.pcworkbg.pcwork_mobile"
+          MATCH_COUNT=$(jq --arg package "$PACKAGE_NAME" '[.client[]? | select(.client_info.android_client_info.package_name == $package)] | length' "$CONFIG_FILE")
+          if [[ "$MATCH_COUNT" != "1" ]]; then
+            echo "ERROR: google-services.json must contain exactly one Android client for $PACKAGE_NAME."
+            exit 1
+          fi
+          FIREBASE_PROJECT_ID=$(jq -r '.project_info.project_id // empty' "$CONFIG_FILE")
+          FIREBASE_MESSAGING_SENDER_ID=$(jq -r '.project_info.project_number // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_APP_ID=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .client_info.mobilesdk_app_id // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_API_KEY=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .api_key[0].current_key // empty' "$CONFIG_FILE")
+          if [[ -z "$FIREBASE_PROJECT_ID" || -z "$FIREBASE_MESSAGING_SENDER_ID" || -z "$FIREBASE_ANDROID_APP_ID" || -z "$FIREBASE_ANDROID_API_KEY" ]]; then
+            echo "ERROR: google-services.json is missing one or more required Firebase Android client fields."
+            exit 1
+          fi
+          {
+            printf 'FIREBASE_PROJECT_ID=%s\n' "$FIREBASE_PROJECT_ID"
+            printf 'FIREBASE_MESSAGING_SENDER_ID=%s\n' "$FIREBASE_MESSAGING_SENDER_ID"
+            printf 'FIREBASE_ANDROID_APP_ID=%s\n' "$FIREBASE_ANDROID_APP_ID"
+            printf 'FIREBASE_ANDROID_API_KEY=%s\n' "$FIREBASE_ANDROID_API_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure persistent release signing
+        shell: bash
+        env:
+          PCWORK_KEYSTORE_BASE64: ${{ secrets.PCWORK_KEYSTORE_BASE64 }}
+          PCWORK_KEYSTORE_PASSWORD: ${{ secrets.PCWORK_KEYSTORE_PASSWORD }}
+          PCWORK_KEY_ALIAS: ${{ secrets.PCWORK_KEY_ALIAS }}
+          PCWORK_KEY_PASSWORD: ${{ secrets.PCWORK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PCWORK_KEYSTORE_BASE64:-}" || -z "${PCWORK_KEYSTORE_PASSWORD:-}" || -z "${PCWORK_KEY_ALIAS:-}" || -z "${PCWORK_KEY_PASSWORD:-}" ]]; then
+            echo "ERROR: Configure all four GitHub Actions secrets: PCWORK_KEYSTORE_BASE64, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS, PCWORK_KEY_PASSWORD. Configure the existing persistent signing secrets in the repository settings."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/pcwork-signing"
+          printf '%s' "$PCWORK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          chmod 600 "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          echo "PCWORK_KEYSTORE_FILE=$RUNNER_TEMP/pcwork-signing/pcwork-release.jks" >> "$GITHUB_ENV"
+          echo "PCWORK_KEYSTORE_PASSWORD=$PCWORK_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_ALIAS=$PCWORK_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_PASSWORD=$PCWORK_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
+
+      - name: Validate and export the single app build number
+        shell: bash
+        run: |
+          set -euo pipefail
+          PUBSPEC_VERSION="$(sed -n 's/^version: //p' pubspec.yaml | head -n 1)"
+          PUBSPEC_BUILD="${PUBSPEC_VERSION##*+}"
+          DART_BUILD="$(sed -n "s/.*defaultValue: \([0-9][0-9]*\)).*/\1/p" lib/app/pcwork_app.dart | head -n 1)"
+          if [[ ! "$PUBSPEC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ || -z "$PUBSPEC_BUILD" || "$PUBSPEC_BUILD" != "$DART_BUILD" ]]; then
+            echo "ERROR: pubspec.yaml build number ($PUBSPEC_BUILD) and Dart fallback ($DART_BUILD) do not match."
+            exit 1
+          fi
+          echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
+          echo "Validated app version $PUBSPEC_VERSION"
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Generate PCWork launcher icons and native splash
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Build debug APK for phone testing
+        run: >-
+          flutter build apk --debug --no-pub
+          --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER"
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Build release APK for device testing
+        run: >-
+          flutter build apk --release --split-per-abi --no-pub
+          --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER"
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Upload APK files
+        uses: actions/upload-artifact@v6
+        with:
+          name: pcwork-android-apks
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+          retention-days: 14
