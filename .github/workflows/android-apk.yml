@@ -21,6 +21,20 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
 
+      - name: Verify PCWork v127 home source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'version: 1.27.0+127' pubspec.yaml
+          grep -Fq "ValueKey<String>('pcwork-home-v127')" lib/app/pcwork_app.dart
+          grep -Fq "'Чат с PCWork'" lib/app/pcwork_app.dart
+          grep -Fq "'Оцени приложението'" lib/app/pcwork_app.dart
+          grep -Fq "'@css.ps4.ps5'" lib/app/pcwork_app.dart
+          grep -Fq 'Open the direct chat with our service team' lib/app/pcwork_app.dart
+          grep -Fq 'Quick access' lib/app/pcwork_app.dart
+          sha256sum lib/app/pcwork_app.dart
+          echo 'Verified: Android build is using the intended PCWork v127 home source and contains the post-contact sections.'
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
