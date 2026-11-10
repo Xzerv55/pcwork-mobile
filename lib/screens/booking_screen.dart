@@ -57,8 +57,19 @@ class _BookingScreenState extends State<BookingScreen> {
     if (location == null || id == null) { if (mounted) setState(() { slots = []; selectedStart = null; }); return; }
     try {
       final result = await widget.api.getBookingSlots(date: _dateKey(selectedDate), locationCode: location.code.isNotEmpty ? location.code : location.name, serviceId: id);
+      // Display only quarter-hour start times. The booking API must enforce the same
+      // rule server-side to prevent direct requests from bypassing the UI.
+      final quarterHourSlots = result.where((slot) {
+        final raw = '${slot['start'] ?? ''}';
+        final parsed = DateTime.tryParse(raw);
+        if (parsed != null) return parsed.minute % 15 == 0;
+        final match = RegExp(r'(?:^|T|\s)(\d{1,2}):(\d{2})').firstMatch(raw);
+        if (match == null) return false;
+        final minute = int.tryParse(match.group(2) ?? '');
+        return minute != null && minute % 15 == 0;
+      }).toList(growable: false);
       if (!mounted) return;
-      setState(() { slots = result; selectedStart = null; });
+      setState(() { slots = quarterHourSlots; selectedStart = null; });
     } catch (e) { if (mounted) setState(() { slots = []; error = e.toString().replaceFirst('Exception: ',''); }); }
   }
 

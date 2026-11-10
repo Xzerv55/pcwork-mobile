@@ -140,7 +140,7 @@ class ApiService {
   Future<Map<String, dynamic>?> getAppUpdateInfo() async {
     final updateUri = _uri('app/update').replace(queryParameters: {
       ..._uri('app/update').queryParameters,
-      'client_build': '115',
+      'client_build': '120',
       'ts': DateTime.now().millisecondsSinceEpoch.toString(),
     });
     final response = await _httpClient.get(updateUri, headers: const {
@@ -253,8 +253,8 @@ class ApiService {
     return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
   }
 
-  Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping, String? shippingRateId}) async {
-    final response = await _httpClient.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'shipping_rate_id': shippingRateId})).timeout(const Duration(seconds: 35));
+  Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping, String paymentMethod = 'cash_courier', String? shippingRateId}) async {
+    final response = await _httpClient.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'payment_method': paymentMethod, 'shipping_rate_id': shippingRateId})).timeout(const Duration(seconds: 35));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
@@ -283,6 +283,19 @@ class ApiService {
     finally { if (identical(_shopOrdersInFlight[cacheKey], request)) _shopOrdersInFlight.remove(cacheKey); }
   }
 
+  Future<String> sendAiMessage(String token, List<Map<String, String>> messages) async {
+    final response = await _httpClient.post(
+      _uri('ai/chat'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({'messages': messages}),
+    ).timeout(const Duration(seconds: 75));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map || (data['answer'] ?? '').toString().trim().isEmpty) throw Exception('AI асистентът не върна отговор.');
+    return data['answer'].toString();
+  }
+
   Future<Map<String, dynamic>> getLoyaltySummary(String token) async {
     final response = await _httpClient.get(_uri('loyalty/summary'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
     final decoded = _decodeResponse(response);
@@ -290,16 +303,6 @@ class ApiService {
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
     if (data is! Map) throw Exception('Невалидни данни за програмата за лоялност.');
     return Map<String, dynamic>.from(data);
-  }
-
-  Future<void> updateGoldConsents(String token, Map<String, bool> consents) async {
-    final body = <String, dynamic>{};
-    for (final key in ['data_collection', 'loyalty', 'marketing', 'push', 'viber']) {
-      body['${key}_opt_in'] = consents[key] == true;
-    }
-    final response = await _httpClient.post(_uri('loyalty/consents'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json'}, body: jsonEncode(body)).timeout(const Duration(seconds: 15));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
   }
 
   Future<Map<String, dynamic>> getShopOrder(String token, int id) async {
@@ -758,6 +761,69 @@ class ApiService {
     return (data['warranty_cards'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  Future<Map<String, dynamic>?> getRepairEstimate(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId/estimate'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? decoded['data'] : null;
+    return data is Map ? Map<String, dynamic>.from(data) : null;
+  }
+
+  Future<Map<String, dynamic>> createRepairEstimate(String token, int repairId, {required String description, required double total, required int estimatedDays, String validUntil = ''}) async {
+    final response = await _httpClient.post(_uri('repairs/$repairId/estimate'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'description': description, 'total': total, 'estimated_days': estimatedDays, 'valid_until': validUntil})).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! Map) throw Exception('Невалиден отговор при изпращане на офертата.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> decideRepairEstimate(String token, int repairId, {required String decision, String note = ''}) async {
+    final response = await _httpClient.post(_uri('repairs/$repairId/estimate/decision'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'decision': decision, 'note': note})).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! Map) throw Exception('Невалиден отговор при обработка на офертата.');
+    _repairDetailCache.removeWhere((key, _) => key.endsWith(':repair:$repairId'));
+    _repairsListCache.removeWhere((key, _) => key.contains(':repairs:'));
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>> updateRepairPayment(String token, int repairId, {required bool paid}) async {
+    final response = await _httpClient.post(
+      _uri('repairs/$repairId/payment'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({'payment_status': paid ? 'paid' : 'pending'}),
+    ).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор за плащането.');
+    _repairDetailCache.removeWhere((key, _) => key.endsWith(':repair:$repairId'));
+    _repairsListCache.removeWhere((key, _) => key.contains(':repairs:'));
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Repair> lookupRepairByQr(String token, String repairNumber) async {
+    final code = repairNumber.trim();
+    if (code.isEmpty || code.length > 100) throw Exception('Невалиден номер на ремонт.');
+    final uri = _uri('staff/repairs/lookup').replace(queryParameters: {'number': code});
+    final response = await _httpClient.get(uri, headers: {
+      'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+    }).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) {
+      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    }
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! Map) throw Exception('Сървърът върна невалидни данни за ремонта.');
+    final repair = Repair.fromJson(Map<String, dynamic>.from(data));
+    if (repair.id <= 0) throw Exception('Не е намерен валиден ремонт за този QR код.');
+    _repairDetailCache.removeWhere((key, _) => key.endsWith(':repair:${repair.id}'));
+    return repair;
+  }
+
   Future<Repair> getRepair(String token, int id) async {
     final cacheKey = '${baseUrl.trim()}:${_scope(token)}:repair:$id';
     final cachedDetail = _repairDetailCache[cacheKey];
@@ -954,6 +1020,20 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> getRatingConfig() async {
+    final response = await _httpClient.get(_uri('ratings/config'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 10));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map && decoded['data'] is Map ? decoded['data'] : decoded;
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<void> submitRating(String token, {required String type, required int stars, int repairId = 0, String comment = ''}) async {
+    final response = await _httpClient.post(_uri('ratings'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'rating_type': type, 'stars': stars, 'repair_id': repairId, 'comment': comment})).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_responseMessage(decoded, response.statusCode));
+  }
+
   Future<Map<String, dynamic>> getBookingConfig() async {
     final response = await _httpClient.get(_uri('booking/config'), headers: {'Accept': 'application/json'}).timeout(const Duration(seconds: 10));
     final decoded = _decodeResponse(response);
@@ -1000,6 +1080,33 @@ class ApiService {
 
   Future<void> cancelBooking(String token, int id) async {
     final response = await _httpClient.patch(_uri('booking/bookings/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode({'status': 'cancelled'})).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+  }
+
+  Future<List<Map<String, dynamic>>> getCustomerDevices(String token) async {
+    final response = await _httpClient.get(_uri('customer/devices'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 18));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final root = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    final rows = root is Map ? root['devices'] : root;
+    return rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> saveCustomerDevice(String token, Map<String, dynamic> device, {int id = 0}) async {
+    final uri = _uri(id > 0 ? 'customer/devices/$id' : 'customer/devices');
+    final response = id > 0
+        ? await _httpClient.patch(uri, headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode(device)).timeout(const Duration(seconds: 20))
+        : await _httpClient.post(uri, headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: jsonEncode(device)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_responseMessage(decoded, response.statusCode));
+    final root = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (root is! Map || root['device'] is! Map) throw Exception('Сървърът върна невалидни данни за устройството.');
+    return Map<String, dynamic>.from(root['device'] as Map);
+  }
+
+  Future<void> deleteCustomerDevice(String token, int id) async {
+    final response = await _httpClient.delete(_uri('customer/devices/$id'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 18));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
   }
@@ -1058,9 +1165,9 @@ class ServiceLocation {
 
 
 class Repair {
-  const Repair({required this.id, required this.number, required this.status, this.device = '', this.model = '', this.location = '', this.createdAt = '', this.updatedAt = '', this.problem = '', this.phone = '', this.serial = '', this.customer = '', this.locationCode = '', this.technicianId = 0, this.technicianName = '', this.priority = 'normal', this.dueAt = '', this.history = const [], this.warrantyCards = const [], this.pendingSync = false, this.fromCache = false});
+  const Repair({required this.id, required this.number, required this.status, this.device = '', this.model = '', this.location = '', this.createdAt = '', this.updatedAt = '', this.problem = '', this.phone = '', this.serial = '', this.customer = '', this.locationCode = '', this.technicianId = 0, this.technicianName = '', this.priority = 'normal', this.dueAt = '', this.paymentMethod = 'cash_on_site', this.paymentStatus = 'pending', this.history = const [], this.warrantyCards = const [], this.pendingSync = false, this.fromCache = false});
   final int id;
-  final String number, status, device, model, location, createdAt, updatedAt, problem, phone, serial, customer, locationCode, technicianName, priority, dueAt;
+  final String number, status, device, model, location, createdAt, updatedAt, problem, phone, serial, customer, locationCode, technicianName, priority, dueAt, paymentMethod, paymentStatus;
   final int technicianId;
   final List<RepairHistory> history;
   final List<Map<String, dynamic>> warrantyCards;
@@ -1076,7 +1183,7 @@ class Repair {
     createdAt: (j['created_at'] ?? '').toString(), updatedAt: (j['updated_at'] ?? '').toString(),
     problem: (j['problem_description'] ?? j['problem'] ?? '').toString(),
     phone: (j['customer_phone'] ?? '').toString(), serial: (j['serial_number'] ?? '').toString(), customer: (j['customer_name'] ?? '').toString(),
-    locationCode: (j['location_code'] ?? '').toString(), technicianId: (j['assigned_technician_id'] as num?)?.toInt() ?? 0, technicianName: (j['assigned_technician_name'] ?? '').toString(), priority: (j['priority'] ?? 'normal').toString(), dueAt: (j['due_at'] ?? '').toString(),
+    locationCode: (j['location_code'] ?? '').toString(), technicianId: (j['assigned_technician_id'] as num?)?.toInt() ?? 0, technicianName: (j['assigned_technician_name'] ?? '').toString(), priority: (j['priority'] ?? 'normal').toString(), dueAt: (j['due_at'] ?? '').toString(), paymentMethod: (j['payment_method'] ?? 'cash_on_site').toString(), paymentStatus: (j['payment_status'] ?? 'pending').toString(),
     history: (j['history'] as List? ?? []).whereType<Map>().map((e) => RepairHistory.fromJson(Map<String,dynamic>.from(e))).toList(),
     warrantyCards: (j['warranty_cards'] as List? ?? []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(),
     pendingSync: j['_pending_sync'] == true, fromCache: j['_offline_cached'] == true,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'staff_dashboard_screen.dart';
+import 'ai_assistant_chat_screen.dart';
 
 class InternalServiceAssistantScreen extends StatefulWidget {
   const InternalServiceAssistantScreen({super.key, required this.api, required this.token, required this.english});
@@ -49,6 +50,8 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
         const SizedBox(height: 14), Wrap(spacing: 8, runSpacing: 8, children: [ _metric(tr('Активни', 'Active'), active, Icons.build_circle_outlined), _metric(tr('Без техник', 'Unassigned'), unassigned, Icons.person_off_outlined), _metric(tr('Диагностика', 'Diagnostics'), diagnosis, Icons.search), _metric(tr('Просрочени', 'Overdue'), overdue, Icons.warning_amber_rounded) ]),
         const SizedBox(height: 18), Text(tr('Препоръчани действия', 'Recommended actions'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
         const SizedBox(height: 8), ...tips.map((tip) => Card(child: ListTile(leading: const Icon(Icons.lightbulb_outline, color: Color(0xFFFFC857)), title: Text(tip, style: const TextStyle(fontSize: 13))))),
+        const SizedBox(height: 12), Text(tr('AI помощник', 'AI assistant'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+        Card(child: ListTile(leading: const Icon(Icons.auto_awesome, color: Color(0xFF21D4D8)), title: Text(tr('Попитай PCWork AI', 'Ask PCWork AI')), subtitle: Text(tr('Локален модел LM Studio за технически и сервизни въпроси', 'Local LM Studio model for technical and service questions')), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AiAssistantChatScreen(api: widget.api, token: widget.token, english: widget.english, staffMode: true))))),
         const SizedBox(height: 12), Text(tr('Работни инструменти', 'Work tools'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
         Card(child: ListTile(leading: const Icon(Icons.assignment_outlined), title: Text(tr('Ремонти и статуси', 'Repairs and statuses')), subtitle: Text(tr('Списък, диагностика, статуси и клиентски данни', 'Repair list, diagnostics, statuses and customer details')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
         Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),

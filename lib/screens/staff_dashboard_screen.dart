@@ -9,6 +9,7 @@ import 'repair_statistics_screen.dart';
 import 'stock_inventory_screen.dart';
 import 'task_management_screen.dart';
 import 'financial_management_screen.dart';
+import 'repair_qr_scanner_screen.dart';
 
 class StaffDashboardScreen extends StatefulWidget {
   const StaffDashboardScreen({super.key, required this.api, required this.token, required this.english});
@@ -47,6 +48,11 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     appBar: AppBar(
       title: Text(tr('Табло на сервиза', 'Service dashboard')),
       actions: [
+        IconButton(
+          tooltip: tr('Сканирай QR на ремонт', 'Scan repair QR'),
+          onPressed: _scanRepairQr,
+          icon: const Icon(Icons.qr_code_scanner_rounded),
+        ),
         IconButton(
           tooltip: tr('Календар на ремонтите', 'Repair calendar'),
           onPressed: () => Navigator.of(context).push(MaterialPageRoute(
@@ -380,6 +386,34 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     ),
   );
 
+
+  Future<void> _scanRepairQr() async {
+    final repair = await Navigator.of(context).push<Repair>(MaterialPageRoute(
+      builder: (_) => RepairQrScannerScreen(api: widget.api, token: widget.token, english: widget.english),
+    ));
+    if (!mounted || repair == null) return;
+    await showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+      title: Text('${tr('Ремонт','Repair')} № ${repair.number}'),
+      content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text('${repair.device} ${repair.model}'.trim(), style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text('${tr('Клиент','Customer')}: ${repair.customer.isEmpty ? '—' : repair.customer}'),
+        Text('${tr('Телефон','Phone')}: ${repair.phone.isEmpty ? '—' : repair.phone}'),
+        Text('${tr('Обект','Location')}: ${repair.location.isEmpty ? '—' : repair.location}'),
+        Text('${tr('Статус','Status')}: ${label(repair.status)}'),
+        Text('${tr('Плащане','Payment')}: ${repair.paymentMethod == 'cash_courier' ? tr('В брой чрез куриер','Cash to courier') : tr('В брой на място','Cash on site')} · ${repair.paymentStatus == 'paid' ? tr('Платено','Paid') : tr('Неплатено','Unpaid')}'),
+        Text('${tr('Техник','Technician')}: ${repair.technicianName.isEmpty ? tr('Не е назначен','Unassigned') : repair.technicianName}'),
+        if (repair.serial.isNotEmpty) Text('${tr('Сериен номер','Serial number')}: ${repair.serial}'),
+        if (repair.problem.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(repair.problem)),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Затвори','Close'))),
+        if (repair.paymentStatus != 'paid') TextButton.icon(onPressed: () async { Navigator.pop(ctx); try { await widget.api.updateRepairPayment(widget.token, repair.id, paid: true); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Плащането е отбелязано като получено.','Payment marked as received.')))); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, icon: const Icon(Icons.payments_outlined), label: Text(tr('Отбележи платено','Mark as paid'))),
+        TextButton.icon(onPressed: () { Navigator.pop(ctx); _manageAssignment(repair); }, icon: const Icon(Icons.assignment_ind_outlined), label: Text(tr('Назначи техник','Assign'))),
+        FilledButton.icon(onPressed: () { Navigator.pop(ctx); _changeStatus(repair); }, icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Промени статус','Change status'))),
+      ],
+    ));
+  }
 
   Widget _buildWorkloadOverview(List<Repair> repairs, Map<String, String> locationNames) {
     final active = repairs.where((r) => !['completed', 'cancelled', 'ready'].contains(r.status)).toList();

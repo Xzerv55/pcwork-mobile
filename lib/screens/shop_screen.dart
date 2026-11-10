@@ -599,6 +599,7 @@ class _ShopScreenState extends State<ShopScreen> {
     String selectedCourier = couriers.containsKey((shipping['courier'] ?? '').toString().toLowerCase())
         ? (shipping['courier'] ?? '').toString().toLowerCase()
         : '';
+    String selectedPaymentMethod = 'cash_courier';
     final phone = TextEditingController(text: (billing['phone'] ?? profile?.phone ?? '').toString());
     final email = profile?.email ?? '';
     final orderItems = cart.entries.map((e) { final p = cartProducts[e.key] ?? {}; return {'product_id': p['id'], 'variation_id': p['selected_variation_id'] ?? 0, 'quantity': e.value}; }).toList();
@@ -625,7 +626,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
-        if (!initialRatesRequested && selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+        if (!initialRatesRequested && selectedPaymentMethod == 'cash_courier' && selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
           initialRatesRequested = true;
           WidgetsBinding.instance.addPostFrameCallback((_) { if (ctx.mounted) unawaited(refreshShippingRates(setDialogState)); });
         }
@@ -640,6 +641,13 @@ class _ShopScreenState extends State<ShopScreen> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 _checkoutField(firstName, tr('Име *', 'First name *')),
                 _checkoutField(lastName, tr('Фамилия *', 'Last name *')),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedPaymentMethod,
+                  decoration: InputDecoration(labelText: tr('Метод на плащане *', 'Payment method *')),
+                  items: [DropdownMenuItem(value: 'cash_on_site', child: Text(tr('В брой на място в PCWork', 'Cash at PCWork location'))), DropdownMenuItem(value: 'cash_courier', child: Text(tr('В брой на куриера при доставка', 'Cash to courier on delivery')))],
+                  onChanged: (value) => setDialogState(() { selectedPaymentMethod = value ?? 'cash_courier'; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; }),
+                ),
+                if (selectedPaymentMethod == 'cash_courier') ...[
                 _checkoutField(city, tr('Град/село *', 'City/village *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 DropdownButtonFormField<String>(
@@ -653,6 +661,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     if (value != null && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) unawaited(refreshShippingRates(setDialogState));
                   },
                 ),
+                ],
                 _checkoutField(phone, tr('Телефон *', 'Phone *'), keyboard: TextInputType.phone),
                 TextFormField(
                   initialValue: email, readOnly: true,
@@ -660,8 +669,8 @@ class _ShopScreenState extends State<ShopScreen> {
                   validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
                 ),
                 const SizedBox(height: 12),
-                Align(alignment: Alignment.centerLeft, child: Text(tr('Метод на плащане', 'Payment method'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
-                Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(dense: true, leading: const Icon(Icons.payments_outlined, color: Color(0xFF21D4D8)), title: Text(tr('Наложен платеж', 'Cash on delivery'), style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(tr('Плащане при получаване на поръчката.', 'Pay when the order is delivered.')))),
+                Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(dense: true, leading: const Icon(Icons.payments_outlined, color: Color(0xFF21D4D8)), title: Text(selectedPaymentMethod == 'cash_on_site' ? tr('Плащане в брой на място', 'Cash at PCWork location') : tr('Плащане в брой на куриера', 'Cash to courier'), style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')))),
+                if (selectedPaymentMethod == 'cash_courier') ...[
                 Align(alignment: Alignment.centerLeft, child: Text(tr('Куриерска услуга', 'Courier service'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: loadingShippingRates ? null : () => refreshShippingRates(setDialogState),
@@ -678,6 +687,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   )).toList()),
                 ),
                 if (shippingRateError != null) Align(alignment: Alignment.centerLeft, child: Text(shippingRateError!, style: const TextStyle(color: Colors.orange, fontSize: 11))),
+                ],
               ]),
             ),
           ),
@@ -685,10 +695,10 @@ class _ShopScreenState extends State<ShopScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Отказ', 'Cancel'))),
           FilledButton(onPressed: () {
-            if (formKey.currentState!.validate() && selectedShippingRateId.isNotEmpty) {
+            if (formKey.currentState!.validate() && (selectedPaymentMethod == 'cash_on_site' || selectedShippingRateId.isNotEmpty)) {
               Navigator.pop(ctx, true);
             } else {
-              _message(tr('Обновете и изберете метод за доставка от WooCommerce.', 'Refresh and select a WooCommerce shipping method.'));
+              _message(tr('За куриерска доставка обновете и изберете активна услуга от WooCommerce.', 'For courier delivery, refresh and select an active WooCommerce service.'));
             }
           }, child: Text(tr('Продължи', 'Continue'))),
         ],
@@ -714,7 +724,8 @@ class _ShopScreenState extends State<ShopScreen> {
           'first_name': first, 'last_name': last, 'address_1': selectedAddress,
           'city': selectedCity, 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier,
         },
-        shippingRateId: selectedShippingRateId,
+        paymentMethod: selectedPaymentMethod,
+        shippingRateId: selectedPaymentMethod == 'cash_courier' ? selectedShippingRateId : null,
       );
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
