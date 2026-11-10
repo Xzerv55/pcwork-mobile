@@ -1189,7 +1189,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ),
   );
 
-  Widget _home() => ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 28), children: [
+  Widget _home() => ListView(
+    key: const PageStorageKey<String>('pcwork-home-v125'),
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
+    children: [
     Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1233,14 +1237,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Row(children: [
       Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
       const SizedBox(width: 10),
-      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', '@css.ps4.ps5', const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     const SizedBox(height: 8),
-    if (signedInUser != null) Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    const SizedBox(height: 8),
+    // Keep the two engagement cards visible for every account state. Previously
+    // the logged-out branch removed the rating card, making the home layout
+    // change depending on asynchronous session restoration.
+    Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
       const SizedBox(width: 10),
       Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
-    ]) else SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+    ]),
     if (signedInUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 21),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
