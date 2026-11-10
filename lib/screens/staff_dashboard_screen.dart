@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/api_service.dart';
 import 'repair_calendar_screen.dart';
 import 'technician_dispatch_screen.dart';
@@ -71,7 +70,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
             _toolbarAction(Icons.groups_2_outlined, tr('Екип', 'Team'), () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffManagementScreen(api: widget.api, token: widget.token, english: widget.english)))),
             _toolbarAction(Icons.refresh, tr('Обнови', 'Refresh'), reload),
           ]),
-        ]))),
+        ])),
       ),
     ),
     body: FutureBuilder<List<Repair>>(
