@@ -47,63 +47,37 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(tr('Табло на сервиза', 'Service dashboard')),
-      actions: [
-        IconButton(
-          tooltip: tr('Сканирай QR на ремонт', 'Scan repair QR'),
-          onPressed: _scanRepairQr,
-          icon: const Icon(Icons.qr_code_scanner_rounded),
+      actions: const [],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(96),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(tooltip: tr('Сканирай QR на ремонт', 'Scan repair QR'), onPressed: _scanRepairQr, icon: const Icon(Icons.qr_code_scanner_rounded)),
+                  IconButton(tooltip: tr('Календар на ремонтите', 'Repair calendar'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairCalendarScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.calendar_month_outlined)),
+                  IconButton(tooltip: tr('Разпределяне на ремонти', 'Technician dispatch'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.auto_awesome_motion_outlined)),
+                  IconButton(tooltip: tr('Статистика и отчети', 'Statistics & reports'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RepairStatisticsScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.query_stats_outlined)),
+                  IconButton(tooltip: tr('Склад и резервни части', 'Stock & spare parts'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.inventory_2_outlined)),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(tooltip: tr('Финансови отчети', 'Financial reports'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FinancialManagementScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.account_balance_wallet_outlined)),
+                  IconButton(tooltip: tr('Сервизни задачи', 'Service tasks'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.task_alt_outlined)),
+                  IconButton(tooltip: tr('Екип и работно време', 'Team & attendance'), onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffManagementScreen(api: widget.api, token: widget.token, english: widget.english))), icon: const Icon(Icons.groups_2_outlined)),
+                  IconButton(tooltip: tr('Обнови', 'Refresh'), onPressed: reload, icon: const Icon(Icons.refresh)),
+                ],
+              ),
+            ],
+          ),
         ),
-        IconButton(
-          tooltip: tr('Календар на ремонтите', 'Repair calendar'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => RepairCalendarScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.calendar_month_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Разпределяне на ремонти', 'Technician dispatch'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.auto_awesome_motion_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Статистика и отчети', 'Statistics & reports'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => RepairStatisticsScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.query_stats_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Склад и резервни части', 'Stock & spare parts'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.inventory_2_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Финансови отчети', 'Financial reports'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => FinancialManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.account_balance_wallet_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Сервизни задачи', 'Service tasks'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.task_alt_outlined),
-        ),
-        IconButton(
-          tooltip: tr('Екип и работно време', 'Team & attendance'),
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => StaffManagementScreen(api: widget.api, token: widget.token, english: widget.english),
-          )),
-          icon: const Icon(Icons.groups_2_outlined),
-        ),
-        IconButton(onPressed: reload, icon: const Icon(Icons.refresh)),
-      ],
+      ),
     ),
     body: FutureBuilder<List<Repair>>(
       future: future,
@@ -359,9 +333,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
                             icon: const Icon(Icons.call_outlined),
                           ),
                           IconButton(
-                            tooltip: 'WhatsApp',
+                            tooltip: 'Viber',
                             onPressed: r.phone.trim().isEmpty ? null : () => _messageCustomer(r),
-                            icon: const Icon(Icons.chat_outlined),
+                            icon: const Icon(Icons.chat_bubble_outline_rounded),
                           ),
                           TextButton.icon(
                             onPressed: busy ? null : () => _manageAssignment(r),
@@ -551,15 +525,11 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   Future<void> _messageCustomer(Repair repair) async {
     final phone = repair.phone.replaceAll(RegExp(r'[^0-9]'), '');
     if (phone.length < 6) return;
-    final message = tr(
-      'Здравейте! Свързваме се с Вас относно ремонт ${repair.number} в PCWork.',
-      'Hello! We are contacting you about repair ${repair.number} at PCWork.',
-    );
-    final uri = Uri.parse('https://wa.me/$phone?text=${Uri.encodeComponent(message)}');
+    final uri = Uri.parse('viber://chat?number=%2B$phone');
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr('Не може да се отвори WhatsApp.', 'Could not open WhatsApp.'))),
+        SnackBar(content: Text(tr('Не може да се отвори Viber.', 'Could not open Viber.'))),
       );
     }
   }

@@ -45,6 +45,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool isDarkTheme = true;
   bool staffPreview = false;
   bool clientPreview = false;
+  bool noRegPreview = false;
   int tab = 0;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
@@ -72,7 +73,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = 125;
+  static const int _currentBuildNumber = 126;
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -83,15 +84,17 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
-  ApiService get api => ApiService(baseUrl: apiUrl, userId: signedInUser?.id ?? 0);
+  ApiService get api => ApiService(baseUrl: apiUrl, userId: noRegPreview ? 0 : (signedInUser?.id ?? 0));
   String tr(String bg, String en) => english ? en : bg;
+  AuthUser? get visibleUser => noRegPreview ? null : signedInUser;
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
-  bool get canUseAdminChat => signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false;
-  bool get isStaffAccount => signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false;
-  bool get isCustomerAccount => signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber'].contains(r)) ?? false;
+  bool get canUseAdminChat => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
+  bool get isStaffAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
+  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber'].contains(r)) ?? false);
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
-  bool get canSeeStaffUi => (isStaffAccount && !showClientPreview) || showStaffPreview;
+  bool get canSeeStaffUi => !noRegPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
+  Future<String?> _uiToken() async => noRegPreview ? null : await auth.token;
 
   @override
   void initState() {
@@ -112,6 +115,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
+      noRegPreview = prefs.getBool('pcwork_no_reg_preview') ?? false;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty
           ? null
@@ -279,6 +283,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
+      noRegPreview = prefs.getBool('pcwork_no_reg_preview') ?? false;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty ? null : ServiceLocation(
         name: prefs.getString('pcwork_selected_location_name') ?? '',
@@ -836,7 +841,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     setState(() {
       tab = index;
       _visitedTabs.add(index);
-      if (index == 1 && repairsFuture == null && signedInUser != null) {
+      if (index == 1 && repairsFuture == null && visibleUser != null) {
         repairsFuture = _loadRepairsFuture();
       }
     });
@@ -932,8 +937,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       case 2:
         return ShopScreen(
           api: api,
-          tokenProvider: () => auth.token,
-          profileProvider: () async => signedInUser ?? await auth.me(),
+          tokenProvider: _uiToken,
+          profileProvider: () async => visibleUser ?? (noRegPreview ? null : await auth.me()),
           english: english,
           notificationOrderId: _pendingShopOrderId,
           openOrdersOnEntry: _openShopOrdersOnEntry,
@@ -945,7 +950,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             });
           },
         );
-      case 3: return ContactHubScreen(api: api, tokenProvider: () => auth.token, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: canSeeStaffUi);
+      case 3: return ContactHubScreen(api: api, tokenProvider: _uiToken, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: canSeeStaffUi);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
@@ -1214,7 +1219,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
     const SizedBox(height: 22),
-    if (signedInUser == null) _homeSignInCard() else ...[
+    if (visibleUser == null) _homeSignInCard() else ...[
       _customerCenterHomeCard(),
       const SizedBox(height: 12),
       _homeAccountDashboard(),
@@ -1233,7 +1238,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
     const SizedBox(height: 8),
-    if (signedInUser != null)
+    if (visibleUser != null)
       Row(children: [
         Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
         const SizedBox(width: 10),
@@ -1241,7 +1246,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       ])
     else
       SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-    if (signedInUser != null && canSeeStaffUi) ...[
+    if (visibleUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 21),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
@@ -1327,7 +1332,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       );
 
   Widget _repairs() {
-    if (signedInUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
+    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
       const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
@@ -1757,22 +1762,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   Widget _booking() => BookingScreen(
     api: api,
-    tokenProvider: () => auth.token,
+    tokenProvider: _uiToken,
     location: selectedLocation,
     onChooseLocation: _showLocations,
     english: english,
   );
 
   Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
-    CircleAvatar(radius: 38, child: Icon(signedInUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
+    CircleAvatar(radius: 38, child: Icon(visibleUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
     const SizedBox(height: 14),
-    Text(signedInUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+    Text(visibleUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
     const SizedBox(height: 6),
-    Text(signedInUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
-    if (signedInUser != null && signedInUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(signedInUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
-    if (signedInUser != null) ...[
+    Text(visibleUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
+    if (visibleUser != null && visibleUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(visibleUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
+    if (visibleUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
-      const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(signedInUser!.roles.any((r) => ['pcwork_customer','customer','subscriber'].contains(r)) ? tr('Потребител', 'Customer') : signedInUser!.roles.join(', ')))),
+      const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(visibleUser!.roles.any((r) => ['pcwork_customer','customer','subscriber'].contains(r)) ? tr('Потребител', 'Customer') : visibleUser!.roles.join(', ')))),
       const SizedBox(height: 12),
       Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [const Icon(Icons.notifications_active_outlined, color: cyan), const SizedBox(width: 10), Expanded(child: Text(tr('Известия от PCWork', 'PCWork notifications'), style: const TextStyle(fontWeight: FontWeight.bold)))]),
@@ -1793,7 +1798,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(height: 10),
       Text(tr('Входът е с еднократен код по имейл; за избрани профили администраторът може да разреши и вход с WordPress парола. Не използваме SMS или Viber.', 'Sign-in uses email one-time codes; an administrator may also enable WordPress password login for selected accounts. No SMS or Viber is used.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
     ],
-    if (signedInUser != null && canSeeStaffUi) ...[
+    if (visibleUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 16),
       Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 12)),
     ],
@@ -2132,7 +2137,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
               const SizedBox(width: 11),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(tr('ТВОЯТ PCWORK DASHBOARD', 'YOUR PCWORK DASHBOARD'), style: const TextStyle(color: cyan, fontSize: 10, letterSpacing: 1.1, fontWeight: FontWeight.w900)),
-                Text(tr('Здравей, ${signedInUser?.name ?? ''}', 'Welcome, ${signedInUser?.name ?? ''}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                Text(tr('Здравей, ${visibleUser?.name ?? ''}', 'Welcome, ${visibleUser?.name ?? ''}'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
               ])),
               IconButton(tooltip: tr('Обнови таблото', 'Refresh dashboard'), onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()), icon: const Icon(Icons.refresh_rounded, color: cyan)),
             ]),
@@ -2363,6 +2368,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final controller = TextEditingController(text: apiUrl);
     var draftStaffPreview = staffPreview;
     var draftClientPreview = clientPreview;
+    var draftNoRegPreview = noRegPreview;
     var draftDarkTheme = isDarkTheme;
     var draftLanguageMode = languageMode;
     Timer? apiSaveTimer;
@@ -2405,6 +2411,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () { controller.text = defaultApi; apiSaveTimer?.cancel(); saveApi(defaultApi, sheetContext); }, icon: const Icon(Icons.restart_alt), label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')))),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като служител', 'Preview as employee')), subtitle: Text(tr('Само визуализация. Не променя ролята или сървърните права.', 'Visual preview only. Does not change role or server permissions.')), value: draftStaffPreview, onChanged: (v) => savePreview(v, setSheetState)),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като клиент', 'Preview as customer')), subtitle: Text(tr('Скрива служебните екрани само за визуална проверка.', 'Hides staff screens for visual review only.')), value: draftClientPreview, onChanged: (v) async { setSheetState(() { draftClientPreview = v; if (v) draftStaffPreview = false; }); if (mounted) setState(() { clientPreview = v; if (v) staffPreview = false; }); await _savePreference('pcwork_client_preview', v); if (v) await _savePreference('pcwork_staff_preview', false); }),
+            SwitchListTile(contentPadding: EdgeInsets.zero, secondary: const Icon(Icons.visibility_off_outlined), title: const Text('No Reg'), subtitle: Text(tr('Преглед на приложението като нерегистриран потребител. Само визуален режим; не променя профила и сървърните права.', 'Preview the app as an unregistered user. Visual mode only; does not change the account or server permissions.')), value: draftNoRegPreview, onChanged: (v) async { setSheetState(() => draftNoRegPreview = v); if (mounted) setState(() { noRegPreview = v; if (v) { tab = 0; _visitedTabs.add(0); } }); await _savePreference('pcwork_no_reg_preview', v); }),
           ],
           SwitchListTile(contentPadding: EdgeInsets.zero, secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined), title: Text(tr('Тъмна тема', 'Dark theme')), subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')), value: draftDarkTheme, onChanged: (v) => saveTheme(v, setSheetState)),
           const SizedBox(height: 10),
