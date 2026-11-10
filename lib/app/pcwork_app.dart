@@ -1232,23 +1232,24 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(width: 10),
       Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
+    const SizedBox(height: 8),
+    if (signedInUser != null)
+      Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+        const SizedBox(width: 10),
+        Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
+      ])
+    else
+      SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+    // Keep every section below the social buttons in one explicit content
+    // column. This avoids conditional list-child expansion changing the
+    // scroll extent when the signed-in account/role is restored asynchronously.
     _homeAdditionalSections(),
   ]);
 
-  // Keep every home section below the social buttons in one explicit
-  // content column so the full dashboard remains part of the scrollable page.
   Widget _homeAdditionalSections() => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const SizedBox(height: 8),
-      if (signedInUser != null)
-        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-          const SizedBox(width: 10),
-          Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
-        ])
-      else
-        _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3)),
       if (signedInUser != null && canSeeStaffUi) ...[
         const SizedBox(height: 21),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -1270,6 +1271,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
       if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
       if (canSeeStaffUi) _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+      const SizedBox(height: 12),
     ],
   );
 
