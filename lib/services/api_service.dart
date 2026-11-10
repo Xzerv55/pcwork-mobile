@@ -153,10 +153,22 @@ class ApiService {
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
     final data = decoded is Map ? (decoded['data'] ?? decoded) : null;
-    if (data is! Map || data['enabled'] != true) return null;
-    final url = Uri.tryParse((data['apk_url'] ?? '').toString());
+    if (data is! Map) return null;
+    final rawBuild = data['version_code'] ?? data['build_number'] ?? data['build'] ?? data['versionCode'] ?? 0;
+    final build = int.tryParse(rawBuild.toString()) ?? 0;
+    final enabledValue = data['enabled'] ?? data['update_enabled'] ?? data['update_available'] ?? data['active'];
+    final enabled = enabledValue == null
+        ? build > clientBuild
+        : enabledValue == true || enabledValue == 1 ||
+            enabledValue.toString().toLowerCase() == 'true' ||
+            enabledValue.toString() == '1';
+    if (!enabled) return null;
+    final url = Uri.tryParse((data['apk_url'] ?? data['download_url'] ?? '').toString());
     if (url == null || url.scheme != 'https' || url.host.isEmpty) return null;
-    return Map<String, dynamic>.from(data);
+    final normalized = Map<String, dynamic>.from(data);
+    normalized['version_code'] = build;
+    normalized['apk_url'] = url.toString();
+    return normalized;
   }
 
   Future<String> downloadAndVerifyUpdate(Map<String, dynamic> info) async {

@@ -73,7 +73,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 127);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 128);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -170,8 +170,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _openVisitorAnalytics() async {
     final token = await auth.token;
     if (!mounted) return;
-    if (token == null || token.isEmpty) {
-      _message(tr('Необходим е администраторски вход.', 'Administrator sign-in required.'));
+    if (token == null || token.isEmpty || !isAdministrator) {
+      _message(tr('Достъпът е разрешен само за администратори.', 'Administrator access only.'));
       return;
     }
     await _navigatorKey.currentState?.push(MaterialPageRoute(
@@ -341,6 +341,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_loadNotificationHistory());
       unawaited(_syncOfflineQueue());
+      // Refresh the public release manifest when the app returns to foreground.
+      unawaited(_checkForAppUpdate());
       // Re-check FCM registration when the app returns from system settings.
       if (signedInUser != null) unawaited(_retryPushRegistration());
     }
@@ -1262,11 +1264,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     const SizedBox(height: 16),
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
-    if (isCustomerAccount) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
-    if (canUseAdminChat) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
+    if (isCustomerAccount || noRegPreview) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
+    if (isAdministrator) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
     if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
-    if (canSeeStaffUi) _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+    _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
   ]);
 
   Future<void> _openBeachGame() async {
@@ -2197,6 +2199,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: Column(children: [Icon(icon, color: cyan, size: 19), const SizedBox(height: 5), Text('$value', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8), fontWeight: FontWeight.w600))]),
   );
 
+  Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
 
   Future<void> _openWebsite(String url) async {
     final uri = Uri.tryParse(url);
