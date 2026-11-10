@@ -41,6 +41,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   static const defaultApi = 'https://pcwork-bg.com';
   final GlobalKey<ScaffoldMessengerState> _messengerKey = GlobalKey<ScaffoldMessengerState>();
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  // Do not restore a stale home scroll offset: the home tab stays mounted in
+  // the IndexedStack, so PageStorage could reopen it midway down the page.
+  final ScrollController _homeScrollController = ScrollController(keepScrollOffset: false);
   bool english = false;
   String languageMode = 'auto';
   bool isDarkTheme = true;
@@ -375,6 +378,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _offlineSyncTimer?.cancel();
     repairSearch.dispose();
+    _homeScrollController.dispose();
     super.dispose();
   }
 
@@ -843,6 +847,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         repairsFuture = _loadRepairsFuture();
       }
     });
+    // Returning to Home always starts at the top so lower sections cannot
+    // appear to have disappeared because the IndexedStack kept an old offset.
+    if (index == 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _homeScrollController.hasClients) {
+          _homeScrollController.jumpTo(0);
+        }
+      });
+    }
   }
 
   // Custom six-item bar: the icon/label group is centered in a fixed-height
@@ -1189,11 +1202,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ),
   );
 
-  Widget _home() => ListView(
-    key: const PageStorageKey<String>('pcwork-home-v125'),
+  Widget _home() => SingleChildScrollView(
+    key: const ValueKey<String>('pcwork-home-v127'),
+    controller: _homeScrollController,
+    primary: false,
     physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
-    children: [
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
     Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1239,8 +1254,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       const SizedBox(width: 10),
       Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', '@css.ps4.ps5', const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
     ]),
-    const SizedBox(height: 8),
-    const SizedBox(height: 8),
+    const SizedBox(height: 18),
+    // This block is part of the same scrollable Column as the contact cards.
+    // Keep it outside all account-role conditionals so every user can see it.
     // Keep the two engagement cards visible for every account state. Previously
     // the logged-out branch removed the rating card, making the home layout
     // change depending on asynchronous session restoration.
@@ -1270,7 +1286,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
     if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
     if (canSeeStaffUi) _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
-  ]);
+  ]));
 
   Future<void> _openBeachGame() async {
     await _navigatorKey.currentState?.push(MaterialPageRoute(
