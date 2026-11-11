@@ -78,7 +78,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Map<String, dynamic>? _appUpdateInfo;
   bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 149);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 150);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -922,11 +922,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     return SafeArea(
       top: false,
       child: Container(
-        height: 82,
+        height: 84,
         decoration: BoxDecoration(
-          color: surface,
-          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF26364A) : const Color(0xFFE5EAF2))),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .16 : .055), blurRadius: 18, offset: const Offset(0, -5))],
+          color: isDarkTheme ? const Color(0xFF090F1E) : surface,
+          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF273957) : const Color(0xFFE5EAF2))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .30 : .055), blurRadius: 22, offset: const Offset(0, -7)), if (isDarkTheme) BoxShadow(color: cyan.withValues(alpha: .045), blurRadius: 24, spreadRadius: -8, offset: const Offset(0, -2))],
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
@@ -950,8 +950,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                         padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
                         decoration: BoxDecoration(
-                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .20 : .13) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(28),
+                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .16 : .13) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: selected && isDarkTheme ? Border.all(color: cyan.withValues(alpha: .34), width: 1) : null,
+                          boxShadow: selected && isDarkTheme ? [BoxShadow(color: cyan.withValues(alpha: .13), blurRadius: 18, spreadRadius: -4)] : const [],
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1074,15 +1076,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         fontFamily: 'NotoSans',
         brightness: isDarkTheme ? Brightness.dark : Brightness.light,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: cyan,
+          seedColor: const Color(0xFF45F3E7),
           brightness: isDarkTheme ? Brightness.dark : Brightness.light,
         ).copyWith(
           primary: isDarkTheme ? cyan : const Color(0xFF087F83),
-          secondary: const Color(0xFF7952C7),
-          surface: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
+          secondary: const Color(0xFF9B7BFF),
+          tertiary: const Color(0xFF4A8DFF),
+          surface: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
         ),
-        scaffoldBackgroundColor: isDarkTheme ? const Color(0xFF0A111D) : const Color(0xFFF3F6FB),
-        cardColor: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
+        scaffoldBackgroundColor: isDarkTheme ? const Color(0xFF070B16) : const Color(0xFFF3F6FB),
+        cardColor: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: isDarkTheme ? Colors.white : const Color(0xFF172033),
@@ -1102,7 +1105,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           bodyMedium: TextStyle(fontSize: 14, height: 1.4, color: isDarkTheme ? const Color(0xFFC4D0DE) : const Color(0xFF53647A)),
         ),
         cardTheme: CardThemeData(
-          color: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
+          color: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
           elevation: isDarkTheme ? 0 : 2,
           shadowColor: Colors.black.withValues(alpha: isDarkTheme ? .12 : .07),
           surfaceTintColor: Colors.transparent,
@@ -1110,7 +1113,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
-            side: BorderSide(color: isDarkTheme ? const Color(0xFF26384D) : const Color(0xFFE4EAF2)),
+            side: BorderSide(color: isDarkTheme ? const Color(0xFF293B5C) : const Color(0xFFE4EAF2)),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -1134,7 +1137,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           contentTextStyle: TextStyle(fontSize: 14, height: 1.4, color: isDarkTheme ? const Color(0xFFC4D0DE) : const Color(0xFF53647A)),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
+          backgroundColor: isDarkTheme ? const Color(0xFF111B2D) : Colors.white,
           surfaceTintColor: Colors.transparent,
           showDragHandle: true,
           dragHandleColor: isDarkTheme ? const Color(0xFF60758D) : const Color(0xFFB5C2D1),
@@ -1238,7 +1241,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: isDarkTheme
-                    ? const [Color(0xFF101D2D), Color(0xFF0A101A)]
+                    ? const [Color(0xFF111B32), Color(0xFF080D1A)]
                     : const [Color(0xFFFFFFFF), Color(0xFFF2F7FA)],
               ),
             ),
@@ -1277,7 +1280,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         body: DecoratedBox(
           decoration: BoxDecoration(
             gradient: isDarkTheme
-                ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
+                ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1428), Color(0xFF070B16), Color(0xFF0D1022)])
                 : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF7F9FC), Color(0xFFEEF2F7)]),
           ),
           child: Stack(
@@ -1356,25 +1359,27 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDarkTheme ? null : Colors.white,
-        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]) : null,
+        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF103C52), Color(0xFF172746), Color(0xFF34265A)]) : null,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDarkTheme ? const Color(0xFF2B7180).withValues(alpha: .55) : const Color(0xFF26364A).withValues(alpha: .45)),
-        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 24, spreadRadius: -9, offset: const Offset(0, 9))],
+        border: Border.all(color: isDarkTheme ? const Color(0xFF54E9E2).withValues(alpha: .42) : const Color(0xFF26364A).withValues(alpha: .45)),
+        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 30, spreadRadius: -8, offset: const Offset(0, 12))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
+            Text('PCWORK  //  SERVICE OS', style: TextStyle(color: isDarkTheme ? const Color(0xFF70F8EE) : const Color(0xFF087F83), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.7)),
             Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
           ])),
-          Icon(Icons.auto_awesome_rounded, color: isDarkTheme ? const Color(0xFFB49BFF) : const Color(0xFF7952C7), size: 23),
+          Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(15), border: Border.all(color: cyan.withValues(alpha: .32)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .12), blurRadius: 16)]), child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF8BFFF4), size: 23)),
         ]),
         const SizedBox(height: 14),
-        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 21, height: 1.14, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+        Text(tr('Технологиите на
+следващото ниво.', 'Technology at the
+next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.8, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
         const SizedBox(height: 6),
-        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: TextStyle(color: isDarkTheme ? const Color(0xFFC3D1E0) : const Color(0xFF68778B), fontSize: 13)),
+        Text(tr('PC  /  LAPTOP  /  PLAYSTATION', 'PC  /  LAPTOP  /  PLAYSTATION'), style: TextStyle(color: isDarkTheme ? const Color(0xFFB8C9E4) : const Color(0xFF68778B), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
         const SizedBox(height: 13),
-        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42), padding: const EdgeInsets.symmetric(vertical: 9)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), padding: const EdgeInsets.symmetric(vertical: 11)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
@@ -2017,12 +2022,28 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     );
   }
 
-  Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
-    CircleAvatar(radius: 38, child: Icon(visibleUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
-    const SizedBox(height: 14),
-    Text(visibleUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-    const SizedBox(height: 6),
-    Text(visibleUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
+  Widget _profile() => ListView(padding: const EdgeInsets.fromLTRB(18, 16, 18, 30), children: [
+    Container(
+      padding: const EdgeInsets.all(19),
+      decoration: BoxDecoration(
+        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B52), Color(0xFF172342), Color(0xFF302451)]) : null,
+        color: isDarkTheme ? null : Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: isDarkTheme ? cyan.withValues(alpha: .35) : const Color(0xFFE1E8F0)),
+        boxShadow: [if (isDarkTheme) BoxShadow(color: cyan.withValues(alpha: .08), blurRadius: 26, spreadRadius: -8, offset: const Offset(0, 10))],
+      ),
+      child: Row(children: [
+        Container(width: 66, height: 66, decoration: BoxDecoration(shape: BoxShape.circle, color: cyan.withValues(alpha: .13), border: Border.all(color: cyan.withValues(alpha: .55)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 20)]), child: Icon(visibleUser == null ? Icons.person_outline_rounded : Icons.verified_user_rounded, size: 33, color: cyan)),
+        const SizedBox(width: 15),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('PCWORK ID  /  PROFILE', style: TextStyle(color: isDarkTheme ? const Color(0xFF7CF5EA) : const Color(0xFF087F83), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.3)),
+          const SizedBox(height: 5),
+          Text(visibleUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 3),
+          Text(visibleUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFFB9C9DE))),
+        ])),
+      ]),
+    ),
     if (visibleUser != null && visibleUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(visibleUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
     if (visibleUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),

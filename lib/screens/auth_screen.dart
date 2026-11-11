@@ -170,7 +170,7 @@ class _AuthScreenState extends State<AuthScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF102234), Color(0xFF0A101A)],
+            colors: [Color(0xFF101C35), Color(0xFF080D1A), Color(0xFF17142D)],
           ),
         ),
         child: SafeArea(
@@ -193,8 +193,9 @@ class _AuthScreenState extends State<AuthScreen> {
                               height: 140,
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: const Color(0xFF101A2B),
                                 borderRadius: BorderRadius.circular(26),
+                                border: Border.all(color: cyan.withValues(alpha: .42)),
                                 boxShadow: [
                                   BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 22, spreadRadius: 1),
                                 ],
