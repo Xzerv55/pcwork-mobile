@@ -37,6 +37,7 @@ class PushNotificationService {
   static StreamSubscription<RemoteMessage>? _foregroundSubscription;
   static StreamSubscription<RemoteMessage>? _openedSubscription;
   static String? _activeBearerToken;
+  static final StreamController<Map<String, dynamic>> foregroundDataEvents = StreamController<Map<String, dynamic>>.broadcast();
   static const MethodChannel _androidNotificationChannel = MethodChannel('com.pcworkbg.pcwork_mobile/notifications');
   static Future<void> showLocalNotification(String title, String body, Map<String, dynamic> data) async {
     if (!Platform.isAndroid) return;
@@ -246,6 +247,7 @@ class PushNotificationService {
         String storedNotificationId = '';
         try { storedNotificationId = await storeNotification(message); } catch (_) { /* Keep live delivery available if local history fails. */ }
         final foregroundData = Map<String, dynamic>.from(message.data);
+        foregroundDataEvents.add(foregroundData);
         foregroundData['_notification_id'] = storedNotificationId.isNotEmpty
             ? storedNotificationId
             : (message.messageId ?? foregroundData['notification_id'] ?? foregroundData['id'] ?? '');

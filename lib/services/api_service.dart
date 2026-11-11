@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 127});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 129});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -207,7 +207,7 @@ class ApiService {
       if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
       final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
       final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList(growable: false) : <Map<String, dynamic>>[];
-      _storeShopCache(cacheKey, result, const Duration(seconds: 45));
+      _storeShopCache(cacheKey, result, const Duration(minutes: 3));
       return result;
     }();
     _shopRowsInFlight[cacheKey] = request;
@@ -289,7 +289,7 @@ class ApiService {
       if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
       final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
       final result = rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
-      _storeShopCache(cacheKey, result, const Duration(seconds: 8));
+      _storeShopCache(cacheKey, result, const Duration(seconds: 30));
       return result;
     }();
     _shopOrdersInFlight[cacheKey] = request;
@@ -410,7 +410,7 @@ class ApiService {
       final normalized = rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
       await _offlineStorage.write(key: _repairsCacheKey(token), value: jsonEncode(normalized));
       final result = normalized.map(Repair.fromJson).toList(growable: false);
-      _repairsListCache[key] = _TimedRepairListCache(DateTime.now().add(const Duration(seconds: 18)), result);
+      _repairsListCache[key] = _TimedRepairListCache(DateTime.now().add(const Duration(seconds: 60)), result);
       return result;
     } catch (error) {
       if (!_isNetworkError(error)) rethrow;
@@ -725,7 +725,7 @@ class ApiService {
       final result = rows is List ? rows.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList(growable: false) : <Map<String, dynamic>>[];
       _customerHistoryCache.removeWhere((_, entry) => !entry.expiresAt.isAfter(DateTime.now()));
       if (_customerHistoryCache.length >= 30 && !_customerHistoryCache.containsKey(key)) _customerHistoryCache.remove(_customerHistoryCache.keys.first);
-      _customerHistoryCache[key] = _TimedShopCache(DateTime.now().add(const Duration(seconds: 12)), result);
+      _customerHistoryCache[key] = _TimedShopCache(DateTime.now().add(const Duration(seconds: 45)), result);
       return result;
     }();
     _customerHistoryInFlight[key] = request;
@@ -863,7 +863,7 @@ class ApiService {
       if (data is! Map) throw Exception('Невалиден формат на ремонта.');
       final normalized = Map<String, dynamic>.from(data);
       final repair = Repair.fromJson(normalized);
-      _storeRepairDetailCache(cacheKey, repair, const Duration(seconds: 15));
+      _storeRepairDetailCache(cacheKey, repair, const Duration(seconds: 60));
 
       final cached = await _offlineStorage.read(key: _repairsCacheKey(token));
       if (cached != null) {
@@ -895,7 +895,7 @@ class ApiService {
             ...Map<String, dynamic>.from(item),
             '_offline_cached': true,
           });
-          _storeRepairDetailCache(cacheKey, repair, const Duration(seconds: 5));
+          _storeRepairDetailCache(cacheKey, repair, const Duration(seconds: 30));
           return repair;
         }
       }

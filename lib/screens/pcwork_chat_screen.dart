@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/push_notification_service.dart';
 
 class PCWorkChatScreen extends StatefulWidget {
   const PCWorkChatScreen({super.key, required this.api, required this.tokenProvider, required this.sessionKey, required this.english, required this.isDarkTheme, required this.isActive, this.canUploadFiles = false});
@@ -28,6 +29,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   final ImagePicker _picker = ImagePicker();
   final List<Map<String, dynamic>> _messages = [];
   Timer? _pollTimer;
+  StreamSubscription<Map<String, dynamic>>? _pushSubscription;
   String? _token;
   String? _error;
   int _lastId = 0;
@@ -38,7 +40,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   bool _hasOlder = false;
   bool _loadingOlder = false;
   int _oldestId = 0;
-  int _pollDelaySeconds = 8;
+  int _pollDelaySeconds = 20;
   int _pollFailures = 0;
 
   String tr(String bg, String en) => widget.english ? en : bg;
@@ -47,6 +49,12 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _pushSubscription = PushNotificationService.foregroundDataEvents.stream.listen((data) {
+      final hint = data.values.join(' ').toLowerCase();
+      if (widget.isActive && (hint.contains('chat') || hint.contains('message') || hint.contains('съобщ'))) {
+        unawaited(_loadMessages(silent: true));
+      }
+    });
     _initialize();
   }
 
@@ -113,7 +121,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
         _token = null;
         _lastId = 0;
         _messages.clear();
-        _hasOlder = false; _oldestId = 0; _pollFailures = 0; _pollDelaySeconds = 8;
+        _hasOlder = false; _oldestId = 0; _pollFailures = 0; _pollDelaySeconds = 20;
         _loading = true;
         _error = null;
         unawaited(_initialize());
@@ -135,7 +143,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
       if (rows.isNotEmpty && _oldestId == 0) _oldestId = int.tryParse('${rows.first['id']}') ?? 0;
       if (!mounted) return;
       _pollFailures = 0;
-      _pollDelaySeconds = rows.isNotEmpty ? 5 : (_pollDelaySeconds + 2).clamp(8, 20).toInt();
+      _pollDelaySeconds = rows.isNotEmpty ? 15 : (_pollDelaySeconds + 5).clamp(20, 60).toInt();
       if (rows.isNotEmpty) {
         setState(() {
           _messages.addAll(rows);
@@ -152,7 +160,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
       if (mounted && _loading) setState(() => _loading = false);
     } catch (e) {
       _pollFailures++;
-      _pollDelaySeconds = min(60, 10 * (1 << min(_pollFailures - 1, 3))).toInt();
+      _pollDelaySeconds = min(120, 20 * (1 << min(_pollFailures - 1, 3))).toInt();
       if (mounted) setState(() { _error = '$e'; _loading = false; });
     } finally {
       _loadingMessages = false;
@@ -218,6 +226,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    _pushSubscription?.cancel();
     _pollTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _message.dispose();

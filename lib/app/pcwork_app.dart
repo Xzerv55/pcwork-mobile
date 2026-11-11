@@ -73,7 +73,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 128);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 129);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -352,7 +352,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     _offlineSyncTimer?.cancel();
     unawaited(_refreshPendingSyncCount(token));
     unawaited(_syncOfflineQueue());
-    _offlineSyncTimer = Timer.periodic(const Duration(seconds: 45), (_) => unawaited(_syncOfflineQueue()));
+    _offlineSyncTimer = Timer.periodic(const Duration(minutes: 2), (_) => unawaited(_syncOfflineQueue()));
   }
 
   Future<void> _refreshPendingSyncCount(String token) async {
@@ -2199,6 +2199,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     child: Column(children: [Icon(icon, color: cyan, size: 19), const SizedBox(height: 5), Text('$value', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)), Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8), fontWeight: FontWeight.w600))]),
   );
 
+  Widget _dashboardAction(IconData icon, String label, VoidCallback action) => Expanded(child: Card(child: InkWell(borderRadius: BorderRadius.circular(17), onTap: action, child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [Icon(icon, color: cyan, size: 22), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))])))));
 
   Future<void> _openWebsite(String url) async {
     final uri = Uri.tryParse(url);

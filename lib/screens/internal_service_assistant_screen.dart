@@ -3,6 +3,8 @@ import '../services/api_service.dart';
 import 'staff_dashboard_screen.dart';
 import 'technician_dispatch_screen.dart';
 import 'ai_assistant_chat_screen.dart';
+import 'repair_worklog_screen.dart';
+import 'repair_evidence_screen.dart';
 
 class InternalServiceAssistantScreen extends StatefulWidget {
   const InternalServiceAssistantScreen({super.key, required this.api, required this.token, required this.english});
@@ -20,6 +22,50 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
 
   Future<void> _openTechnicianDispatch() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english)));
+  }
+
+  Future<void> _selectRepairAndOpen({required bool evidence}) async {
+    try {
+      final repairs = await _future;
+      if (!mounted) return;
+      if (repairs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Няма налични ремонти.', 'No repairs available.'))));
+        return;
+      }
+      final selected = await showModalBottomSheet<Repair>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(sheetContext).size.height * .72,
+            child: Column(children: [
+              Padding(padding: const EdgeInsets.all(16), child: Text(
+                tr('Избери ремонт', 'Select a repair'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              )),
+              Expanded(child: ListView.builder(
+                itemCount: repairs.length,
+                itemBuilder: (context, index) {
+                  final repair = repairs[index];
+                  return ListTile(
+                    leading: const Icon(Icons.build_circle_outlined),
+                    title: Text(repair.number.isEmpty ? '#${repair.id}' : repair.number),
+                    subtitle: Text([repair.device, repair.model, repair.status].where((v) => v.trim().isNotEmpty).join(' • ')),
+                    onTap: () => Navigator.pop(sheetContext, repair),
+                  );
+                },
+              )),
+            ]),
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => evidence
+        ? RepairEvidenceScreen(baseUrl: widget.api.baseUrl, token: widget.token, repairId: selected.id, repairNumber: selected.number, isStaff: true)
+        : RepairWorklogScreen(api: widget.api, token: widget.token, repairId: selected.id, repairNumber: selected.number, isStaff: true)));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Неуспешно зареждане на ремонтите: ', 'Could not load repairs: ')}$e')));
+    }
   }
 
   @override
@@ -60,8 +106,8 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
       const SizedBox(height: 12), Text(tr('Работни инструменти', 'Work tools'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
       Card(child: ListTile(leading: const Icon(Icons.assignment_outlined), title: Text(tr('Ремонти и статуси', 'Repairs and statuses')), subtitle: Text(tr('Отвори списъка с ремонти и управлявай статусите', 'Open repairs and manage their statuses')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
       Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openTechnicianDispatch)),
-      Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Отвори ремонтите, за да избереш сервизен дневник и калкулация', 'Open repairs to select a worklog and cost calculation')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
-      Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Отвори ремонтите, за да добавиш снимки към конкретна задача', 'Open repairs to attach photos to a specific job')), trailing: const Icon(Icons.chevron_right), onTap: _openDashboard)),
+      Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Отвори ремонтите, за да избереш сервизен дневник и калкулация', 'Open repairs to select a worklog and cost calculation')), trailing: const Icon(Icons.chevron_right), onTap: () => _selectRepairAndOpen(evidence: false))),
+      Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Отвори ремонтите, за да добавиш снимки към конкретна задача', 'Open repairs to attach photos to a specific job')), trailing: const Icon(Icons.chevron_right), onTap: () => _selectRepairAndOpen(evidence: true))),
       const SizedBox(height: 10), FilledButton.icon(onPressed: _openDashboard, icon: const Icon(Icons.dashboard_customize_outlined), label: Text(tr('Отвори пълното сервизно табло', 'Open full service dashboard'))),
       const SizedBox(height: 8), const Text('PCWork Internal Service Assistant • Сървърните права се проверяват от WordPress.', style: TextStyle(color: Colors.grey, fontSize: 11)),
     ]),
