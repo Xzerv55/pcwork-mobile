@@ -76,9 +76,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
-  bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 150);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 153);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -172,7 +171,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try {
       final info = await api.getAppUpdateInfo();
       if (!mounted) return;
-      _lastUpdateCheckSucceeded = true;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
       final update = availableBuild > _currentBuildNumber ? info : null;
       setState(() => _appUpdateInfo = update);
@@ -193,7 +191,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         });
       }
     } catch (_) {
-      _lastUpdateCheckSucceeded = false;
       // Update checks are optional and must never block app startup.
     }
   }
@@ -1370,7 +1367,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             Text('PCWORK  //  SERVICE OS', style: TextStyle(color: isDarkTheme ? const Color(0xFF70F8EE) : const Color(0xFF087F83), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.7)),
             Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
           ])),
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(15), border: Border.all(color: cyan.withValues(alpha: .32)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .12), blurRadius: 16)]), child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF8BFFF4), size: 23)),
+          Container(width: 64, height: 64, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(19), border: Border.all(color: cyan.withValues(alpha: .58)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .20), blurRadius: 18)]), child: Image.asset('assets/images/pcwork_ai_mascot.webp', fit: BoxFit.cover)),
         ]),
         const SizedBox(height: 14),
         Text(tr('Технологиите на
@@ -1383,7 +1380,6 @@ next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeig
       ]),
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
-    Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { await _checkForAppUpdate(); if (mounted && _appUpdateInfo == null) _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.')); }, icon: const Icon(Icons.system_update_alt_rounded, size: 17), label: Text(tr('Провери за актуализация', 'Check for updates')))),
     const SizedBox(height: 22),
     if (visibleUser == null) _homeSignInCard() else ...[
       _customerCenterHomeCard(),
@@ -1497,8 +1493,58 @@ next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeig
         ),
       );
 
+  Widget _repairsDesignHeader() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        height: 178,
+        decoration: BoxDecoration(
+          border: Border.all(color: cyan.withValues(alpha: .65)),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 22)],
+        ),
+        child: Stack(fit: StackFit.expand, children: [
+          Image.asset('assets/images/repairs_hero.webp', fit: BoxFit.cover),
+          DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+            colors: [const Color(0xFF061326).withValues(alpha: .96), const Color(0xFF061326).withValues(alpha: .70), Colors.transparent],
+            stops: const [0, .48, 1],
+          ))),
+          Padding(padding: const EdgeInsets.all(18), child: Align(alignment: Alignment.centerLeft, child: SizedBox(width: 205, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(tr('PCWORK  //  SERVICE LAB', 'PCWORK  //  SERVICE LAB'), style: const TextStyle(color: Color(0xFF70F8EE), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+              const SizedBox(height: 7),
+              Text(tr('Ремонти', 'Repairs'), style: const TextStyle(color: Colors.white, fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.5)),
+              const SizedBox(height: 5),
+              Text(tr('Бързо. Надеждно. Професионално.', 'Fast. Reliable. Professional.'), style: const TextStyle(color: Color(0xFFD4E8FF), fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          )))),
+        ]),
+      ),
+    ),
+    const SizedBox(height: 12),
+    Row(children: [
+      _repairVisualChip('assets/images/repair_laptop.webp', tr('Лаптопи', 'Laptops')),
+      const SizedBox(width: 8),
+      _repairVisualChip('assets/images/repair_console.webp', tr('Конзоли', 'Consoles')),
+      const SizedBox(width: 8),
+      _repairVisualChip('assets/images/repair_diagnostics.webp', tr('Диагностика', 'Diagnostics')),
+      const SizedBox(width: 8),
+      _repairVisualChip('assets/images/repair_warranty.webp', tr('Гаранция', 'Warranty')),
+    ]),
+    const SizedBox(height: 18),
+  ]);
+
+  Widget _repairVisualChip(String image, String label) => Expanded(child: Column(children: [
+    ClipRRect(borderRadius: BorderRadius.circular(13), child: AspectRatio(aspectRatio: 1, child: Image.asset(image, fit: BoxFit.cover))),
+    const SizedBox(height: 5),
+    Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+  ]));
+
   Widget _repairs() {
-    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
+    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(16), children: [
+      _repairsDesignHeader(),
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
       const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
@@ -1515,6 +1561,7 @@ next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeig
         final active = rows.where((r) => !['completed','cancelled'].contains(r.status)).length;
         final ready = rows.where((r) => r.status == 'ready').length;
         return ListView(padding: const EdgeInsets.all(16), children: [
+          _repairsDesignHeader(),
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           if (canSeeStaffUi) ...[
