@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 130});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 131});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -973,6 +973,17 @@ class ApiService {
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
     final data = decoded is Map ? decoded['data'] : null;
     return data is List ? data.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList() : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> getCacheMonitor(String token) async {
+    final response = await _httpClient.get(
+      _uri('cache/monitor'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    if (decoded is! Map) throw Exception('Невалиден отговор от мониторинга на кеша.');
+    return Map<String, dynamic>.from(decoded);
   }
 
   Future<List<Map<String, dynamic>>> getVisitorAnalyticsCustomers(String token) async {

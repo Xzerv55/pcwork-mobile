@@ -21,6 +21,7 @@ import '../screens/shop_screen.dart';
 import '../screens/notification_history_screen.dart';
 import '../screens/customer_center_screen.dart';
 import '../screens/visitor_analytics_screen.dart';
+import '../screens/cache_monitor_screen.dart';
 import '../screens/device_monitor_screen.dart';
 import '../screens/internal_service_assistant_screen.dart';
 import '../screens/beach_game_screen.dart';
@@ -75,7 +76,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 130);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 131);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -92,7 +93,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
   bool get canUseAdminChat => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
   bool get isStaffAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
-  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber', 'pcwork_client', 'client'].contains(r)) ?? false);
+  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber'].contains(r)) ?? false);
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
   bool get canSeeStaffUi => !noRegPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
@@ -195,6 +196,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
     await _navigatorKey.currentState?.push(MaterialPageRoute(
       builder: (_) => VisitorAnalyticsScreen(api: api, token: token, english: english),
+    ));
+  }
+
+  Future<void> _openCacheMonitor() async {
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty || !isAdministrator) {
+      _message(tr('Достъпът е разрешен само за администратори.', 'Administrator access only.'));
+      return;
+    }
+    await _navigatorKey.currentState?.push(MaterialPageRoute(
+      builder: (_) => CacheMonitorScreen(api: api, token: token, english: english),
     ));
   }
 
@@ -1285,13 +1298,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
     const SizedBox(height: 6),
     if (isCustomerAccount || noRegPreview) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
-    if (isAdministrator) _infoTile(Icons.analytics_outlined, tr('Данни на посетителите', 'Visitor analytics'), _openVisitorAnalytics),
     _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
     if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
     _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
   ]);
 
   Future<void> _openBeachGame() async {
+    if (!(isCustomerAccount || noRegPreview)) return;
     await _navigatorKey.currentState?.push(MaterialPageRoute(
       builder: (_) => BeachGameScreen(english: english),
     ));
@@ -1808,6 +1821,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (visibleUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),
       const SizedBox(height: 12), Card(child: ListTile(leading: const Icon(Icons.badge_outlined, color: cyan), title: Text(tr('Тип профил', 'Account type')), subtitle: Text(visibleUser!.roles.any((r) => ['pcwork_customer','customer','subscriber'].contains(r)) ? tr('Потребител', 'Customer') : visibleUser!.roles.join(', ')))),
+      if (isAdministrator) ...[
+        const SizedBox(height: 10),
+        OutlinedButton.icon(onPressed: _openVisitorAnalytics, icon: const Icon(Icons.analytics_outlined), label: Text(tr('Данни на посетителите', 'Visitor analytics'))),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: _openCacheMonitor, icon: const Icon(Icons.memory_outlined), label: Text(tr('Redis и Object Cache монитор', 'Redis & Object Cache monitor'))),
+      ],
       const SizedBox(height: 12),
       Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [const Icon(Icons.notifications_active_outlined, color: cyan), const SizedBox(width: 10), Expanded(child: Text(tr('Известия от PCWork', 'PCWork notifications'), style: const TextStyle(fontWeight: FontWeight.bold)))]),
