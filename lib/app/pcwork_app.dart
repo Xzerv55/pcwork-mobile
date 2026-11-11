@@ -76,7 +76,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 131);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 132);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -93,7 +93,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
   bool get canUseAdminChat => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
   bool get isStaffAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
-  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber'].contains(r)) ?? false);
+  bool get isCustomerAccount {
+    if (noRegPreview) return false;
+    const allowedCustomerRoles = {'pcwork_customer', 'customer', 'subscriber'};
+    final roles = signedInUser?.roles ?? const <String>[];
+    return roles.isNotEmpty && roles.every(allowedCustomerRoles.contains);
+  }
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
   bool get canSeeStaffUi => !noRegPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
@@ -902,64 +907,78 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Icons.person_rounded,
     ];
     final selectedColor = isDarkTheme ? cyan : const Color(0xFF087F83);
+    final surface = isDarkTheme ? const Color(0xFF0D1725) : Colors.white;
     const mutedColor = Color(0xFF8796AA);
     return SafeArea(
       top: false,
       child: Container(
-        height: 78,
+        height: 76,
         decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF0E1724) : Colors.white,
+          color: surface,
+          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF26364A) : const Color(0xFFE5EAF2))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .16 : .055), blurRadius: 18, offset: const Offset(0, -5))],
         ),
-        child: Row(
-          children: List<Widget>.generate(6, (index) {
-            final selected = tab == index;
-            return Expanded(
-              child: Semantics(
-                button: true,
-                selected: selected,
-                label: labels[index],
-                child: InkWell(
-                  splashColor: cyan.withValues(alpha: .24),
-                  highlightColor: cyan.withValues(alpha: .14),
-                  hoverColor: cyan.withValues(alpha: .06),
-                  onTap: () => _selectTab(index),
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOut,
-                      width: double.infinity,
-                      margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
-                      padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: selected ? cyan.withValues(alpha: .17) : Colors.transparent,
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(selected ? selectedIcons[index] : icons[index],
-                            size: 34, color: selected ? selectedColor : mutedColor),
-                          const SizedBox(height: 2),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 1),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(labels[index], maxLines: 1,
-                                style: TextStyle(fontSize: 11.5, height: 1.1,
-                                  decoration: TextDecoration.none,
-                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                                  color: selected ? selectedColor : mutedColor)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 5, 4, 3),
+          child: Row(
+            children: List<Widget>.generate(6, (index) {
+              final selected = tab == index;
+              return Expanded(
+                child: Semantics(
+                  button: true,
+                  selected: selected,
+                  label: labels[index],
+                  child: Tooltip(
+                    message: labels[index],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      splashColor: cyan.withValues(alpha: .20),
+                      onTap: () => _selectTab(index),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .11 : .09) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.max,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              width: selected ? 43 : 36,
+                              height: 31,
+                              decoration: BoxDecoration(
+                                gradient: selected ? LinearGradient(colors: [selectedColor.withValues(alpha: .22), selectedColor.withValues(alpha: .08)]) : null,
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 25 : 23, color: selected ? selectedColor : mutedColor),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(labels[index], maxLines: 1, style: TextStyle(
+                                  fontSize: 10.5,
+                                  height: 1.05,
+                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                                  color: selected ? selectedColor : mutedColor,
+                                )),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -1032,6 +1051,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       ),
       theme: ThemeData(
         useMaterial3: true,
+        pageTransitionsTheme: const PageTransitionsTheme(builders: {
+          TargetPlatform.android: ZoomPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
+          TargetPlatform.linux: ZoomPageTransitionsBuilder(),
+        }),
         splashFactory: InkSparkle.splashFactory,
         splashColor: cyan.withValues(alpha: .22),
         highlightColor: cyan.withValues(alpha: .12),
@@ -1049,13 +1075,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         scaffoldBackgroundColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF3F6FA),
         cardColor: isDarkTheme ? const Color(0xFF151F2E) : Colors.white,
         appBarTheme: AppBarTheme(
-          backgroundColor: isDarkTheme ? const Color(0xFF0A101A) : Colors.white, foregroundColor: isDarkTheme ? Colors.white : const Color(0xFF172033),
-          surfaceTintColor: Colors.transparent, elevation: 0, centerTitle: false,
+          backgroundColor: Colors.transparent, foregroundColor: isDarkTheme ? Colors.white : const Color(0xFF172033),
+          surfaceTintColor: Colors.transparent, elevation: 0, scrolledUnderElevation: 0, centerTitle: false,
         ),
         cardTheme: CardThemeData(
-          color: isDarkTheme ? const Color(0xFF151F2E) : Colors.white, elevation: 0,
+          color: isDarkTheme ? const Color(0xFF151F2E) : Colors.white, elevation: isDarkTheme ? 0 : 1,
+          shadowColor: Colors.black.withValues(alpha: .06), surfaceTintColor: Colors.transparent,
           margin: const EdgeInsets.symmetric(vertical: 6),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: Color(0xFF26364A))),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isDarkTheme ? const Color(0xFF26364A) : const Color(0xFFE7ECF3))),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true, fillColor: isDarkTheme ? const Color(0xFF111B29) : const Color(0xFFF7F9FC),
@@ -1118,6 +1145,17 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         },
         child: Scaffold(
         appBar: AppBar(
+          flexibleSpace: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDarkTheme
+                    ? const [Color(0xFF101D2D), Color(0xFF0A101A)]
+                    : const [Color(0xFFFFFFFF), Color(0xFFF2F7FA)],
+              ),
+            ),
+          ),
           title: Row(mainAxisSize: MainAxisSize.min, children: [
             SizedBox(width: 36, height: 36, child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
             const SizedBox(width: 7),
