@@ -1054,8 +1054,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         useMaterial3: true,
         pageTransitionsTheme: const PageTransitionsTheme(builders: {
           TargetPlatform.android: ZoomPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
+          TargetPlatform.macOS: ZoomPageTransitionsBuilder(),
           TargetPlatform.windows: ZoomPageTransitionsBuilder(),
           TargetPlatform.linux: ZoomPageTransitionsBuilder(),
         }),

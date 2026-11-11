@@ -51,7 +51,7 @@ class _RepairPartsScreenState extends State<RepairPartsScreen> {
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
         title: Text(tr('Добави част към ремонта', 'Add part to repair')),
         content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<int>(value: selectedId, isExpanded: true, decoration: InputDecoration(labelText: tr('Артикул от склада', 'Stock item')), items: available.map((item) => DropdownMenuItem<int>(value: (item['id'] as num).toInt(), child: Text('${item['name']} · ${item['quantity']} ${item['unit'] ?? ''}', overflow: TextOverflow.ellipsis))).toList(), onChanged: (id) { setDialog(() { selectedId = id; final item = available.firstWhere((e) => (e['id'] as num).toInt() == id); price.text = _number(item['unit_cost']).toStringAsFixed(2); }); }),
+          DropdownButtonFormField<int>(initialValue: selectedId, isExpanded: true, decoration: InputDecoration(labelText: tr('Артикул от склада', 'Stock item')), items: available.map((item) => DropdownMenuItem<int>(value: (item['id'] as num).toInt(), child: Text('${item['name']} · ${item['quantity']} ${item['unit'] ?? ''}', overflow: TextOverflow.ellipsis))).toList(), onChanged: (id) { setDialog(() { selectedId = id; final item = available.firstWhere((e) => (e['id'] as num).toInt() == id); price.text = _number(item['unit_cost']).toStringAsFixed(2); }); }),
           const SizedBox(height: 10), TextField(controller: quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Количество за изписване', 'Quantity to issue'))),
           const SizedBox(height: 10), TextField(controller: price, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Продажна цена за единица (€)', 'Unit charge (€)'))),
           const SizedBox(height: 10), TextField(controller: note, maxLines: 2, decoration: InputDecoration(labelText: tr('Бележка (по желание)', 'Note (optional)'))),
@@ -73,7 +73,7 @@ class _RepairPartsScreenState extends State<RepairPartsScreen> {
         await widget.api.addRepairWorklogEntry(widget.token, widget.repairId, {'entry_type': 'part', 'description': description, 'quantity': qty, 'unit_price': unitPrice, 'amount': unitPrice, 'visible_to_customer': true});
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Частта е изписана и добавена в сервизния дневник.', 'Part issued and added to the service log.'))));
       } catch (e) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('Наличността е изписана, но записът в сервизния дневник не успя. Движението е запазено. ', 'Stock was issued, but the service-log entry failed. The movement is saved. ') + '$e')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Наличността е изписана, но записът в сервизния дневник не успя. Движението е запазено. ', 'Stock was issued, but the service-log entry failed. The movement is saved. ')}$e')));
       }
       if (mounted) _refresh();
     } catch (e) {
@@ -95,7 +95,7 @@ class _RepairPartsScreenState extends State<RepairPartsScreen> {
         TextField(controller: quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('Количество', 'Quantity'))),
         TextField(controller: note, maxLines: 2, decoration: InputDecoration(labelText: tr('Бележка / съвместимост', 'Note / compatibility'))),
       ]))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () { final qty = _number(quantity.text); if (name.text.trim().isEmpty || qty <= 0) return; Navigator.pop(ctx, {'item_name': name.text.trim(), 'sku': sku.text.trim(), 'quantity': qty, 'note': note.text.trim()}); }, child: Text(tr('Изпрати заявка', 'Submit request'))],
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Отказ', 'Cancel'))), FilledButton(onPressed: () { final qty = _number(quantity.text); if (name.text.trim().isEmpty || qty <= 0) return; Navigator.pop(ctx, {'item_name': name.text.trim(), 'sku': sku.text.trim(), 'quantity': qty, 'note': note.text.trim()}); }, child: Text(tr('Изпрати заявка', 'Submit request')))],
     ));
     name.dispose(); sku.dispose(); quantity.dispose(); note.dispose();
     if (result == null || !mounted) return;
