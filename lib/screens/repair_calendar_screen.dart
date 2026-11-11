@@ -81,7 +81,7 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
                   Positioned.fill(child: Padding(padding: const EdgeInsets.all(16), child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(tr('PCWORK SERVICE CONTROL', 'PCWORK SERVICE CONTROL'), style: TextStyle(color: cyan, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
+                      Text(tr('PCWORK SERVICE CONTROL', 'PCWORK SERVICE CONTROL'), style: const TextStyle(color: cyan, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 7),
                       Text(tr('Контрол на ремонтите', 'Repair control center'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Colors.white)),
                       Text(tr('График • срокове • натоварване', 'Schedule • deadlines • workload'), style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 12)),

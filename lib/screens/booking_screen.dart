@@ -141,7 +141,7 @@ class _BookingScreenState extends State<BookingScreen> {
               Positioned.fill(child: Padding(padding: const EdgeInsets.all(18), child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(tr('ЗАПИСВАНЕ НА ЧАС', 'BOOK AN APPOINTMENT'), style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w800)),
+                  Text(tr('ЗАПИСВАНЕ НА ЧАС', 'BOOK AN APPOINTMENT'), style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 2, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
                   Text(tr('Твоят сервиз.\nТвоето време.', 'Your service.\nYour time.'), style: const TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeight.w900, color: Colors.white)),
                   const SizedBox(height: 8),
@@ -163,7 +163,7 @@ class _BookingScreenState extends State<BookingScreen> {
           else ...[
             const SizedBox(height: 16),
             Container(decoration: panel, padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('01  ИЗБЕРИ УСЛУГА', '01  SELECT A SERVICE'), style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
+              Text(tr('01  ИЗБЕРИ УСЛУГА', '01  SELECT A SERVICE'), style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               DropdownButtonFormField<int>(
                 initialValue: serviceId, isExpanded: true,
@@ -172,7 +172,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 onChanged: (v) async { setState(() => serviceId = v); await _loadSlots(); },
               ),
               const SizedBox(height: 18),
-              Text(tr('02  ИЗБЕРИ ДАТА', '02  SELECT A DATE'), style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
+              Text(tr('02  ИЗБЕРИ ДАТА', '02  SELECT A DATE'), style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
               InkWell(onTap: _chooseDate, borderRadius: BorderRadius.circular(15), child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -180,7 +180,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 child: Row(children: [const Icon(Icons.calendar_month_rounded, color: cyan, size: 25), const SizedBox(width: 12), Expanded(child: Text(_displayDate(_dateKey(selectedDate)), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))), const Icon(Icons.chevron_right, color: cyan)]),
               )),
               const SizedBox(height: 18),
-              Row(children: [Text(tr('03  СВОБОДНИ ЧАСОВЕ', '03  AVAILABLE TIMES'), style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)), const Spacer(), if (slots.isNotEmpty) Text('${slots.length} ${tr('свободни', 'available')}', style: muted.copyWith(fontSize: 11))]),
+              Row(children: [Text(tr('03  СВОБОДНИ ЧАСОВЕ', '03  AVAILABLE TIMES'), style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800)), const Spacer(), if (slots.isNotEmpty) Text('${slots.length} ${tr('свободни', 'available')}', style: muted.copyWith(fontSize: 11))]),
               const SizedBox(height: 10),
               if (location == null) Text(tr('Първо изберете сервизен обект.', 'Please choose a service location first.'), style: muted)
               else if (slots.isEmpty) Container(width: double.infinity, padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: const Color(0xFF071329), borderRadius: BorderRadius.circular(14)), child: Text(tr('Няма свободни часове за избраната дата. Опитайте друга дата.', 'No available times for this date. Try another date.'), style: muted))
@@ -195,7 +195,7 @@ class _BookingScreenState extends State<BookingScreen> {
             ])),
             const SizedBox(height: 14),
             Container(decoration: panel, padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('04  ДЕТАЙЛИ ЗА УСТРОЙСТВОТО', '04  DEVICE DETAILS'), style: TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+              Text(tr('04  ДЕТАЙЛИ ЗА УСТРОЙСТВОТО', '04  DEVICE DETAILS'), style: const TextStyle(color: cyan, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
               TextField(controller: deviceController, decoration: InputDecoration(filled: true, fillColor: const Color(0xFF071329), prefixIcon: const Icon(Icons.devices_other, color: cyan), labelText: tr('Устройство / модел (по желание)', 'Device / model (optional)'), border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)))),
               const SizedBox(height: 10),
