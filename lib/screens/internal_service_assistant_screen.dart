@@ -19,7 +19,6 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
   @override
   void initState() { super.initState(); _future = widget.api.getRepairs(widget.token); }
   void _openDashboard() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StaffDashboardScreen(api: widget.api, token: widget.token, english: widget.english)));
-
   Future<void> _openTechnicianDispatch() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TechnicianDispatchScreen(api: widget.api, token: widget.token, english: widget.english)));
   }
@@ -108,7 +107,6 @@ class _InternalServiceAssistantScreenState extends State<InternalServiceAssistan
       Card(child: ListTile(leading: const Icon(Icons.engineering_outlined), title: Text(tr('Назначаване на техник', 'Technician assignment')), subtitle: Text(tr('Разпределяне на задачи и приоритети', 'Assign tasks and priorities')), trailing: const Icon(Icons.chevron_right), onTap: _openTechnicianDispatch)),
       Card(child: ListTile(leading: const Icon(Icons.receipt_long_outlined), title: Text(tr('Сервизен дневник и калкулация', 'Worklog and cost calculation')), subtitle: Text(tr('Отвори ремонтите, за да избереш сервизен дневник и калкулация', 'Open repairs to select a worklog and cost calculation')), trailing: const Icon(Icons.chevron_right), onTap: () => _selectRepairAndOpen(evidence: false))),
       Card(child: ListTile(leading: const Icon(Icons.photo_camera_back_outlined), title: Text(tr('Снимки и доказателства', 'Photos and evidence')), subtitle: Text(tr('Отвори ремонтите, за да добавиш снимки към конкретна задача', 'Open repairs to attach photos to a specific job')), trailing: const Icon(Icons.chevron_right), onTap: () => _selectRepairAndOpen(evidence: true))),
-      const SizedBox(height: 10), FilledButton.icon(onPressed: _openDashboard, icon: const Icon(Icons.dashboard_customize_outlined), label: Text(tr('Отвори пълното сервизно табло', 'Open full service dashboard'))),
       const SizedBox(height: 8), const Text('PCWork Internal Service Assistant • Сървърните права се проверяват от WordPress.', style: TextStyle(color: Colors.grey, fontSize: 11)),
     ]),
   );

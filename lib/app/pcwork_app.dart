@@ -61,6 +61,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   String repairStatusFilter = 'all';
   ServiceLocation? selectedLocation;
   Timer? _offlineSyncTimer;
+  Timer? _appUpdateCheckTimer;
+  int _lastNotifiedUpdateBuild = 0;
   bool _syncingOfflineQueue = false;
   int _pendingSyncCount = 0;
   bool _marketingOptIn = false;
@@ -73,7 +75,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 129);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 130);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -90,7 +92,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
   bool get canUseAdminChat => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
   bool get isStaffAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
-  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber'].contains(r)) ?? false);
+  bool get isCustomerAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['pcwork_customer', 'customer', 'subscriber', 'pcwork_client', 'client'].contains(r)) ?? false);
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
   bool get canSeeStaffUi => !noRegPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
@@ -147,6 +149,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (mounted) unawaited(_restoreSession());
     });
     unawaited(_checkForAppUpdate());
+    _appUpdateCheckTimer?.cancel();
+    _appUpdateCheckTimer = Timer.periodic(const Duration(hours: 6), (_) => unawaited(_checkForAppUpdate()));
   }
 
   Future<void> _restoreSession() async {
@@ -161,7 +165,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final info = await api.getAppUpdateInfo();
       if (!mounted) return;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
-      setState(() => _appUpdateInfo = availableBuild > _currentBuildNumber ? info : null);
+      final update = availableBuild > _currentBuildNumber ? info : null;
+      setState(() => _appUpdateInfo = update);
+      if (update != null && availableBuild > _lastNotifiedUpdateBuild) {
+        _lastNotifiedUpdateBuild = availableBuild;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _messengerKey.currentState?.showSnackBar(SnackBar(
+            content: Text(tr('Налична е нова версия на PCWork Mobile.', 'A new version of PCWork Mobile is available.')),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: tr('АКТУАЛИЗИРАЙ', 'UPDATE'),
+              onPressed: () => unawaited(_downloadAndInstallUpdate()),
+            ),
+          ));
+        });
+      }
     } catch (_) {
       // Update checks are optional and must never block app startup.
     }
@@ -378,6 +397,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _offlineSyncTimer?.cancel();
+    _appUpdateCheckTimer?.cancel();
     repairSearch.dispose();
     super.dispose();
   }
