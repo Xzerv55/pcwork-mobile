@@ -76,8 +76,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
+  bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 140);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 146);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -171,6 +172,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try {
       final info = await api.getAppUpdateInfo();
       if (!mounted) return;
+      _lastUpdateCheckSucceeded = true;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
       final update = availableBuild > _currentBuildNumber ? info : null;
       setState(() => _appUpdateInfo = update);
@@ -181,14 +183,17 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _messengerKey.currentState?.showSnackBar(SnackBar(
             content: Text(tr('Налична е нова версия на PCWork Mobile.', 'A new version of PCWork Mobile is available.')),
             duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: tr('АКТУАЛИЗИРАЙ', 'UPDATE'),
-              onPressed: () => unawaited(_downloadAndInstallUpdate()),
-            ),
+            action: RegExp(r'^[a-f0-9]{64}$').hasMatch((update['sha256'] ?? '').toString().toLowerCase())
+                ? SnackBarAction(
+                    label: tr('АКТУАЛИЗИРАЙ', 'UPDATE'),
+                    onPressed: () => unawaited(_downloadAndInstallUpdate()),
+                  )
+                : null,
           ));
         });
       }
     } catch (_) {
+      _lastUpdateCheckSucceeded = false;
       // Update checks are optional and must never block app startup.
     }
   }
@@ -239,6 +244,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final version = (info['version'] ?? '').toString();
     final notes = (info['release_notes'] ?? '').toString().trim();
     final url = Uri.tryParse((info['apk_url'] ?? '').toString());
+    final checksum = (info['sha256'] ?? '').toString().toLowerCase();
+    final canInstall = RegExp(r'^[a-f0-9]{64}$').hasMatch(checksum);
     return Card(
       color: isDarkTheme ? const Color(0xFF163342) : const Color(0xFFE5F7F7),
       child: Padding(
@@ -249,10 +256,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           if (notes.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 7), child: Text(notes, maxLines: 4, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDarkTheme ? Colors.white70 : Colors.black54))),
           const SizedBox(height: 10),
           SizedBox(width: double.infinity, child: FilledButton.icon(
-            onPressed: url != null && url.scheme == 'https' && !_installingUpdate ? _downloadAndInstallUpdate : null,
+            onPressed: url != null && url.scheme == 'https' && canInstall && !_installingUpdate ? _downloadAndInstallUpdate : null,
             icon: const Icon(Icons.download_rounded),
             label: Text(_installingUpdate ? tr('Изтегляне и проверка…', 'Downloading and verifying…') : tr('Актуализирай сега', 'Update now')),
           )),
+          if (url == null || url.scheme != 'https') Padding(padding: const EdgeInsets.only(top: 7), child: Text(tr('Известието е налично, но липсва HTTPS адрес към APK файла в WordPress.', 'Update is detected, but the HTTPS APK URL is missing in WordPress.'))),
+          if (!canInstall) Padding(padding: const EdgeInsets.only(top: 7), child: Text(tr('Изтеглянето е блокирано: липсва валидна SHA-256 сума в настройките на WordPress.', 'Download is blocked: a valid SHA-256 checksum is missing from WordPress settings.'), style: const TextStyle(fontSize: 11, color: Colors.orange))),
           Text(tr('Инсталирането се потвърждава от Android. Не се извършва тиха инсталация.', 'Android will ask you to confirm installation. Silent installation is not performed.'), style: TextStyle(fontSize: 11, color: isDarkTheme ? Colors.white54 : Colors.black54)),
         ]),
       ),
@@ -950,21 +959,21 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                           children: [
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 220),
-                              width: selected ? 43 : 36,
-                              height: 31,
+                              width: selected ? 46 : 40,
+                              height: 34,
                               decoration: BoxDecoration(
                                 gradient: selected ? LinearGradient(colors: [selectedColor.withValues(alpha: .22), selectedColor.withValues(alpha: .08)]) : null,
                                 borderRadius: BorderRadius.circular(11),
                               ),
                               alignment: Alignment.center,
-                              child: Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 25 : 23, color: selected ? selectedColor : mutedColor),
+                              child: Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 29 : 27, color: selected ? selectedColor : mutedColor),
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 3),
                             Flexible(
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(labels[index], maxLines: 1, style: TextStyle(
-                                  fontSize: 10.5,
+                                  fontSize: 12,
                                   height: 1.05,
                                   fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
                                   color: selected ? selectedColor : mutedColor,
@@ -1370,6 +1379,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       ]),
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
+    Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { await _checkForAppUpdate(); if (mounted && _appUpdateInfo == null) _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.')); }, icon: const Icon(Icons.system_update_alt_rounded, size: 17), label: Text(tr('Провери за актуализация', 'Check for updates')))),
     const SizedBox(height: 22),
     if (visibleUser == null) _homeSignInCard() else ...[
       _customerCenterHomeCard(),
@@ -2141,6 +2151,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try { options = (await api.getLocations()).where((location) => location.canSelect).toList(); }
     catch (e) { _message('${tr('Неуспешно зареждане на обектите:', 'Could not load locations:')} $e'); return; }
     if (!mounted) return;
+    // Existing repair data is used only for local intake assistance; no new
+    // customer lookup endpoint or additional personal-data storage is added.
+    List<Repair> priorRepairs = const [];
+    try { priorRepairs = await api.getRepairs(token); } catch (_) {}
+    if (!mounted) return;
     final customerEmail = TextEditingController();
     final customerName = TextEditingController();
     final customerPhone = TextEditingController();
@@ -2151,24 +2166,53 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final condition = TextEditingController();
     final accessories = TextEditingController();
     final notes = TextEditingController();
+    const deviceTypes = ['Лаптоп', 'Настолен компютър', 'PlayStation 5', 'PlayStation 4', 'Xbox', 'Nintendo Switch', 'Монитор', 'Телефон', 'Таблет', 'Друго'];
     ServiceLocation? selected = options.isNotEmpty ? options.first : null;
     bool saving = false;
+    bool customerDetailsApplied = false;
     await showModalBottomSheet<void>(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-      Widget field(TextEditingController c, String label, {int lines = 1, TextInputType? type}) => Padding(padding: const EdgeInsets.only(bottom: 11), child: TextField(controller: c, maxLines: lines, keyboardType: type, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
-      return Padding(padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18), child: SizedBox(height: MediaQuery.of(ctx).size.height * .82, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Expanded(child: Text(tr('Прием на устройство', 'Device intake'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
-        Text(tr('Създава се ремонт с уникален номер и начален статус „Приет“.', 'Creates a repair with a unique number and initial “Received” status.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
+      final normalizedPhone = customerPhone.text.replaceAll(RegExp(r'[^0-9+]'), '');
+      final normalizedSerial = serial.text.trim().toLowerCase();
+      final customerMatches = normalizedPhone.length >= 6
+          ? priorRepairs.where((r) => r.phone.replaceAll(RegExp(r'[^0-9+]'), '') == normalizedPhone).toList()
+          : (customerName.text.trim().length >= 4
+              ? priorRepairs.where((r) => r.customer.trim().toLowerCase() == customerName.text.trim().toLowerCase()).toList()
+              : <Repair>[]);
+      final serialMatches = normalizedSerial.isEmpty ? <Repair>[] : priorRepairs.where((r) => r.serial.trim().toLowerCase() == normalizedSerial).toList();
+      Widget field(TextEditingController c, String label, {int lines = 1, TextInputType? type, ValueChanged<String>? onChanged}) => Padding(padding: const EdgeInsets.only(bottom: 11), child: TextField(controller: c, maxLines: lines, keyboardType: type, onChanged: onChanged, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
+      return Padding(padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(ctx).viewInsets.bottom + 18), child: SizedBox(height: MediaQuery.of(ctx).size.height * .86, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [Expanded(child: Text(tr('Интелигентен прием на устройство', 'Smart device intake'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold))), IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close))]),
+        Text(tr('Проверка за предишни ремонти и възможни дублирани серийни номера.', 'Checks previous repairs and possible duplicate serial numbers.'), style: TextStyle(color: isDarkTheme ? Colors.white60 : Colors.black54)),
         const SizedBox(height: 12),
         Expanded(child: ListView(children: [
           DropdownButtonFormField<ServiceLocation>(initialValue: selected, isExpanded: true, decoration: InputDecoration(labelText: tr('Сервизен обект', 'Service location'), border: const OutlineInputBorder()), items: options.map((l) => DropdownMenuItem(value: l, child: Text(l.name))).toList(), onChanged: (v) => setSheet(() => selected = v)),
-          const SizedBox(height: 12), field(customerEmail, 'Имейл на клиент*', type: TextInputType.emailAddress),
-          field(customerName, 'Име на клиент'), field(customerPhone, 'Телефон', type: TextInputType.phone),
-          const Divider(height: 24), field(deviceType, 'Тип устройство*'), field(model, 'Марка и модел*'), field(serial, 'Сериен номер'),
+          const SizedBox(height: 12),
+          field(customerEmail, 'Имейл на клиент*', type: TextInputType.emailAddress),
+          field(customerName, 'Име на клиент', onChanged: (_) => setSheet(() { customerDetailsApplied = false; })),
+          field(customerPhone, 'Телефон', type: TextInputType.phone, onChanged: (_) => setSheet(() { customerDetailsApplied = false; })),
+          if (customerMatches.isNotEmpty) Card(color: Colors.teal.withValues(alpha: .10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [const Icon(Icons.history, color: Color(0xFF21D4D8)), const SizedBox(width: 8), Expanded(child: Text(tr('Намерена е предишна сервизна история', 'Previous service history found'), style: const TextStyle(fontWeight: FontWeight.w700)))]),
+            const SizedBox(height: 6), Text(tr('${customerMatches.length} предишни ремонта за този клиент.', '${customerMatches.length} previous repairs for this customer.')),
+            ...customerMatches.take(3).map((r) => Padding(padding: const EdgeInsets.only(top: 5), child: Text('• ${r.number} · ${r.device} ${r.model} · ${r.status}', style: const TextStyle(fontSize: 12)))),
+            if (!customerDetailsApplied && customerName.text.trim().isEmpty && customerMatches.first.customer.isNotEmpty) Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () => setSheet(() { customerName.text = customerMatches.first.customer; customerDetailsApplied = true; }), icon: const Icon(Icons.person_add_alt_1), label: Text(tr('Попълни името', 'Fill customer name')))),
+          ]))),
+          const Divider(height: 24),
+          DropdownButtonFormField<String>(initialValue: deviceTypes.contains(deviceType.text) ? deviceType.text : 'Друго', isExpanded: true, decoration: InputDecoration(labelText: tr('Тип устройство*', 'Device type*'), border: const OutlineInputBorder()), items: deviceTypes.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setSheet(() => deviceType.text = v ?? 'Друго')),
+          const SizedBox(height: 12), field(model, 'Марка и модел*'),
+          field(serial, 'Сериен номер', onChanged: (_) => setSheet(() {})),
+          if (serialMatches.isNotEmpty) Card(color: Colors.orange.withValues(alpha: .12), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.orange), SizedBox(width: 8), Expanded(child: Text('Внимание: сериен номерът вече съществува', style: TextStyle(fontWeight: FontWeight.w700)))]),
+            ...serialMatches.take(3).map((r) => Text('• ${r.number} · ${r.customer} · ${r.status}', style: const TextStyle(fontSize: 12))),
+          ]))),
           field(problem, 'Описание на проблема*', lines: 3), field(condition, 'Външно състояние', lines: 3),
           field(accessories, 'Комплектовка / аксесоари', lines: 2), field(notes, 'Вътрешни бележки', lines: 2),
         ])),
         SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: saving ? null : () async {
-          if (selected == null || selected!.code.isEmpty || customerEmail.text.trim().isEmpty || deviceType.text.trim().isEmpty || model.text.trim().isEmpty || problem.text.trim().isEmpty) { _message(tr('Изберете обект с код и попълнете задължителните полета със звезда.', 'Choose a coded location and complete all required fields.')); return; }
+          if (selected == null || selected!.code.isEmpty || customerEmail.text.trim().isEmpty || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(customerEmail.text.trim()) || deviceType.text.trim().isEmpty || model.text.trim().isEmpty || problem.text.trim().isEmpty) { _message(tr('Изберете обект с код и въведете валиден имейл, тип, модел и описание на проблема.', 'Choose a coded location and enter a valid email, device type, model and problem description.')); return; }
+          if (serialMatches.isNotEmpty) {
+            final proceed = await showDialog<bool>(context: ctx, builder: (dialogContext) => AlertDialog(title: Text(tr('Съвпадащ сериен номер', 'Matching serial number')), content: Text(tr('Този сериен номер присъства в ${serialMatches.length} предишни ремонта. Сигурни ли сте, че искате да продължите с нов прием?', 'This serial number appears in ${serialMatches.length} previous repairs. Are you sure you want to continue with a new intake?')), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Провери отново', 'Review'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Продължи', 'Continue')))]));
+            if (proceed != true) return;
+          }
           setSheet(() => saving = true);
           try {
             final created = await api.createRepair(token, {
@@ -2189,6 +2233,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         }, icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save), label: Text(saving ? tr('Записване…', 'Saving…') : tr('Създай сервизен протокол', 'Create repair record')))),
       ])));
     }));
+    for (final c in [customerEmail, customerName, customerPhone, deviceType, model, serial, problem, condition, accessories, notes]) { c.dispose(); }
   }
 
   Future<void> _logout() async {

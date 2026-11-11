@@ -163,11 +163,11 @@ class ApiService {
             enabledValue.toString().toLowerCase() == 'true' ||
             enabledValue.toString() == '1';
     if (!enabled) return null;
-    final url = Uri.tryParse((data['apk_url'] ?? data['download_url'] ?? '').toString());
-    if (url == null || url.scheme != 'https' || url.host.isEmpty) return null;
+    final rawUrl = (data['apk_url'] ?? data['download_url'] ?? '').toString().trim();
+    final url = rawUrl.isEmpty ? null : Uri.tryParse(rawUrl);
     final normalized = Map<String, dynamic>.from(data);
     normalized['version_code'] = build;
-    normalized['apk_url'] = url.toString();
+    normalized['apk_url'] = url != null && url.scheme == 'https' && url.host.isNotEmpty ? url.toString() : '';
     return normalized;
   }
 

@@ -19,6 +19,8 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
   late Future<_CenterData> _future;
   late Future<Map<String, dynamic>> _loyaltyFuture;
   late Future<List<Map<String, dynamic>>> _serviceHistoryFuture;
+  String _historyQuery = '';
+  String _historyFilter = 'all';
   String tr(String bg, String en) => widget.english ? en : bg;
   @override
   void initState() { super.initState(); _future = _load(); _loyaltyFuture = widget.api.getLoyaltySummary(widget.token); _serviceHistoryFuture = widget.api.getCustomerServiceHistory(widget.token); }
@@ -72,11 +74,54 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
           if (history.hasError) return Card(child: ListTile(leading: const Icon(Icons.info_outline), title: Text(tr('Историята временно не е достъпна', 'Service history is temporarily unavailable')), trailing: IconButton(onPressed: () => setState(() => _serviceHistoryFuture = widget.api.getCustomerServiceHistory(widget.token, forceRefresh: true)), icon: const Icon(Icons.refresh))));
           final rows = history.data ?? const <Map<String, dynamic>>[];
           if (rows.isEmpty) return Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(tr('Все още няма регистрирани ремонти.', 'No repairs have been registered yet.'))));
-          return Column(children: rows.map((row) {
-            final warranty = (row['warranty_until'] ?? '').toString();
+          final warrantyCount = rows.where((row) => row['warranty_active'] == true).length;
+          final query = _historyQuery.trim().toLowerCase();
+          final filteredRows = rows.where((row) {
+            final status = (row['status'] ?? '').toString().toLowerCase();
             final activeWarranty = row['warranty_active'] == true;
-            return Card(child: ListTile(leading: Icon(activeWarranty ? Icons.verified_user_outlined : Icons.devices_other, color: activeWarranty ? const Color(0xFF21D4D8) : null), title: Text('${row['device_type'] ?? ''} ${row['device_model'] ?? ''}'.trim()), subtitle: Text(['${row['repair_number'] ?? ''} · ${row['status'] ?? ''}', if (warranty.isNotEmpty) tr('Гаранция до: ', 'Warranty until: ') + warranty else tr('Няма активна гаранционна карта', 'No active warranty card')].join('\n')), isThreeLine: true, onTap: widget.onRepairs));
-          }).toList());
+            final haystack = ['repair_number', 'device_type', 'device_model', 'location_name', 'status'].map((key) => (row[key] ?? '').toString().toLowerCase()).join(' ');
+            final matchesQuery = query.isEmpty || haystack.contains(query);
+            final matchesFilter = switch (_historyFilter) {
+              'warranty' => activeWarranty,
+              'no_warranty' => !activeWarranty,
+              'completed' => status == 'completed' || status == 'ready',
+              'active' => !['completed', 'ready', 'cancelled'].contains(status),
+              _ => true,
+            };
+            return matchesQuery && matchesFilter;
+          }).toList(growable: false);
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: _historyMetric(tr('Общо ремонти', 'Total repairs'), '${rows.length}', Icons.build_circle_outlined)),
+              const SizedBox(width: 8),
+              Expanded(child: _historyMetric(tr('Активни гаранции', 'Active warranties'), '$warrantyCount', Icons.verified_user_outlined)),
+            ]),
+            const SizedBox(height: 10),
+            TextField(onChanged: (value) => setState(() => _historyQuery = value), decoration: InputDecoration(prefixIcon: const Icon(Icons.search_rounded), hintText: tr('Търси устройство, номер или статус', 'Search device, repair number or status'), isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)))),
+            const SizedBox(height: 8),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+              _historyFilterChip('all', tr('Всички', 'All')),
+              _historyFilterChip('warranty', tr('С гаранция', 'With warranty')),
+              _historyFilterChip('no_warranty', tr('Без активна гаранция', 'No active warranty')),
+              _historyFilterChip('active', tr('В процес', 'In progress')),
+              _historyFilterChip('completed', tr('Завършени', 'Completed')),
+            ])),
+            const SizedBox(height: 4),
+            if (filteredRows.isEmpty) Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(tr('Няма ремонти, отговарящи на избраното търсене и филтър.', 'No repairs match this search and filter.')))),
+            ...filteredRows.map((row) {
+              final warranty = (row['warranty_until'] ?? '').toString();
+              final activeWarranty = row['warranty_active'] == true;
+              final activityCount = int.tryParse('${row['visible_activity_count'] ?? 0}') ?? 0;
+              final status = (row['status'] ?? '').toString();
+              return Card(child: ListTile(
+                leading: Icon(activeWarranty ? Icons.verified_user_outlined : Icons.devices_other, color: activeWarranty ? const Color(0xFF21D4D8) : null),
+                title: Text('${row['device_type'] ?? ''} ${row['device_model'] ?? ''}'.trim(), style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(['${row['repair_number'] ?? ''} · ${_historyStatusLabel(status)}', if ((row['location_name'] ?? '').toString().isNotEmpty) row['location_name'].toString(), if (warranty.isNotEmpty) tr('Гаранция до: ', 'Warranty until: ') + warranty else tr('Няма активна гаранционна карта', 'No active warranty card'), if (activityCount > 0) tr('$activityCount видими сервизни записа', '$activityCount visible service entries')].join('\n')),
+                isThreeLine: true,
+                onTap: widget.onRepairs,
+              ));
+            }),
+          ]);
         }),
         const SizedBox(height: 18), Text(tr('Моите услуги','My services'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         _action(Icons.handyman_outlined, tr('Моите ремонти','My repairs'), tr('Статус, история и документи на устройствата','Repair status, history and documents'), widget.onRepairs),
@@ -88,6 +133,16 @@ class _CustomerCenterScreenState extends State<CustomerCenterScreen> {
       ]));
     }),
   );
+
+  Widget _historyMetric(String label, String value, IconData icon) => Card(child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10), child: Row(children: [Icon(icon, color: const Color(0xFF21D4D8), size: 22), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)), Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey))]))])));
+
+  Widget _historyFilterChip(String value, String label) => Padding(padding: const EdgeInsets.only(right: 6), child: ChoiceChip(label: Text(label), selected: _historyFilter == value, onSelected: (_) => setState(() => _historyFilter = value), selectedColor: const Color(0x3321D4D8)));
+
+  String _historyStatusLabel(String status) {
+    const labels = {'new': 'Нов', 'diagnosis': 'Диагностика', 'in_progress': 'В ремонт', 'waiting_parts': 'Чака части', 'ready': 'Готов', 'completed': 'Завършен', 'cancelled': 'Отказан'};
+    return widget.english ? status.replaceAll('_', ' ') : (labels[status] ?? status.replaceAll('_', ' '));
+  }
+
   Widget _loyaltyCard(AsyncSnapshot<Map<String, dynamic>> loyalty) {
     const gold = Color(0xFFFFD76A);
     if (loyalty.connectionState == ConnectionState.waiting) {

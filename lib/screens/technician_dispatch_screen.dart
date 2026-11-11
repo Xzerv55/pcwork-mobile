@@ -64,12 +64,28 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
   }
 
   double _weight(Repair r) {
-    switch (r.priority) {
-      case 'urgent': return 2.5;
-      case 'high': return 1.75;
-      case 'low': return 0.75;
-      default: return 1;
+    // Workload is weighted by priority and deadline pressure, not only by
+    // the raw number of open repairs. This prevents urgent/overdue work from
+    // being treated as equivalent to a low-priority repair without a deadline.
+    var weight = switch (r.priority) {
+      'urgent' => 2.5,
+      'high' => 1.75,
+      'low' => 0.75,
+      _ => 1.0,
+    };
+    final due = _due(r);
+    if (due != null) {
+      final now = DateTime.now();
+      final hoursLeft = due.difference(now).inHours;
+      if (due.isBefore(now)) {
+        weight += 1.5;
+      } else if (hoursLeft <= 24) {
+        weight += 1.0;
+      } else if (hoursLeft <= 72) {
+        weight += 0.5;
+      }
     }
+    return weight;
   }
 
   List<_Recommendation> _buildRecommendations(_DispatchData data) {
@@ -95,7 +111,10 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
       final candidates = data.techniciansByLocation[repair.locationCode] ?? [];
       final now = DateTime.now();
       final dueDate = _due(repair);
-      final availabilityAt = dueDate ?? now;
+      // A past deadline must not make every technician appear unavailable.
+      // For overdue work, evaluate availability now; future deadlines are
+      // evaluated against the actual due date.
+      final availabilityAt = dueDate != null && dueDate.isAfter(now) ? dueDate : now;
       final eligible = candidates.where((t) => _techId(t) > 0 && _isAvailable(_techId(t), data.schedules, availabilityAt)).toList();
       if (eligible.isEmpty) {
         recommendations.add(_Recommendation(repair, null, null, null));
@@ -267,8 +286,10 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
         final assignable = recommendations.where((r) => r.technicianId != null).length;
         final noTech = recommendations.length - assignable;
         final loads = <int, int>{};
+        final weightedLoads = <int, double>{};
         for (final r in data.repairs.where((r) => r.technicianId > 0)) {
           loads[r.technicianId] = (loads[r.technicianId] ?? 0) + 1;
+          weightedLoads[r.technicianId] = (weightedLoads[r.technicianId] ?? 0) + _weight(r);
         }
         return RefreshIndicator(
           onRefresh: () async { final f = _load(); setState(() => _future = f); await f; },
@@ -280,7 +301,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(tr('Интелигентно разпределяне', 'Smart workload dispatch'), style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(tr('Препоръките се изчисляват по сервизен обект, текущ брой активни ремонти и приоритет. Назначаването се потвърждава от администратора.', 'Recommendations use service location, current active repair workload and priority. The administrator confirms assignments.')),
+                  Text(tr('Препоръките отчитат сервизния обект, графика и одобрените отсъствия на техника, приоритета и близостта на крайния срок. Просрочените ремонти се оценяват спрямо наличността към момента. Назначаването се потвърждава от администратора.', 'Recommendations consider service location, technician schedule and approved absences, priority and deadline proximity. Overdue repairs are evaluated against current availability. The administrator confirms assignments.')),
                   const SizedBox(height: 12),
                   Wrap(spacing: 8, runSpacing: 8, children: [
                     _metric(tr('Активни ремонти', 'Active repairs'), data.repairs.length),
@@ -301,7 +322,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
               const SizedBox(height: 12),
               Text(tr('Текуща натовареност на техниците', 'Current technician workload'), style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
-              ..._workloadCards(data, loads),
+              ..._workloadCards(data, loads, weightedLoads),
               const SizedBox(height: 12),
               Text(tr('Предложения за назначаване', 'Assignment recommendations'), style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 6),
@@ -324,7 +345,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('$count', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _cyan)), Text(title, style: const TextStyle(fontSize: 11))]),
   );
 
-  List<Widget> _workloadCards(_DispatchData data, Map<int, int> loads) {
+  List<Widget> _workloadCards(_DispatchData data, Map<int, int> loads, Map<int, double> weightedLoads) {
     final techs = <int, Map<String, dynamic>>{};
     for (final list in data.techniciansByLocation.values) {
       for (final tech in list) {
@@ -333,14 +354,15 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
       }
     }
     if (techs.isEmpty) return [Card(child: Padding(padding: const EdgeInsets.all(14), child: Text(tr('Няма достъпни данни за техници в тези обекти.', 'No technician data is available for these locations.'))))];
-    final entries = techs.entries.toList()..sort((a, b) => (loads[a.key] ?? 0).compareTo(loads[b.key] ?? 0));
-    final maxLoad = entries.fold<int>(1, (m, e) => (loads[e.key] ?? 0) > m ? loads[e.key]! : m);
+    final entries = techs.entries.toList()..sort((a, b) => (weightedLoads[a.key] ?? 0).compareTo(weightedLoads[b.key] ?? 0));
+    final maxLoad = entries.fold<double>(1, (m, e) => (weightedLoads[e.key] ?? 0) > m ? weightedLoads[e.key]! : m);
     return entries.map((entry) {
       final count = loads[entry.key] ?? 0;
+      final score = weightedLoads[entry.key] ?? 0;
       return Card(child: ListTile(
         leading: CircleAvatar(child: Text(_techName(entry.value).isNotEmpty ? _techName(entry.value)[0].toUpperCase() : '?')),
         title: Text(_techName(entry.value)),
-        subtitle: Padding(padding: const EdgeInsets.only(top: 6), child: LinearProgressIndicator(value: count / maxLoad, color: count == maxLoad && count > 0 ? Colors.orangeAccent : _cyan, backgroundColor: Colors.white12)),
+        subtitle: Padding(padding: const EdgeInsets.only(top: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [LinearProgressIndicator(value: (score / maxLoad).clamp(0.0, 1.0), color: score >= maxLoad && score > 0 ? Colors.orangeAccent : _cyan, backgroundColor: Colors.white12), const SizedBox(height: 3), Text('${score.toStringAsFixed(1)} ${tr('тегловни точки', 'weighted points')}', style: Theme.of(context).textTheme.bodySmall)])),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           Text('$count ${tr('задачи', 'jobs')}', style: const TextStyle(fontWeight: FontWeight.bold)),
           IconButton(tooltip: tr('Настрой график', 'Edit schedule'), icon: const Icon(Icons.schedule), onPressed: _saving ? null : () => _editSchedule(entry.key, _techName(entry.value), data.schedules[entry.key])),
@@ -370,7 +392,7 @@ class _TechnicianDispatchScreenState extends State<TechnicianDispatchScreen> {
           Row(children: [
             const Icon(Icons.recommend_outlined, color: _cyan),
             const SizedBox(width: 6),
-            Expanded(child: Text('${tr('Препоръчан техник', 'Recommended technician')}: ${item.technicianName}\n${tr('Текущо натоварване преди назначаване', 'Current workload before assignment')}: ${item.loadBefore?.toStringAsFixed(1) ?? '0'}', style: const TextStyle(fontSize: 13))),
+            Expanded(child: Text('${tr('Препоръчан техник', 'Recommended technician')}: ${item.technicianName}\n${tr('Претеглено натоварване преди назначаване', 'Weighted workload before assignment')}: ${item.loadBefore?.toStringAsFixed(1) ?? '0'} ${tr('т.', 'pts')}', style: const TextStyle(fontSize: 13))),
             FilledButton(onPressed: _saving ? null : () => _assign(item), child: Text(tr('Назначи', 'Assign'))),
           ]),
       ])),
