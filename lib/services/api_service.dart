@@ -558,6 +558,33 @@ class ApiService {
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
   }
 
+  Future<List<Map<String, dynamic>>> getRepairPartRequests(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId/part-requests'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final rows = decoded is Map ? (decoded['data'] ?? []) : decoded;
+    return rows is List ? rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : [];
+  }
+
+  Future<void> createRepairPartRequest(String token, int repairId, Map<String, dynamic> request) async {
+    final response = await _httpClient.post(_uri('repairs/$repairId/part-requests'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(request)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<void> updateRepairPartRequest(String token, int id, Map<String, dynamic> changes) async {
+    final response = await _httpClient.patch(_uri('part-requests/$id'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(changes)).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+  }
+
+  Future<Map<String, dynamic>> receiveRepairPartRequest(String token, int id, {double unitCost = 0}) async {
+    final response = await _httpClient.post(_uri('part-requests/$id/receive'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'unit_cost': unitCost})).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    return decoded is Map && decoded['data'] is Map ? Map<String, dynamic>.from(decoded['data']) : <String, dynamic>{};
+  }
+
   Future<List<Map<String, dynamic>>> getTechnicians(String token, String locationCode) async {
     final uri = _uri('staff/technicians').replace(queryParameters: {'location_code': locationCode});
     final response = await _httpClient.get(uri, headers: {'Authorization': 'Bearer $token'}).timeout(const Duration(seconds: 20));
@@ -755,6 +782,14 @@ class ApiService {
     final summary = decoded is Map && decoded['summary'] is Map ? Map<String, dynamic>.from(decoded['summary']) : <String, dynamic>{};
     final entries = data is List ? data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : <Map<String, dynamic>>[];
     return {'entries': entries, 'summary': summary};
+  }
+
+  Future<Map<String, dynamic>> getRepairPartsSummary(String token, int repairId) async {
+    final response = await _httpClient.get(_uri('repairs/$repairId/parts-summary'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+    final data = decoded is Map ? decoded['data'] : null;
+    return data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
   }
 
   Future<Map<String, dynamic>> addRepairWorklogEntry(String token, int repairId, Map<String, dynamic> entry) async {

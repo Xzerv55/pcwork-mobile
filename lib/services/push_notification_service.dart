@@ -51,6 +51,7 @@ class PushNotificationService {
   static String _notificationCategory(String event) {
     final value = event.toLowerCase();
     if (value.contains('repair')) return 'repair';
+    if (value.contains('part_delivery')) return 'order';
     if (value.contains('order')) return 'order';
     if (value.contains('chat') || value.contains('message')) return 'chat';
     if (value.contains('booking') || value.contains('appointment')) return 'booking';
@@ -61,8 +62,8 @@ class PushNotificationService {
   static String _notificationPriority(String event, String status) {
     final value = event.toLowerCase();
     final state = status.toLowerCase();
-    if (state == 'ready' || state == 'waiting_approval' || state == 'cancelled' || value.contains('security')) return 'high';
-    if (value.contains('repair') || value.contains('order') || value.contains('chat') || value.contains('booking')) return 'normal';
+    if (state == 'ready' || state == 'waiting_approval' || state == 'cancelled' || value.contains('security') || value.contains('part_delivery_overdue')) return 'high';
+    if (value.contains('repair') || value.contains('order') || value.contains('chat') || value.contains('booking') || value.contains('part_delivery')) return 'normal';
     if (value.contains('campaign') || value.contains('marketing')) return 'low';
     return 'normal';
   }
