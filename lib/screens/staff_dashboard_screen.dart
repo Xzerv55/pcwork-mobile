@@ -29,6 +29,7 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
   String technicianFilter = 'all';
   late Future<List<Repair>> future;
   late Future<List<Map<String, dynamic>>> overdueFuture;
+  late Future<Map<String, dynamic>> operationsFuture;
   bool busy = false;
   String tr(String bg, String en) => widget.english ? en : bg;
   static const statuses = ['received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'];
@@ -38,10 +39,37 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
     return (widget.english ? en[s] : bg[s]) ?? s;
   }
   @override
-  void initState() { super.initState(); future = widget.api.getRepairs(widget.token); overdueFuture = widget.api.getOverdueRepairs(widget.token); }
+  void initState() { super.initState(); future = widget.api.getRepairs(widget.token); overdueFuture = widget.api.getOverdueRepairs(widget.token); operationsFuture = _loadOperationsSnapshot(); }
   @override
   void dispose() { search.dispose(); super.dispose(); }
-  void reload() => setState(() { future = widget.api.getRepairs(widget.token, forceRefresh: true); overdueFuture = widget.api.getOverdueRepairs(widget.token); });
+  void reload() => setState(() { future = widget.api.getRepairs(widget.token, forceRefresh: true); overdueFuture = widget.api.getOverdueRepairs(widget.token); operationsFuture = _loadOperationsSnapshot(); });
+
+  Future<Map<String, dynamic>> _loadOperationsSnapshot() async {
+    List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
+    List<Map<String, dynamic>> stock = <Map<String, dynamic>>[];
+    String? taskError;
+    String? stockError;
+    final results = await Future.wait<Object?>([
+      widget.api.getStaffTasks(widget.token, perPage: 100).then<Object?>((value) => value).catchError((Object error) { taskError = error.toString(); return <Map<String, dynamic>>[]; }),
+      widget.api.getStockItems(widget.token).then<Object?>((value) => value).catchError((Object error) { stockError = error.toString(); return <Map<String, dynamic>>[]; }),
+    ]);
+    tasks = (results[0] as List).whereType<Map<String, dynamic>>().toList();
+    stock = (results[1] as List).whereType<Map<String, dynamic>>().toList();
+    return <String, dynamic>{'tasks': tasks, 'stock': stock, 'task_error': taskError, 'stock_error': stockError};
+  }
+
+  DateTime? _taskDueDate(Map<String, dynamic> task) {
+    final value = (task['due_at'] ?? '').toString().trim();
+    if (value.isEmpty) return null;
+    final normalized = value.contains('T') ? value : value.replaceFirst(' ', 'T');
+    return DateTime.tryParse(normalized.endsWith('Z') || normalized.contains('+') ? normalized : '${normalized}Z')?.toLocal();
+  }
+
+  bool _taskIsOverdue(Map<String, dynamic> task) {
+    if (['completed', 'cancelled'].contains('${task['status']}')) return false;
+    final due = _taskDueDate(task);
+    return due != null && due.isBefore(DateTime.now());
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -150,8 +178,9 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
           onRefresh: () async {
             final f = widget.api.getRepairs(widget.token, forceRefresh: true);
             final overdue = widget.api.getOverdueRepairs(widget.token);
-            setState(() { future = f; overdueFuture = overdue; });
-            await Future.wait([f, overdue]);
+            final operations = _loadOperationsSnapshot();
+            setState(() { future = f; overdueFuture = overdue; operationsFuture = operations; });
+            await Future.wait([f, overdue, operations]);
           },
           child: ListView(
             padding: const EdgeInsets.all(16),
@@ -169,6 +198,8 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
               ),
               const SizedBox(height: 8),
               _buildWorkloadOverview(all, locationNames),
+              const SizedBox(height: 10),
+              _buildOperationsSnapshot(),
               const SizedBox(height: 10),
               FutureBuilder<List<Map<String, dynamic>>>(
                 future: overdueFuture,
@@ -388,6 +419,91 @@ class _StaffDashboardScreenState extends State<StaffDashboardScreen> {
       ],
     ));
   }
+
+  Widget _buildOperationsSnapshot() => FutureBuilder<Map<String, dynamic>>(
+    future: operationsFuture,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Card(child: Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()));
+      }
+      final data = snapshot.data ?? <String, dynamic>{};
+      final tasks = (data['tasks'] as List? ?? const []).whereType<Map<String, dynamic>>().toList();
+      final stock = (data['stock'] as List? ?? const []).whereType<Map<String, dynamic>>().toList();
+      final openTasks = tasks.where((task) => !['completed', 'cancelled'].contains('${task['status']}')).toList();
+      final overdueTasks = openTasks.where(_taskIsOverdue).toList();
+      final lowStock = stock.where((item) {
+        final quantity = num.tryParse('${item['quantity'] ?? 0}') ?? 0;
+        final minimum = num.tryParse('${item['minimum_quantity'] ?? 0}') ?? 0;
+        return item['low_stock'] == true || quantity <= minimum;
+      }).toList();
+      final taskError = (data['task_error'] ?? '').toString();
+      final stockError = (data['stock_error'] ?? '').toString();
+      final hasError = taskError.isNotEmpty || stockError.isNotEmpty;
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          initiallyExpanded: true,
+          leading: const Icon(Icons.dashboard_customize_outlined, color: cyan),
+          title: Text(tr('Оперативен контрол', 'Operations control'), style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(tr('Задачи, срокове и наличности на едно място', 'Tasks, deadlines and stock in one place')),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+          children: [
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _smallMetric(tr('Отворени задачи', 'Open tasks'), openTasks.length),
+              _smallMetric(tr('Просрочени задачи', 'Overdue tasks'), overdueTasks.length, alert: overdueTasks.isNotEmpty),
+              _smallMetric(tr('Ниски наличности', 'Low stock'), lowStock.length, alert: lowStock.isNotEmpty),
+              _smallMetric(tr('Артикули в склада', 'Stock items'), stock.length),
+            ]),
+            if (hasError)
+              Padding(padding: const EdgeInsets.only(top: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.info_outline, size: 17), const SizedBox(width: 7),
+                Expanded(child: Text(tr('Някои данни не са достъпни в момента. Останалите показатели са заредени.', 'Some data is temporarily unavailable. Other metrics loaded successfully.'), style: Theme.of(context).textTheme.bodySmall)),
+              ])),
+            if (overdueTasks.isNotEmpty) ...[
+              const Divider(height: 22),
+              Align(alignment: Alignment.centerLeft, child: Text(tr('Задачи с изтекъл срок', 'Overdue tasks'), style: const TextStyle(fontWeight: FontWeight.w700))),
+              ...overdueTasks.take(3).map((task) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                title: Text('${task['title'] ?? tr('Сервизна задача', 'Service task')}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('№ ${task['repair_number'] ?? task['repair_id'] ?? '—'} · ${task['assigned_user_name'] ?? '—'}'),
+                trailing: const Icon(Icons.schedule, size: 18),
+              )),
+            ],
+            if (lowStock.isNotEmpty) ...[
+              const Divider(height: 22),
+              Align(alignment: Alignment.centerLeft, child: Text(tr('Нуждаят се от зареждане', 'Restock required'), style: const TextStyle(fontWeight: FontWeight.w700))),
+              ...lowStock.take(3).map((item) {
+                final quantity = num.tryParse('${item['quantity'] ?? 0}') ?? 0;
+                final minimum = num.tryParse('${item['minimum_quantity'] ?? 0}') ?? 0;
+                return ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.inventory_2_outlined, color: Colors.orange),
+                  title: Text('${item['name'] ?? tr('Артикул', 'Item')}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text('${item['location_code'] ?? ''} · ${tr('Минимум', 'Minimum')}: $minimum'),
+                  trailing: Text('$quantity ${item['unit'] ?? 'бр.'}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                );
+              }),
+            ],
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskManagementScreen(api: widget.api, token: widget.token, english: widget.english))),
+                icon: const Icon(Icons.task_alt_outlined), label: Text(tr('Отвори задачите', 'Open tasks')),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => StockInventoryScreen(api: widget.api, token: widget.token, english: widget.english))),
+                icon: const Icon(Icons.inventory_2_outlined), label: Text(tr('Отвори склада', 'Open stock')),
+              ),
+              IconButton(tooltip: tr('Обнови показателите', 'Refresh overview'), onPressed: () => setState(() { operationsFuture = _loadOperationsSnapshot(); }), icon: const Icon(Icons.refresh)),
+            ]),
+          ],
+        ),
+      );
+    },
+  );
 
   Widget _buildWorkloadOverview(List<Repair> repairs, Map<String, String> locationNames) {
     final active = repairs.where((r) => !['completed', 'cancelled', 'ready'].contains(r.status)).toList();
