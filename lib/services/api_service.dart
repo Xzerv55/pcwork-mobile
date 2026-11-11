@@ -126,6 +126,17 @@ class ApiService {
     await _offlineStorage.write(key: _queueKey(token), value: jsonEncode(queue));
   }
   Future<int> pendingOperationCount(String token) async => (await _readQueue(token)).length;
+
+  /// Read-only diagnostic view of the local offline queue. Payloads and tokens
+  /// are deliberately excluded from the UI-facing result.
+  Future<List<Map<String, dynamic>>> pendingOperations(String token) async {
+    final queue = await _readQueue(token);
+    return queue.map((operation) => <String, dynamic>{
+      'type': operation['type'],
+      'repair_id': operation['repair_id'],
+      'request_id': operation['request_id'],
+    }).toList(growable: false);
+  }
   Future<void> clearOfflineData(String token) async {
     await _offlineStorage.delete(key: _repairsCacheKey(token));
     await _offlineStorage.delete(key: _queueKey(token));
