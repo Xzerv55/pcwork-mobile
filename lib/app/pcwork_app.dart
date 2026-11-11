@@ -1370,9 +1370,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           Container(width: 64, height: 64, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(19), border: Border.all(color: cyan.withValues(alpha: .58)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .20), blurRadius: 18)]), child: Image.asset('assets/images/pcwork_ai_mascot.webp', fit: BoxFit.cover)),
         ]),
         const SizedBox(height: 14),
-        Text(tr('Технологиите на
-следващото ниво.', 'Technology at the
-next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.8, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+        Text(tr('Технологиите на следващото ниво.', 'Technology at the next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.8, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
         const SizedBox(height: 6),
         Text(tr('PC  /  LAPTOP  /  PLAYSTATION', 'PC  /  LAPTOP  /  PLAYSTATION'), style: TextStyle(color: isDarkTheme ? const Color(0xFFB8C9E4) : const Color(0xFF68778B), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
         const SizedBox(height: 13),
