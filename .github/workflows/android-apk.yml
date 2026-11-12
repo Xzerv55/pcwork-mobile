@@ -221,37 +221,58 @@ jobs:
           echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
           echo "Validated app version $PUBSPEC_VERSION"
 
-      - name: Clean generated Flutter state
+      # Resolve the current splash generator before generating Android plugin metadata.
+      # Version 2.4.8 removed the obsolete Android plugin class referenced by old registrants.
+      - name: Clean generated Flutter and Android state
+        shell: bash
         run: |
+          set -euo pipefail
           flutter clean
-          rm -rf .dart_tool
+          rm -rf .dart_tool android/.gradle
           rm -f .flutter-plugins .flutter-plugins-dependencies
-          rm -rf android/.gradle
+          find android/app/src -name GeneratedPluginRegistrant.java -type f -delete 2>/dev/null || true
 
-      - name: Install Flutter dependencies
-        run: flutter pub get
+      - name: Resolve and verify Flutter dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub upgrade flutter_native_splash
+          flutter pub get
+          SPLASH_VERSION="$(awk '/^  flutter_native_splash:/{found=1; next} found && /^    version:/{gsub(/[\"\047]/, "", $2); print $2; exit}' pubspec.lock)"
+          echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
+          if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
+            echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
+            exit 1
+          fi
+          python3 - <<'PYJSON'
+          import json
+          from pathlib import Path
+          metadata = Path('.flutter-plugins-dependencies')
+          if not metadata.is_file():
+              raise SystemExit('ERROR: Flutter plugin metadata was not generated.')
+          data = json.loads(metadata.read_text())
+          android = data.get('plugins', {}).get('android', [])
+          names = [item.get('name', '') for item in android]
+          if 'flutter_native_splash' in names:
+              raise SystemExit('ERROR: flutter_native_splash is still registered as an Android plugin.')
+          print('Verified: flutter_native_splash is not an Android plugin.')
+          PYJSON
 
       - name: Generate PCWork launcher icons and native splash
         run: |
           dart run flutter_launcher_icons
           dart run flutter_native_splash:create
 
-      # flutter_native_splash >=2.4.8 no longer provides an Android plugin.
-      # Remove only the obsolete registration left by older generated projects.
-      - name: Remove obsolete native splash Android plugin registration
+      - name: Verify generated Android plugin registrant
         shell: bash
         run: |
           set -euo pipefail
           REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
-          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash.FlutterNativeSplashPlugin' "$REGISTRANT"; then
-            sed -i '/net\.jonhanson\.flutter_native_splash\.FlutterNativeSplashPlugin/d' "$REGISTRANT"
-            echo "Removed obsolete flutter_native_splash Android registration."
-          else
-            echo "No obsolete flutter_native_splash Android registration found."
-          fi
+          # A stale checked-in registrant must not be compiled. Flutter regenerates it
+          # from the freshly resolved .flutter-plugins-dependencies during the build.
           if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
-            echo "ERROR: obsolete flutter_native_splash registration remains."
-            exit 1
+            echo "Removing stale GeneratedPluginRegistrant.java before Flutter regenerates it."
+            rm -f "$REGISTRANT"
           fi
 
       - name: Analyze Dart code
@@ -265,6 +286,17 @@ jobs:
           --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
           --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
           --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Verify Android plugin registrant after debug build
+        shell: bash
+        run: |
+          set -euo pipefail
+          REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
+            echo "ERROR: Flutter regenerated an obsolete flutter_native_splash Android plugin registration."
+            echo "Resolved package metadata and GeneratedPluginRegistrant.java are inconsistent."
+            exit 1
+          fi
 
       - name: Build release APK for device testing
         run: >-

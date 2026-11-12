@@ -58,30 +58,23 @@ jobs:
           rm -rf .dart_tool
           rm -f .flutter-plugins .flutter-plugins-dependencies
 
-      - name: Get dependencies
-        run: flutter pub get
+      - name: Resolve current splash generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub upgrade flutter_native_splash
+          flutter pub get
+          SPLASH_VERSION="$(awk '/^  flutter_native_splash:/{found=1; next} found && /^    version:/{gsub(/[\"\047]/, "", $2); print $2; exit}' pubspec.lock)"
+          echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
+          if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
+            echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
+            exit 1
+          fi
+
       - name: Generate PCWork launcher icons and native splash
         run: |
           dart run flutter_launcher_icons
           dart run flutter_native_splash:create
-
-      # flutter_native_splash >=2.4.8 no longer provides an Android plugin.
-      # Remove only the obsolete registration left by older generated projects.
-      - name: Remove obsolete native splash Android plugin registration
-        shell: bash
-        run: |
-          set -euo pipefail
-          REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
-          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash.FlutterNativeSplashPlugin' "$REGISTRANT"; then
-            sed -i '/net\.jonhanson\.flutter_native_splash\.FlutterNativeSplashPlugin/d' "$REGISTRANT"
-            echo "Removed obsolete flutter_native_splash Android registration."
-          else
-            echo "No obsolete flutter_native_splash Android registration found."
-          fi
-          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
-            echo "ERROR: obsolete flutter_native_splash registration remains."
-            exit 1
-          fi
       - name: Analyze Dart code
         run: flutter analyze
       - name: Build unsigned iOS app
