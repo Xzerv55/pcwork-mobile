@@ -33,8 +33,14 @@ android {
         minSdk = 23
         // POST_NOTIFICATIONS requires Android 13+ runtime permission handling.
         targetSdk = maxOf(flutter.targetSdkVersion, 33)
+        // Flutter derives these values from pubspec.yaml (version: x.y.z+build).
+        // Keep Android's manifest metadata aligned with the single project version source.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        require(versionCode > 0) { "Android versionCode must be a positive integer." }
+        require(versionName.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"))) {
+            "Android versionName must be a valid semantic app version, got: $versionName"
+        }
         multiDexEnabled = true
     }
     signingConfigs {

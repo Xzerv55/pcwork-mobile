@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 131});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 156});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -101,6 +101,7 @@ class ApiService {
   String _repairsCacheKey(String token) => 'pcwork_v37_repairs_${_scope(token)}';
   String _locationsCacheKey() => 'pcwork_v37_locations_${crypto.sha256.convert(utf8.encode(baseUrl.trim()))}';
   String _queueKey(String token) => 'pcwork_v37_queue_${_scope(token)}';
+  String _syncHistoryKey(String token) => 'pcwork_v37_sync_history_${_scope(token)}';
   String createClientRequestId() => _newRequestId();
 
   String _newRequestId() {
@@ -135,11 +136,25 @@ class ApiService {
       'type': operation['type'],
       'repair_id': operation['repair_id'],
       'request_id': operation['request_id'],
+      'status': operation['status'],
+      'queued_at': operation['queued_at'],
     }).toList(growable: false);
   }
+  Future<List<Map<String, dynamic>>> getSyncHistory(String token) async {
+    final raw = await _offlineStorage.read(key: _syncHistoryKey(token));
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      return (jsonDecode(raw) as List).whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
   Future<void> clearOfflineData(String token) async {
     await _offlineStorage.delete(key: _repairsCacheKey(token));
     await _offlineStorage.delete(key: _queueKey(token));
+    await _offlineStorage.delete(key: _syncHistoryKey(token));
   }
 
   Uri _uri(String path) {
@@ -348,11 +363,23 @@ class ApiService {
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) throw Exception('Неуспешно отваряне на страницата за плащане.');
   }
 
-  Future<bool> checkHealth() async {
-    final response = await _httpClient.get(_uri('health')).timeout(const Duration(seconds: 8));
+  Future<Map<String, dynamic>> getHealthDetails() async {
+    final response = await _httpClient.get(
+      _uri('health'),
+      headers: const {'Accept': 'application/json', 'Cache-Control': 'no-cache'},
+    ).timeout(const Duration(seconds: 8));
+    final decoded = _decodeResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('API върна HTTP ${response.statusCode}');
+      throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'API върна HTTP ${response.statusCode}');
     }
+    if (decoded is! Map || decoded['ok'] != true) {
+      throw Exception('Сървърът не потвърди готовност на PCWork API.');
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<bool> checkHealth() async {
+    await getHealthDetails();
     return true;
   }
 
@@ -449,7 +476,7 @@ class ApiService {
     } catch (error) {
       if (!_isNetworkError(error)) rethrow;
       final queue = await _readQueue(token);
-      queue.add({'type': 'status', 'request_id': requestId, 'repair_id': id, ...payload});
+      queue.add({'type': 'status', 'request_id': requestId, 'repair_id': id, 'queued_at': DateTime.now().toIso8601String(), ...payload});
       await _writeQueue(token, queue);
       final raw = await _offlineStorage.read(key: _repairsCacheKey(token));
       if (raw != null) {
@@ -465,32 +492,100 @@ class ApiService {
     }
   }
 
-  Future<int> syncPendingOperations(String token) async {
+  Future<Map<String, dynamic>> syncPendingOperationsDetailed(String token) async {
     final queue = await _readQueue(token);
-    if (queue.isEmpty) return 0;
+    if (queue.isEmpty) {
+      return <String, dynamic>{'sent': 0, 'remaining': 0, 'results': <Map<String, dynamic>>[]};
+    }
     var completed = 0;
     final remaining = <Map<String, dynamic>>[];
-    for (final operation in queue) {
+    final results = <Map<String, dynamic>>[];
+    for (var index = 0; index < queue.length; index++) {
+      final operation = queue[index];
+      final type = operation['type']?.toString() ?? 'unknown';
+      final requestId = operation['request_id']?.toString() ?? '';
+      final repairId = operation['repair_id'];
       try {
-        if (operation['type'] == 'create') {
+        http.Response response;
+        if (type == 'create') {
           final payload = Map<String, dynamic>.from(operation['payload'] as Map);
-          payload['client_request_id'] = operation['request_id'];
-          final response = await _httpClient.post(_uri('repairs'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(payload)).timeout(const Duration(seconds: 25));
-          if (response.statusCode != 200 && response.statusCode != 201) throw Exception('HTTP ${response.statusCode}');
-        } else if (operation['type'] == 'status') {
-          final id = (operation['repair_id'] as num).toInt();
-          final payload = {'status': operation['status'], 'note': operation['note'], 'client_request_id': operation['request_id']};
-          final response = await _httpClient.patch(_uri('repairs/$id/status'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode(payload)).timeout(const Duration(seconds: 20));
-          if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+          payload['client_request_id'] = requestId;
+          response = await _httpClient.post(
+            _uri('repairs'),
+            headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          ).timeout(const Duration(seconds: 25));
+          if (response.statusCode != 200 && response.statusCode != 201) {
+            final decoded = _decodeResponse(response);
+            throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+          }
+        } else if (type == 'status') {
+          final id = (repairId as num).toInt();
+          final payload = {
+            'status': operation['status'],
+            'note': operation['note'],
+            'client_request_id': requestId,
+          };
+          response = await _httpClient.patch(
+            _uri('repairs/$id/status'),
+            headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          ).timeout(const Duration(seconds: 20));
+          if (response.statusCode != 200) {
+            final decoded = _decodeResponse(response);
+            throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+          }
         } else {
-          remaining.add(operation);
-          continue;
+          remaining.addAll(queue.skip(index));
+          results.add(<String, dynamic>{
+            'type': type, 'repair_id': repairId, 'request_id': requestId,
+            'success': false, 'message': 'Неподдържан тип операция. Опашката е спряна, за да се запази редът.',
+          });
+          break;
         }
         completed++;
-      } catch (_) { remaining.add(operation); }
+        results.add(<String, dynamic>{
+          'type': type, 'repair_id': repairId, 'request_id': requestId,
+          'success': true, 'message': 'Изпратена успешно.',
+        });
+      } catch (error) {
+        remaining.addAll(queue.skip(index));
+        results.add(<String, dynamic>{
+          'type': type, 'repair_id': repairId, 'request_id': requestId,
+          'success': false, 'message': error.toString().replaceFirst('Exception: ', ''),
+        });
+        break;
+      }
     }
+    // Only remove operations whose server response was successful. The stable
+    // client_request_id lets the API safely retry after a timeout/ambiguous response.
     await _writeQueue(token, remaining);
-    return completed;
+    if (results.isNotEmpty) {
+      try {
+        final history = await getSyncHistory(token);
+        final timestamp = DateTime.now().toIso8601String();
+        for (final result in results) {
+          final message = result['message']?.toString() ?? '';
+          history.add(<String, dynamic>{
+            'at': timestamp,
+            'type': result['type'],
+            'repair_id': result['repair_id'],
+            'success': result['success'] == true,
+            'message': message.length > 240 ? message.substring(0, 240) : message,
+          });
+        }
+        final bounded = history.length > 50 ? history.sublist(history.length - 50) : history;
+        await _offlineStorage.write(key: _syncHistoryKey(token), value: jsonEncode(bounded));
+      } catch (_) {
+        // The operation queue result is authoritative; history is supplementary.
+      }
+    }
+    return <String, dynamic>{'sent': completed, 'remaining': remaining.length, 'results': results};
+  }
+
+  Future<int> syncPendingOperations(String token) async {
+    final report = await syncPendingOperationsDetailed(token);
+    return (report['sent'] as num?)?.toInt() ?? 0;
   }
 
 
@@ -991,7 +1086,7 @@ class ApiService {
     } catch (error) {
       if (!_isNetworkError(error)) rethrow;
       final queue = await _readQueue(token);
-      queue.add({'type': 'create', 'request_id': requestId, 'payload': payload});
+      queue.add({'type': 'create', 'request_id': requestId, 'queued_at': DateTime.now().toIso8601String(), 'payload': payload});
       await _writeQueue(token, queue);
       return {'queued': true, 'client_request_id': requestId, 'message': 'Записано локално и чака синхронизация.'};
     }
