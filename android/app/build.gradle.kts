@@ -40,26 +40,11 @@ android {
         minSdk = 23
         // POST_NOTIFICATIONS requires Android 13+ runtime permission handling.
         targetSdk = maxOf(flutter.targetSdkVersion, 33)
-        // Resolve Android version metadata directly from the repository's pubspec.yaml.
-        // Do not use flutter.versionName/versionCode here: they can fall back to 1.0/1
-        // when the Flutter Gradle extension is not populated by the invoking workflow.
-        val pubspecFile = rootProject.file("../pubspec.yaml")
-        require(pubspecFile.isFile) {
-            "pubspec.yaml was not found at ${pubspecFile.absolutePath}."
-        }
-        val pubspecVersionLine = pubspecFile.readLines().firstOrNull { it.startsWith("version:") }
-            ?: throw GradleException("pubspec.yaml does not declare an app version.")
-        val versionMatch = Regex("""^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$""")
-            .matchEntire(pubspecVersionLine)
-            ?: throw GradleException(
-                "pubspec.yaml version must use MAJOR.MINOR.PATCH+BUILD format; got: $pubspecVersionLine"
-            )
-        val resolvedVersionName = versionMatch.groupValues[1]
-        val resolvedVersionCode = versionMatch.groupValues[2].toIntOrNull()
-            ?: throw GradleException("pubspec.yaml build number is outside Android's supported integer range.")
-        require(resolvedVersionCode > 0) { "Android versionCode must be a positive integer." }
-        versionCode = resolvedVersionCode
-        versionName = resolvedVersionName
+        // Flutter supplies these values from pubspec.yaml through local.properties
+        // when `flutter build` invokes Gradle. Keep Android metadata on the
+        // single version source validated by scripts/validate_version.sh.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
         multiDexEnabled = true
     }
     signingConfigs {
