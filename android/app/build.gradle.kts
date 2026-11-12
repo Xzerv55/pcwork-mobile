@@ -40,14 +40,24 @@ android {
         minSdk = 23
         // POST_NOTIFICATIONS requires Android 13+ runtime permission handling.
         targetSdk = maxOf(flutter.targetSdkVersion, 33)
-        // Flutter derives these values from pubspec.yaml (version: x.y.z+build).
-        // Keep Android's manifest metadata aligned with the single project version source.
-        val resolvedVersionCode = flutter.versionCode
-        val resolvedVersionName = flutter.versionName
-        require(resolvedVersionCode > 0) { "Android versionCode must be a positive integer." }
-        require(resolvedVersionName.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"))) {
-            "Android versionName must be a valid semantic app version, got: $resolvedVersionName"
+        // Resolve Android version metadata directly from the repository's pubspec.yaml.
+        // Do not use flutter.versionName/versionCode here: they can fall back to 1.0/1
+        // when the Flutter Gradle extension is not populated by the invoking workflow.
+        val pubspecFile = rootProject.file("../pubspec.yaml")
+        require(pubspecFile.isFile) {
+            "pubspec.yaml was not found at ${pubspecFile.absolutePath}."
         }
+        val pubspecVersionLine = pubspecFile.readLines().firstOrNull { it.startsWith("version:") }
+            ?: throw GradleException("pubspec.yaml does not declare an app version.")
+        val versionMatch = Regex("""^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$""")
+            .matchEntire(pubspecVersionLine)
+            ?: throw GradleException(
+                "pubspec.yaml version must use MAJOR.MINOR.PATCH+BUILD format; got: $pubspecVersionLine"
+            )
+        val resolvedVersionName = versionMatch.groupValues[1]
+        val resolvedVersionCode = versionMatch.groupValues[2].toIntOrNull()
+            ?: throw GradleException("pubspec.yaml build number is outside Android's supported integer range.")
+        require(resolvedVersionCode > 0) { "Android versionCode must be a positive integer." }
         versionCode = resolvedVersionCode
         versionName = resolvedVersionName
         multiDexEnabled = true
