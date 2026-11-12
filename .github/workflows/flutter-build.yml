@@ -62,9 +62,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          flutter pub upgrade flutter_native_splash
+          # Pin the splash generator exactly. `flutter pub upgrade` alone can
+          # retain 2.4.7 when the project lockfile/constraints do not select 2.4.8.
+          python3 - <<'PYCONFIG'
+          from pathlib import Path
+          import re
+          path = Path("pubspec.yaml")
+          content = path.read_text()
+          if re.search(r"(?m)^dependency_overrides:\s*$", content):
+              lines = content.splitlines()
+              start = next(i for i, line in enumerate(lines) if line == "dependency_overrides:")
+              end = start + 1
+              while end < len(lines) and (lines[end].startswith("  ") or not lines[end].strip()):
+                  end += 1
+              block = lines[start + 1:end]
+              found = False
+              for i, line in enumerate(block):
+                  if re.match(r"^  flutter_native_splash:", line):
+                      block[i] = "  flutter_native_splash: 2.4.8"
+                      found = True
+                      break
+              if not found:
+                  block.append("  flutter_native_splash: 2.4.8")
+              lines[start + 1:end] = block
+              content = "\n".join(lines) + "\n"
+          else:
+              content = content.rstrip() + "\n\ndependency_overrides:\n  flutter_native_splash: 2.4.8\n"
+          path.write_text(content)
+          PYCONFIG
           flutter pub get
-          SPLASH_VERSION="$(awk '/^  flutter_native_splash:/{found=1; next} found && /^    version:/{gsub(/[\"\047]/, "", $2); print $2; exit}' pubspec.lock)"
+          SPLASH_VERSION="$(python3 - <<'PYCHECK'
+          from pathlib import Path
+          lines = Path("pubspec.lock").read_text().splitlines()
+          in_package = False
+          for line in lines:
+              if line == "  flutter_native_splash:":
+                  in_package = True
+                  continue
+              if in_package and line.startswith("  ") and not line.startswith("    "):
+                  break
+              if in_package and line.startswith("    version:"):
+                  print(line.split(":", 1)[1].strip().strip("\"'"))
+                  break
+          PYCHECK
+          )"
           echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
           if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
             echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
