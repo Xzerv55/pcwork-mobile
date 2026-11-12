@@ -309,11 +309,32 @@ jobs:
             exit 1
           fi
           for APK in "${APKS[@]}"; do
+            APK_NAME="$(basename "$APK")"
             ACTUAL_CODE="$("$APK_ANALYZER" manifest version-code "$APK")"
             ACTUAL_NAME="$("$APK_ANALYZER" manifest version-name "$APK")"
-            echo "$APK -> versionName=$ACTUAL_NAME, versionCode=$ACTUAL_CODE"
-            if [[ "$ACTUAL_NAME" != "$EXPECTED_VERSION_NAME" || "$ACTUAL_CODE" != "$EXPECTED_VERSION_CODE" ]]; then
-              echo "ERROR: APK metadata does not match pubspec.yaml ($EXPECTED_VERSION_NAME / $EXPECTED_VERSION_CODE)."
+
+            case "$APK_NAME" in
+              app-debug.apk)
+                EXPECTED_CODE="$EXPECTED_VERSION_CODE"
+                ;;
+              app-armeabi-v7a-release.apk)
+                EXPECTED_CODE=$((EXPECTED_VERSION_CODE + 1000))
+                ;;
+              app-arm64-v8a-release.apk)
+                EXPECTED_CODE=$((EXPECTED_VERSION_CODE + 2000))
+                ;;
+              app-x86_64-release.apk)
+                EXPECTED_CODE=$((EXPECTED_VERSION_CODE + 3000))
+                ;;
+              *)
+                echo "ERROR: Unknown APK variant: $APK_NAME"
+                exit 1
+                ;;
+            esac
+
+            echo "$APK -> versionName=$ACTUAL_NAME, versionCode=$ACTUAL_CODE (expected $EXPECTED_CODE)"
+            if [[ "$ACTUAL_NAME" != "$EXPECTED_VERSION_NAME" || "$ACTUAL_CODE" != "$EXPECTED_CODE" ]]; then
+              echo "ERROR: APK metadata does not match the expected version metadata."
               exit 1
             fi
           done
