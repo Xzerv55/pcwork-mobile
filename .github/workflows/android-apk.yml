@@ -108,28 +108,32 @@ jobs:
           echo "ERROR: Android NDK $NDK_VERSION is invalid or incomplete."
           exit 1
 
-      # The Flutter settings plugin reads android/local.properties while Gradle
-      # evaluates settings.gradle.kts. Create it immediately before invoking Gradle
-      # (including wrapper generation); it is machine-specific and must not be committed.
+      # Generate the Gradle wrapper in an isolated, empty project. Running
+      # `gradle wrapper` inside android/ configures the Flutter application
+      # before the wrapper exists and can trigger Flutter's generateLockfiles
+      # task registration during this bootstrap step.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
 
-      - name: Generate Gradle wrapper
+      - name: Generate Gradle wrapper without configuring the Flutter project
         shell: bash
         run: |
           set -euo pipefail
-          FLUTTER_BIN="$(readlink -f "$(command -v flutter)")"
-          FLUTTER_ROOT="$(dirname "$(dirname "$FLUTTER_BIN")")"
-          test -d "$FLUTTER_ROOT/packages/flutter_tools/gradle"
-          mkdir -p "$GITHUB_WORKSPACE/android"
-          printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT" > "$GITHUB_WORKSPACE/android/local.properties"
-          test -s "$GITHUB_WORKSPACE/android/local.properties"
-          echo "Flutter SDK configured at: $FLUTTER_ROOT"
-          cd "$GITHUB_WORKSPACE/android"
-          test -f local.properties
-          gradle wrapper --gradle-version 8.14.3 --distribution-type all
+          TEMP_GRADLE_PROJECT="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_GRADLE_PROJECT"' EXIT
+          printf "plugins { id 'base' }\\n" > "$TEMP_GRADLE_PROJECT/build.gradle"
+          (
+            cd "$TEMP_GRADLE_PROJECT"
+            gradle wrapper --gradle-version 8.14.3 --distribution-type all
+          )
+          install -D -m 755 "$TEMP_GRADLE_PROJECT/gradlew" "$GITHUB_WORKSPACE/android/gradlew"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradlew.bat" "$GITHUB_WORKSPACE/android/gradlew.bat"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradle/wrapper/gradle-wrapper.jar" "$GITHUB_WORKSPACE/android/gradle/wrapper/gradle-wrapper.jar"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradle/wrapper/gradle-wrapper.properties" "$GITHUB_WORKSPACE/android/gradle/wrapper/gradle-wrapper.properties"
+          chmod +x "$GITHUB_WORKSPACE/android/gradlew"
+          echo "Gradle 8.14.3 wrapper generated in an isolated project."
 
       # Firebase client settings are read from the checked-out Android config.
       # These are app-side identifiers/API key, not a service-account private key.
