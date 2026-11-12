@@ -15,7 +15,6 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
-  static const cyan = Color(0xFF21D4D8);
   bool get en => widget.english;
   String tr(String bg, String enText) => en ? enText : bg;
   bool loading = true;
@@ -263,7 +262,7 @@ class _BookingScreenState extends State<BookingScreen> {
     Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -.2))),
   ]);
 
-  Widget _fieldDecoration(String label, IconData icon) => InputDecoration(
+  InputDecoration _fieldDecoration(String label, IconData icon) => InputDecoration(
     labelText: label,
     prefixIcon: Icon(icon, color: PCWorkColors.cyan),
     filled: true,
