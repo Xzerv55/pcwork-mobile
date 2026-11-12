@@ -2206,7 +2206,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (!mounted || updateSheet == null) return;
       updateSheet!(() { detailFuture = api.getRepair(token, repair.id); estimateFuture = api.getRepairEstimate(token, repair.id); });
     });
-    await showModalBottomSheet<void>(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, backgroundColor: PCWorkColors.midnight, barrierColor: Colors.black.withValues(alpha: .68), showDragHandle: true, dragHandleColor: PCWorkColors.cyan, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))), builder: (ctx) => StatefulBuilder(builder: (sheetContext, setSheetState) {
+    await showModalBottomSheet<void>(context: _navigatorKey.currentState!.overlay!.context, isScrollControlled: true, backgroundColor: PCWorkColors.midnight, barrierColor: Colors.black.withValues(alpha: .68), showDragHandle: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))), builder: (ctx) => StatefulBuilder(builder: (sheetContext, setSheetState) {
       updateSheet = setSheetState;
       return Theme(data: PCWorkTheme.build(dark: true), child: FutureBuilder<Repair>(future: detailFuture, builder: (context, snap) {
       // Show the already-loaded repair immediately; fetch the history/details

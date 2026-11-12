@@ -15,7 +15,6 @@ class RepairWorklogScreen extends StatefulWidget {
 }
 
 class _RepairWorklogScreenState extends State<RepairWorklogScreen> {
-  static const _cyan = Color(0xFF21D4D8);
   bool _loading = true;
   bool _saving = false;
   String? _error;
