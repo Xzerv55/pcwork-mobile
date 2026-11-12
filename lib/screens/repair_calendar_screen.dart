@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../design_system/pcwork_design_system.dart';
 
 class RepairCalendarScreen extends StatefulWidget {
   const RepairCalendarScreen({super.key, required this.api, required this.token, required this.english});
@@ -42,7 +43,10 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
       title: Text(tr('Календар на ремонтите', 'Repair calendar')),
       actions: [IconButton(onPressed: _reload, tooltip: tr('Обнови', 'Refresh'), icon: const Icon(Icons.refresh))],
     ),
-    body: FutureBuilder<List<Repair>>(
+    backgroundColor: PCWorkColors.midnight,
+  body: Container(
+    decoration: const BoxDecoration(gradient: PCWorkEffects.background),
+    child: FutureBuilder<List<Repair>>(
       future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
@@ -104,9 +108,12 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
         );
       },
     ),
+  ),
   );
 
-  Widget _summary(int active, int scheduled, int unscheduled) => Card(
+  Widget _summary(int active, int scheduled, int unscheduled) => PCWorkGlassPanel(
+    padding: EdgeInsets.zero,
+    glow: true,
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Row(children: [
@@ -128,7 +135,7 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
     final title = '${(widget.english ? monthsEn : monthsBg)[month.month - 1]} ${month.year}';
     return Row(children: [
       IconButton(onPressed: () => setState(() { month = DateTime(month.year, month.month - 1); }), icon: const Icon(Icons.chevron_left)),
-      Expanded(child: Center(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
+      Expanded(child: Center(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: PCWorkColors.textPrimary)))),
       IconButton(onPressed: () => setState(() { month = DateTime(month.year, month.month + 1); }), icon: const Icon(Icons.chevron_right)),
       IconButton(onPressed: () => setState(() { final now = DateTime.now(); month = DateTime(now.year, now.month); selectedDay = _day(now); showUnscheduled = false; }), tooltip: tr('Днес', 'Today'), icon: const Icon(Icons.today)),
     ]);
@@ -146,7 +153,9 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
       final due = _due(repair);
       if (due != null) counts.update(_dateKey(due), (v) => v + 1, ifAbsent: () => 1);
     }
-    return Card(
+    return PCWorkGlassPanel(
+      padding: EdgeInsets.zero,
+      glow: true,
       child: Padding(
         padding: const EdgeInsets.all(8),
         child: Column(children: [
@@ -190,29 +199,31 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
   Widget _repairCard(Repair repair) {
     final due = _due(repair);
     final overdue = due != null && due.isBefore(DateTime.now()) && _active(repair);
-    return Card(
+    return PCWorkGlassPanel(
+      padding: EdgeInsets.zero,
+      glow: true,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(child: Text(repair.number.isEmpty ? '№${repair.id}' : repair.number, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+            Expanded(child: Text(repair.number.isEmpty ? '№${repair.id}' : repair.number, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: PCWorkColors.textPrimary))),
             if (overdue) Chip(label: Text(tr('Просрочен', 'Overdue'), style: const TextStyle(fontSize: 11)), backgroundColor: Colors.red.withValues(alpha: 0.15)),
           ]),
           Text([repair.customer, repair.device, repair.model].where((v) => v.trim().isNotEmpty).join(' · ')),
           const SizedBox(height: 5),
           Row(children: [
-            const Icon(Icons.schedule, size: 17, color: cyan),
+            const Icon(Icons.schedule_rounded, size: 17, color: PCWorkColors.cyan),
             const SizedBox(width: 5),
             Text(due == null ? tr('Без зададен срок', 'No due date') : _formatDateTime(due)),
           ]),
           if (repair.technicianName.isNotEmpty || repair.technicianId > 0)
             Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-              const Icon(Icons.engineering_outlined, size: 17), const SizedBox(width: 5),
+              const Icon(Icons.engineering_outlined, size: 17, color: PCWorkColors.cyan), const SizedBox(width: 5),
               Expanded(child: Text(repair.technicianName.isEmpty ? '${tr('Техник', 'Technician')} #${repair.technicianId}' : repair.technicianName)),
             ])),
           if (repair.location.isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-              const Icon(Icons.storefront_outlined, size: 17), const SizedBox(width: 5), Expanded(child: Text(repair.location)),
+              const Icon(Icons.storefront_outlined, size: 17, color: PCWorkColors.cyan), const SizedBox(width: 5), Expanded(child: Text(repair.location)),
             ])),
           const SizedBox(height: 8),
           Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(

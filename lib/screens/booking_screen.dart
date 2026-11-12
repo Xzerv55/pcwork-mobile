@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../design_system/pcwork_design_system.dart';
 
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key, required this.api, required this.tokenProvider, required this.location, required this.onChooseLocation, this.english = false});
@@ -115,30 +116,169 @@ class _BookingScreenState extends State<BookingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final location=widget.location;
-    return RefreshIndicator(onRefresh:_load, child: ListView(padding:const EdgeInsets.all(18), children:[
-      Text(tr('Записване на час за сервиз','Book a service appointment'),style:const TextStyle(fontSize:22,fontWeight:FontWeight.bold)),
-      const SizedBox(height:6), Text(tr('Изберете услуга, обект, дата и свободен час. Резервацията се записва директно в PCWork.','Choose a service, location, date and available time. Your booking is saved directly in PCWork.'),style:const TextStyle(color:Colors.white70)),
-      const SizedBox(height:14),
-      Card(child:ListTile(leading:const Icon(Icons.location_on_outlined,color:cyan),title:Text(location?.name ?? tr('Не е избран сервизен обект','No service location selected')),subtitle:Text(location?.address ?? tr('Изберете обект, за да видите свободните часове.','Choose a location to see available times.')),trailing:TextButton(onPressed:widget.onChooseLocation,child:Text(tr('Промени','Change'))))),
-      if(loading) const Padding(padding:EdgeInsets.all(24),child:Center(child:CircularProgressIndicator()))
-      else if(error!=null) Card(child:Padding(padding:const EdgeInsets.all(14),child:Text(error!,style:const TextStyle(color:Colors.orangeAccent))))
-      else ...[
-        const SizedBox(height:12), Text(tr('Услуга','Service'),style:const TextStyle(fontWeight:FontWeight.bold)),
-        DropdownButtonFormField<int>(initialValue:serviceId, isExpanded:true, decoration:const InputDecoration(border:OutlineInputBorder()), items:services.map((s)=>DropdownMenuItem<int>(value:int.tryParse('${s['id']}'),child:Text('${s['name']} · ${s['duration']} мин.'))).toList(), onChanged:(v) async {setState(()=>serviceId=v); await _loadSlots();}),
-        const SizedBox(height:14), Text(tr('Дата','Date'),style:const TextStyle(fontWeight:FontWeight.bold)),
-        OutlinedButton.icon(onPressed:_chooseDate,icon:const Icon(Icons.calendar_month),label:Text(_displayDate(_dateKey(selectedDate)))),
-        const SizedBox(height:8), Text(tr('Свободни часове','Available times'),style:const TextStyle(fontWeight:FontWeight.bold)),
-        if(location==null) Text(tr('Първо изберете сервизен обект.','Please choose a service location first.'))
-        else if(slots.isEmpty) Text(tr('Няма свободни часове за избраната дата. Опитайте друга дата.','No available times for this date. Try another date.'),style:const TextStyle(color:Colors.white70))
-        else Wrap(spacing:8,runSpacing:8,children:slots.map((slot){final start='${slot['start']}';final selected=selectedStart==start;return ChoiceChip(label:Text('${slot['label']}'),selected:selected,onSelected:(_)=>setState(()=>selectedStart=start),selectedColor:cyan,labelStyle:TextStyle(color:selected?Colors.black:Theme.of(context).colorScheme.onSurface));}).toList()),
-        const SizedBox(height:14), TextField(controller:deviceController,decoration:InputDecoration(labelText:tr('Устройство / модел (по желание)','Device / model (optional)'),border:const OutlineInputBorder())),
-        const SizedBox(height:10), TextField(controller:issueController,maxLines:3,decoration:InputDecoration(labelText:tr('Описание на проблема (по желание)','Describe the issue (optional)'),border:const OutlineInputBorder())),
-        const SizedBox(height:14), FilledButton.icon(onPressed:submitting||selectedStart==null||location==null?null:_book,icon:submitting?const SizedBox(width:18,height:18,child:CircularProgressIndicator(strokeWidth:2)):const Icon(Icons.event_available),label:Text(tr('Потвърди записването','Confirm appointment'))),
-      ],
-      const SizedBox(height:24), Text(tr('Моите резервации','My appointments'),style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold)),
-      if(bookings.isEmpty) Padding(padding:const EdgeInsets.symmetric(vertical:12),child:Text(tr('Нямате записани часове или трябва да влезете в профила си.','No appointments yet, or sign in to view your bookings.'),style:const TextStyle(color:Colors.white70)))
-      else ...bookings.map((b){final status='${b['status']}';return Card(child:ListTile(leading:Icon(status=='cancelled'?Icons.event_busy:Icons.event_available,color:status=='cancelled'?Colors.orange:cyan),title:Text('${b['service_name']??tr('Сервизна услуга','Service')} · ${_displayDate(b['starts_at'])}'),subtitle:Text('${b['location_name']??''}\n${tr('Статус','Status')}: $status',maxLines:3),isThreeLine:true,trailing:status=='confirmed'?IconButton(tooltip:tr('Отмени','Cancel'),onPressed:()=>_cancel(b),icon:const Icon(Icons.cancel_outlined)):null));}),
-    ]));
+    final location = widget.location;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final muted = dark ? PCWorkColors.textSecondary : Colors.blueGrey;
+    return Container(
+      decoration: const BoxDecoration(gradient: PCWorkEffects.background),
+      child: RefreshIndicator(
+        color: PCWorkColors.cyan,
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 30),
+          children: [
+            PCWorkGlassPanel(
+              glow: true,
+              padding: const EdgeInsets.all(20),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xE51B4773), Color(0xD20B1835), Color(0xCC26165A)],
+              ),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tr('PCWORK • BOOKING', 'PCWORK • BOOKING'), style: const TextStyle(color: PCWorkColors.cyan, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
+                  const SizedBox(height: 9),
+                  Text(tr('Запази своя час.', 'Book your service.'), style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 7),
+                  Text(tr('Избери услуга и удобно време. Ние ще се погрижим за устройството ти.', 'Choose a service and a convenient time. We will take care of your device.'), style: TextStyle(color: muted, height: 1.4)),
+                ])),
+                const SizedBox(width: 12),
+                ClipRRect(borderRadius: BorderRadius.circular(18), child: Image.asset('assets/images/pcwork_booking_hero.webp', width: 88, height: 88, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const PCWorkGlowIcon(icon: Icons.calendar_month_rounded, size: 66, iconSize: 34, color: PCWorkColors.cyan))),
+              ]),
+            ),
+            const SizedBox(height: 16),
+            PCWorkGlassPanel(
+              glow: true,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _sectionHeading(Icons.storefront_rounded, tr('Сервизен център', 'Service center')),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .28))),
+                  child: Row(children: [
+                    const PCWorkGlowIcon(icon: Icons.location_on_rounded, size: 44, iconSize: 22),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(location?.name ?? tr('Не е избран обект', 'No location selected'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                      if ((location?.address ?? '').isNotEmpty) Text(location!.address, style: TextStyle(color: muted, fontSize: 12)),
+                      if (location == null) Text(tr('Избери обект, за да видиш свободните часове.', 'Choose a location to view available times.'), style: TextStyle(color: muted, fontSize: 12)),
+                    ])),
+                    TextButton(onPressed: widget.onChooseLocation, child: Text(tr('Промени', 'Change'))),
+                  ]),
+                ),
+                const SizedBox(height: 18),
+                _sectionHeading(Icons.build_circle_outlined, tr('Избери услуга', 'Choose a service')),
+                const SizedBox(height: 9),
+                if (loading) const Center(child: Padding(padding: EdgeInsets.all(22), child: CircularProgressIndicator()))
+                else if (error != null) _errorPanel(error!)
+                else ...[
+                  DropdownButtonFormField<int>(
+                    initialValue: serviceId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      filled: true, fillColor: Colors.white.withValues(alpha: .045),
+                      prefixIcon: const Icon(Icons.miscellaneous_services_rounded, color: PCWorkColors.cyan),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .3))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .25))),
+                    ),
+                    items: services.map((s) => DropdownMenuItem<int>(value: int.tryParse('${s['id']}'), child: Text('${s['name']} · ${s['duration']} мин.'))).toList(),
+                    onChanged: (v) async { setState(() => serviceId = v); await _loadSlots(); },
+                  ),
+                  const SizedBox(height: 18),
+                  _sectionHeading(Icons.event_rounded, tr('Дата и свободен час', 'Date and available time')),
+                  const SizedBox(height: 10),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: _chooseDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+                      decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0x4421D4D8), Color(0x332C66C9)]), borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.cyan.withValues(alpha: .48))),
+                      child: Row(children: [const PCWorkGlowIcon(icon: Icons.calendar_today_rounded, size: 42, iconSize: 20, color: PCWorkColors.cyan), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('ИЗБРАНА ДАТА', 'SELECTED DATE'), style: const TextStyle(fontSize: 10, color: PCWorkColors.cyan, letterSpacing: 1.2, fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_displayDate(_dateKey(selectedDate)), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))])), const Icon(Icons.chevron_right_rounded, color: PCWorkColors.cyan, size: 28)],),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (location == null)
+                    _emptyPanel(Icons.location_searching_rounded, tr('Първо избери сервизен обект.', 'Choose a service location first.'))
+                  else if (slots.isEmpty)
+                    _emptyPanel(Icons.event_busy_rounded, tr('Няма свободни часове за тази дата. Избери друг ден.', 'No available times on this date. Choose another day.'))
+                  else Wrap(spacing: 9, runSpacing: 9, children: slots.map((slot) {
+                    final start = '${slot['start']}'; final selected = selectedStart == start;
+                    return ChoiceChip(
+                      label: Text('${slot['label']}', style: TextStyle(fontWeight: FontWeight.w800, color: selected ? Colors.white : muted)),
+                      selected: selected,
+                      onSelected: (_) => setState(() => selectedStart = start),
+                      selectedColor: PCWorkColors.violet,
+                      backgroundColor: PCWorkColors.electricBlue.withValues(alpha: .12),
+                      side: BorderSide(color: selected ? PCWorkColors.cyan : PCWorkColors.electricBlue.withValues(alpha: .35)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                    );
+                  }).toList()),
+                  const SizedBox(height: 18),
+                  _sectionHeading(Icons.devices_rounded, tr('Информация за устройството', 'Device information')),
+                  const SizedBox(height: 10),
+                  TextField(controller: deviceController, decoration: _fieldDecoration(tr('Устройство / модел (по желание)', 'Device / model (optional)'), Icons.laptop_mac_rounded)),
+                  const SizedBox(height: 10),
+                  TextField(controller: issueController, maxLines: 3, decoration: _fieldDecoration(tr('Опиши накратко проблема (по желание)', 'Briefly describe the issue (optional)'), Icons.notes_rounded)),
+                  const SizedBox(height: 18),
+                  SizedBox(width: double.infinity, child: DecoratedBox(
+                    decoration: BoxDecoration(gradient: const LinearGradient(colors: [PCWorkColors.electricBlue, PCWorkColors.cyan, PCWorkColors.violet]), borderRadius: BorderRadius.circular(17), boxShadow: [BoxShadow(color: PCWorkColors.electricBlue.withValues(alpha: .25), blurRadius: 20, offset: const Offset(0, 7))]),
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(17))),
+                      onPressed: submitting || selectedStart == null || location == null ? null : _book,
+                      icon: submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.bolt_rounded),
+                      label: Text(tr('ПОТВЪРДИ ЗАПИСВАНЕТО', 'CONFIRM BOOKING'), style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: .6)),
+                    ),
+                  )),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 22),
+            _sectionHeading(Icons.bookmark_added_rounded, tr('Моите резервации', 'My appointments')),
+            const SizedBox(height: 10),
+            if (bookings.isEmpty)
+              _emptyPanel(Icons.event_note_rounded, tr('Все още нямаш записани часове.', 'You do not have any appointments yet.'))
+            else ...bookings.map((b) {
+              final status = '${b['status']}';
+              final active = status == 'confirmed';
+              return Padding(padding: const EdgeInsets.only(bottom: 9), child: PCWorkGlassPanel(
+                padding: const EdgeInsets.all(14),
+                child: Row(children: [
+                  PCWorkGlowIcon(icon: active ? Icons.event_available_rounded : Icons.event_busy_rounded, color: active ? PCWorkColors.success : PCWorkColors.warning, size: 46),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${b['service_name'] ?? tr('Сервизна услуга', 'Service')} ', style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_displayDate(b['starts_at']), style: TextStyle(color: muted)), Text('${b['location_name'] ?? ''} · $status', style: TextStyle(color: muted, fontSize: 12))])),
+                  if (active) IconButton(onPressed: () => _cancel(b), tooltip: tr('Отмени', 'Cancel'), icon: const Icon(Icons.close_rounded, color: PCWorkColors.danger)),
+                ]),
+              ));
+            }),
+          ],
+        ),
+      ),
+    );
   }
+
+  Widget _sectionHeading(IconData icon, String title) => Row(children: [
+    PCWorkGlowIcon(icon: icon, size: 34, iconSize: 17, color: PCWorkColors.cyan),
+    const SizedBox(width: 9),
+    Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -.2))),
+  ]);
+
+  Widget _fieldDecoration(String label, IconData icon) => InputDecoration(
+    labelText: label,
+    prefixIcon: Icon(icon, color: PCWorkColors.cyan),
+    filled: true,
+    fillColor: Colors.white.withValues(alpha: .045),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .22))),
+  );
+
+  Widget _emptyPanel(IconData icon, String message) => PCWorkGlassPanel(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+    child: Row(children: [Icon(icon, color: PCWorkColors.cyan, size: 25), const SizedBox(width: 12), Expanded(child: Text(message, style: const TextStyle(color: PCWorkColors.textSecondary)))]),
+  );
+
+  Widget _errorPanel(String message) => PCWorkGlassPanel(
+    borderColor: PCWorkColors.danger.withValues(alpha: .5),
+    child: Row(children: [const Icon(Icons.error_outline_rounded, color: PCWorkColors.danger), const SizedBox(width: 10), Expanded(child: Text(message))]),
+  );
 }
