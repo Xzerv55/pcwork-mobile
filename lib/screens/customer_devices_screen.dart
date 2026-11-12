@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../design_system/pcwork_design_system.dart';
 
 class CustomerDevicesScreen extends StatefulWidget {
   const CustomerDevicesScreen({super.key, required this.api, required this.token, required this.english});
@@ -79,6 +80,7 @@ class _CustomerDevicesScreenState extends State<CustomerDevicesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: PCWorkColors.midnight,
     appBar: AppBar(title: Text(tr('Моите устройства', 'My devices')), actions: [IconButton(onPressed: _saving ? null : _refresh, tooltip: tr('Обнови', 'Refresh'), icon: const Icon(Icons.refresh_rounded))]),
     floatingActionButton: FloatingActionButton.extended(onPressed: _saving ? null : () => _editDevice(), icon: const Icon(Icons.add), label: Text(tr('Добави устройство', 'Add device'))),
     body: FutureBuilder<List<Map<String, dynamic>>>(future: _future, builder: (context, snapshot) {
@@ -86,7 +88,7 @@ class _CustomerDevicesScreenState extends State<CustomerDevicesScreen> {
       if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
       if (snapshot.hasError && !snapshot.hasData) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.cloud_off_outlined, size: 44), const SizedBox(height: 12), Text(tr('Не успяхме да заредим устройствата.', 'Could not load your devices.'), textAlign: TextAlign.center), const SizedBox(height: 10), FilledButton.icon(onPressed: _refresh, icon: const Icon(Icons.refresh), label: Text(tr('Опитай отново', 'Try again')))])));
       return RefreshIndicator(onRefresh: _refresh, child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), children: [
-        Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF123B4A), Color(0xFF24233E)]), borderRadius: BorderRadius.circular(20)), child: Row(children: [const Icon(Icons.devices_rounded, color: Color(0xFF21D4D8), size: 34), const SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Твоята техника на едно място', 'Your devices in one place'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)), const SizedBox(height: 4), Text(tr('Запази модел и сериен номер, за да намираш по-лесно сервизната история.', 'Save model and serial number to find service history more easily.'), style: const TextStyle(color: Colors.white70, fontSize: 12))]))])),
+        PCWorkGlassPanel(glow: true, borderColor: PCWorkColors.cyan.withValues(alpha: .38), child: Row(children: [const PCWorkGlowIcon(icon: Icons.devices_rounded, color: PCWorkColors.cyan, size: 52, iconSize: 27), const SizedBox(width: 13), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Твоята техника на едно място', 'Your devices in one place'), style: const TextStyle(color: PCWorkColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 16)), const SizedBox(height: 4), Text(tr('Запази модел и сериен номер, за да намираш по-лесно сервизната история.', 'Save model and serial number to find service history more easily.'), style: const TextStyle(color: PCWorkColors.textSecondary, fontSize: 12, height: 1.35))]))])),
         const SizedBox(height: 14),
         if (snapshot.hasError) Card(child: ListTile(leading: const Icon(Icons.warning_amber_rounded), title: Text(tr('Показваме последно заредените данни.', 'Showing the last loaded data.')), trailing: IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)))),
         if (rows.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 18), child: Column(children: [Icon(Icons.devices_other_outlined, size: 58, color: Theme.of(context).colorScheme.outline), const SizedBox(height: 14), Text(tr('Все още нямаш добавени устройства.', 'You have not added any devices yet.'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700), textAlign: TextAlign.center), const SizedBox(height: 7), Text(tr('Добави лаптоп, компютър или конзола, за да поддържаш личен списък.', 'Add a laptop, computer or console to keep your personal device list.'), textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))])),
@@ -100,20 +102,20 @@ class _CustomerDevicesScreenState extends State<CustomerDevicesScreen> {
     final title = (d['nickname'] ?? '').toString().trim();
     final name = [d['brand'], d['model']].where((v) => v != null && v.toString().trim().isNotEmpty).join(' ');
     final repairs = (d['repairs'] is List ? d['repairs'] as List : const []).whereType<Map>().toList();
-    return Card(margin: const EdgeInsets.only(bottom: 12), clipBehavior: Clip.antiAlias, child: ExpansionTile(
-      leading: CircleAvatar(backgroundColor: const Color(0xFF21D4D8).withValues(alpha: .13), child: Icon(_deviceIcon((d['device_type'] ?? '').toString()), color: const Color(0xFF21D4D8))),
-      title: Text(title.isNotEmpty ? title : (name.isNotEmpty ? name : (d['device_type'] ?? '').toString()), style: const TextStyle(fontWeight: FontWeight.w800)),
-      subtitle: Text('${d['device_type'] ?? ''}${name.isNotEmpty ? ' · $name' : ''}', maxLines: 2, overflow: TextOverflow.ellipsis),
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: PCWorkGlassPanel(padding: EdgeInsets.zero, borderColor: PCWorkColors.electricBlue.withValues(alpha: .30), child: ExpansionTile(
+      leading: PCWorkGlowIcon(icon: _deviceIcon((d['device_type'] ?? '').toString()), color: PCWorkColors.cyan, size: 43, iconSize: 21),
+      title: Text(title.isNotEmpty ? title : (name.isNotEmpty ? name : (d['device_type'] ?? '').toString()), style: const TextStyle(color: PCWorkColors.textPrimary, fontWeight: FontWeight.w900)),
+      subtitle: Text('${d['device_type'] ?? ''}${name.isNotEmpty ? ' · $name' : ''}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: PCWorkColors.textSecondary)),
       children: [Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if ((d['serial_number'] ?? '').toString().isNotEmpty) _detail(tr('Сериен номер', 'Serial number'), d['serial_number'].toString()),
         if ((d['purchase_date'] ?? '').toString().isNotEmpty) _detail(tr('Дата на покупка', 'Purchase date'), d['purchase_date'].toString()),
         if ((d['notes'] ?? '').toString().isNotEmpty) _detail(tr('Бележки', 'Notes'), d['notes'].toString()),
-        const SizedBox(height: 8), Text(tr('Сервизна история', 'Repair history'), style: const TextStyle(fontWeight: FontWeight.w800)),
-        if (repairs.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(tr('Няма намерени ремонти със съвпадащ сериен номер.', 'No repairs found with a matching serial number.'), style: const TextStyle(fontSize: 12))),
-        ...repairs.map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.build_circle_outlined), title: Text((r['repair_number'] ?? 'Ремонт').toString()), subtitle: Text('${r['status'] ?? ''} · ${r['created_at'] ?? ''}'))),
+        const SizedBox(height: 12), Row(children: [const Icon(Icons.history_rounded, color: PCWorkColors.cyan, size: 18), const SizedBox(width: 8), Text(tr('Сервизна история', 'Repair history'), style: const TextStyle(color: PCWorkColors.textPrimary, fontWeight: FontWeight.w900))]),
+        if (repairs.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text(tr('Няма намерени ремонти със съвпадащ сериен номер.', 'No repairs found with a matching serial number.'), style: const TextStyle(color: PCWorkColors.textMuted, fontSize: 12))),
+        ...repairs.map((r) => Container(margin: const EdgeInsets.only(top: 8), padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: PCWorkColors.deepNavy.withValues(alpha: .72), borderRadius: BorderRadius.circular(14), border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .18))), child: Row(children: [const PCWorkGlowIcon(icon: Icons.build_circle_outlined, color: PCWorkColors.cyan, size: 35, iconSize: 17), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text((r['repair_number'] ?? 'Ремонт').toString(), style: const TextStyle(color: PCWorkColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 12)), const SizedBox(height: 3), Text('${r['status'] ?? ''} · ${r['created_at'] ?? ''}', style: const TextStyle(color: PCWorkColors.textSecondary, fontSize: 10))]))]))),
         const Divider(), Row(children: [Expanded(child: OutlinedButton.icon(onPressed: _saving ? null : () => _editDevice(device: d), icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай', 'Edit')))), const SizedBox(width: 8), IconButton(onPressed: _saving ? null : () => _deleteDevice(d), tooltip: tr('Изтрий', 'Delete'), icon: const Icon(Icons.delete_outline, color: Colors.redAccent))]),
       ]))],
-    ));
+    )));
   }
 
   Widget _detail(String label, String value) => Padding(padding: const EdgeInsets.only(top: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 125, child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12))), Expanded(child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)))]));
