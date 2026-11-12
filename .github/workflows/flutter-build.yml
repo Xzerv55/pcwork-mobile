@@ -58,29 +58,29 @@ jobs:
           rm -rf .dart_tool
           rm -f .flutter-plugins .flutter-plugins-dependencies
 
-      - name: Resolve pinned splash generator
+      - name: Resolve compatible splash generator
         shell: bash
         run: |
           set -euo pipefail
           flutter pub get
-          SPLASH_VERSION="$(python3 - <<'PYCHECK'
+          SPLASH_VERSION="$(python3 - <<'PYVERSION'
           from pathlib import Path
-          lines = Path("pubspec.lock").read_text().splitlines()
-          in_package = False
+          lines = Path('pubspec.lock').read_text().splitlines()
+          active = False
           for line in lines:
-              if line == "  flutter_native_splash:":
-                  in_package = True
+              if line == '  flutter_native_splash:':
+                  active = True
                   continue
-              if in_package and line.startswith("  ") and not line.startswith("    "):
+              if active and line.startswith('  ') and not line.startswith('    '):
                   break
-              if in_package and line.startswith("    version:"):
-                  print(line.split(":", 1)[1].strip().strip("\"'"))
+              if active and line.startswith('    version:'):
+                  print(line.split(':', 1)[1].strip().strip('"\''))
                   break
-          PYCHECK
+          PYVERSION
           )"
           echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
-          if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
-            echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
+          if [[ "$SPLASH_VERSION" != "2.4.7" ]]; then
+            echo "ERROR: expected flutter_native_splash 2.4.7 for Flutter 3.41.9, got ${SPLASH_VERSION:-missing}."
             exit 1
           fi
 
