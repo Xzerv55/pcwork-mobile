@@ -1,0 +1,344 @@
+name: PCWork Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcwork-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android:
+    name: Build installable Android APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Cache Gradle dependencies and wrapper
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # The icon/splash generators update both platform asset catalogs.
+      - name: Generate iOS asset catalog for shared branding assets
+        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
+
+      - name: Generate Android project
+        run: bash ./scripts/prepare_android.sh
+
+      # Install the pinned NDK only when it is absent or incomplete. Preserve
+      # runner download caches and avoid deleting a healthy installation.
+      - name: Verify and install Android NDK when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
+            echo "ERROR: Android SDK directory was not found."
+            exit 1
+          fi
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then SDKMANAGER="$(command -v sdkmanager || true)"; fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "ERROR: Android sdkmanager was not found."
+            exit 1
+          fi
+          NDK_VERSION="28.2.13676358"
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+          {
+            printf 'ANDROID_SDK_ROOT=%s\n' "$SDK_ROOT"
+            printf 'ANDROID_HOME=%s\n' "$SDK_ROOT"
+          } >> "$GITHUB_ENV"
+          valid_ndk() {
+            [[ -s "$NDK_DIR/source.properties" && -s "$NDK_DIR/package.xml" && -x "$NDK_DIR/ndk-build" ]] &&
+              grep -Fq "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"
+          }
+          if valid_ndk; then
+            echo "Android NDK $NDK_VERSION is already installed and valid."
+            exit 0
+          fi
+          echo "Installing missing or incomplete Android NDK $NDK_VERSION."
+          # Remove only a detected broken package directory; retain SDK download caches.
+          if [[ -d "$NDK_DIR" ]]; then rm -rf "$NDK_DIR"; fi
+          LICENSE_INPUT="$(printf 'y\n%.0s' {1..100})"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses <<< "$LICENSE_INPUT" >/dev/null
+          for attempt in 1 2 3; do
+            echo "NDK installation attempt $attempt/3..."
+            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION"; then
+              if valid_ndk; then
+                echo "Android NDK $NDK_VERSION installed and verified."
+                exit 0
+              fi
+            fi
+            echo "NDK attempt $attempt did not produce a complete package."
+            if [[ "$attempt" -lt 3 ]]; then sleep 5; fi
+          done
+          echo "ERROR: Android NDK $NDK_VERSION is invalid or incomplete."
+          exit 1
+
+      # Generate the Gradle wrapper in an isolated, empty project. Running
+      # `gradle wrapper` inside android/ configures the Flutter application
+      # before the wrapper exists and can trigger Flutter's generateLockfiles
+      # task registration during this bootstrap step.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Generate Gradle wrapper without configuring the Flutter project
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMP_GRADLE_PROJECT="$(mktemp -d)"
+          trap 'rm -rf "$TEMP_GRADLE_PROJECT"' EXIT
+          printf "plugins { id 'base' }\\n" > "$TEMP_GRADLE_PROJECT/build.gradle"
+          (
+            cd "$TEMP_GRADLE_PROJECT"
+            gradle wrapper --gradle-version 8.14.3 --distribution-type all
+          )
+          install -D -m 755 "$TEMP_GRADLE_PROJECT/gradlew" "$GITHUB_WORKSPACE/android/gradlew"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradlew.bat" "$GITHUB_WORKSPACE/android/gradlew.bat"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradle/wrapper/gradle-wrapper.jar" "$GITHUB_WORKSPACE/android/gradle/wrapper/gradle-wrapper.jar"
+          install -D -m 644 "$TEMP_GRADLE_PROJECT/gradle/wrapper/gradle-wrapper.properties" "$GITHUB_WORKSPACE/android/gradle/wrapper/gradle-wrapper.properties"
+          chmod +x "$GITHUB_WORKSPACE/android/gradlew"
+          echo "Gradle 8.14.3 wrapper generated in an isolated project."
+
+      # Firebase client settings are read from the checked-out Android config.
+      # These are app-side identifiers/API key, not a service-account private key.
+      - name: Read Firebase Android configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_FILE="android/app/google-services.json"
+          if [[ ! -f "$CONFIG_FILE" ]]; then
+            echo "ERROR: $CONFIG_FILE is missing. Add the real Firebase Android configuration to the repository (do not commit service-account credentials)."
+            exit 1
+          fi
+          PACKAGE_NAME="com.pcworkbg.pcwork_mobile"
+          MATCH_COUNT=$(jq --arg package "$PACKAGE_NAME" '[.client[]? | select(.client_info.android_client_info.package_name == $package)] | length' "$CONFIG_FILE")
+          if [[ "$MATCH_COUNT" != "1" ]]; then
+            echo "ERROR: google-services.json must contain exactly one Android client for $PACKAGE_NAME."
+            exit 1
+          fi
+          FIREBASE_PROJECT_ID=$(jq -r '.project_info.project_id // empty' "$CONFIG_FILE")
+          FIREBASE_MESSAGING_SENDER_ID=$(jq -r '.project_info.project_number // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_APP_ID=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .client_info.mobilesdk_app_id // empty' "$CONFIG_FILE")
+          FIREBASE_ANDROID_API_KEY=$(jq -r --arg package "$PACKAGE_NAME" '.client[] | select(.client_info.android_client_info.package_name == $package) | .api_key[0].current_key // empty' "$CONFIG_FILE")
+          if [[ -z "$FIREBASE_PROJECT_ID" || -z "$FIREBASE_MESSAGING_SENDER_ID" || -z "$FIREBASE_ANDROID_APP_ID" || -z "$FIREBASE_ANDROID_API_KEY" ]]; then
+            echo "ERROR: google-services.json is missing one or more required Firebase Android client fields."
+            exit 1
+          fi
+          {
+            printf 'FIREBASE_PROJECT_ID=%s\n' "$FIREBASE_PROJECT_ID"
+            printf 'FIREBASE_MESSAGING_SENDER_ID=%s\n' "$FIREBASE_MESSAGING_SENDER_ID"
+            printf 'FIREBASE_ANDROID_APP_ID=%s\n' "$FIREBASE_ANDROID_APP_ID"
+            printf 'FIREBASE_ANDROID_API_KEY=%s\n' "$FIREBASE_ANDROID_API_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure persistent release signing
+        shell: bash
+        env:
+          PCWORK_KEYSTORE_BASE64: ${{ secrets.PCWORK_KEYSTORE_BASE64 }}
+          PCWORK_KEYSTORE_PASSWORD: ${{ secrets.PCWORK_KEYSTORE_PASSWORD }}
+          PCWORK_KEY_ALIAS: ${{ secrets.PCWORK_KEY_ALIAS }}
+          PCWORK_KEY_PASSWORD: ${{ secrets.PCWORK_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PCWORK_KEYSTORE_BASE64:-}" || -z "${PCWORK_KEYSTORE_PASSWORD:-}" || -z "${PCWORK_KEY_ALIAS:-}" || -z "${PCWORK_KEY_PASSWORD:-}" ]]; then
+            echo "ERROR: Configure all four GitHub Actions secrets: PCWORK_KEYSTORE_BASE64, PCWORK_KEYSTORE_PASSWORD, PCWORK_KEY_ALIAS, PCWORK_KEY_PASSWORD. Configure the existing persistent signing secrets in the repository settings."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/pcwork-signing"
+          printf '%s' "$PCWORK_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          chmod 600 "$RUNNER_TEMP/pcwork-signing/pcwork-release.jks"
+          echo "PCWORK_KEYSTORE_FILE=$RUNNER_TEMP/pcwork-signing/pcwork-release.jks" >> "$GITHUB_ENV"
+          echo "PCWORK_KEYSTORE_PASSWORD=$PCWORK_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_ALIAS=$PCWORK_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "PCWORK_KEY_PASSWORD=$PCWORK_KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
+
+      - name: Validate and export the single app version
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./scripts/validate_version.sh
+          PUBSPEC_VERSION="$(sed -n 's/^version: //p' pubspec.yaml | head -n 1)"
+          echo "PUBSPEC_VERSION=$PUBSPEC_VERSION" >> "$GITHUB_ENV"
+          echo "PCWORK_BUILD_NUMBER=${PUBSPEC_VERSION##*+}" >> "$GITHUB_ENV"
+
+      # Resolve the splash generator version that no longer declares native Android plugin code.
+      - name: Resolve dependencies and exclude splash generator from Android plugin registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          SPLASH_VERSION="$(python3 - <<'PYVERSION'
+          from pathlib import Path
+          lines = Path('pubspec.lock').read_text().splitlines()
+          active = False
+          for line in lines:
+              if line == '  flutter_native_splash:':
+                  active = True
+                  continue
+              if active and line.startswith('  ') and not line.startswith('    '):
+                  break
+              if active and line.startswith('    version:'):
+                  print(line.split(':', 1)[1].strip().strip('"\''))
+                  break
+          PYVERSION
+          )"
+          echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
+          if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
+            echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
+            exit 1
+          fi
+          python3 - <<'PYMETA'
+          import json
+          from pathlib import Path
+          path = Path('.flutter-plugins-dependencies')
+          if not path.is_file():
+              raise SystemExit('ERROR: Flutter plugin metadata was not generated.')
+          data = json.loads(path.read_text())
+          android = data.get('plugins', {}).get('android', [])
+          names = [item.get('name', '') for item in android]
+          if 'flutter_native_splash' in names:
+              raise SystemExit('ERROR: flutter_native_splash 2.4.8 unexpectedly appears in Android plugin metadata.')
+          print('Verified: flutter_native_splash has no Android plugin registration.')
+          PYMETA
+
+      - name: Generate PCWork launcher icons and native splash
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+
+      - name: Verify generated Android plugin registrant
+        shell: bash
+        run: |
+          set -euo pipefail
+          REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+          # A stale checked-in registrant must not be compiled. Flutter regenerates it
+          # from the freshly resolved .flutter-plugins-dependencies during the build.
+          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
+            echo "Removing stale GeneratedPluginRegistrant.java before Flutter regenerates it."
+            rm -f "$REGISTRANT"
+          fi
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
+      - name: Build debug APK for phone testing
+        run: >-
+          flutter build apk --debug --no-pub
+          --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER"
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Verify Android plugin registrant after debug build
+        shell: bash
+        run: |
+          set -euo pipefail
+          REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
+            echo "ERROR: Flutter regenerated an obsolete flutter_native_splash Android plugin registration."
+            echo "Resolved package metadata and GeneratedPluginRegistrant.java are inconsistent."
+            exit 1
+          fi
+
+      - name: Build release APK for device testing
+        run: >-
+          flutter build apk --release --split-per-abi --no-pub
+          --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER"
+          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
+          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
+          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Verify Android APK version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          APK_ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -type f -name apkanalyzer -perm -u+x 2>/dev/null | head -n 1)"
+          if [[ -z "$APK_ANALYZER" ]]; then
+            echo "ERROR: apkanalyzer was not found in the Android SDK command-line tools."
+            exit 1
+          fi
+          EXPECTED_VERSION_NAME="${PUBSPEC_VERSION%%+*}"
+          EXPECTED_VERSION_CODE="${PUBSPEC_VERSION##*+}"
+          shopt -s nullglob
+          APKS=(build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/app-*-release.apk)
+          if [[ "${#APKS[@]}" -lt 2 ]]; then
+            echo "ERROR: Expected the debug APK and split release APKs, found ${#APKS[@]} APK(s)."
+            exit 1
+          fi
+          for APK in "${APKS[@]}"; do
+            ACTUAL_CODE="$("$APK_ANALYZER" manifest version-code "$APK")"
+            ACTUAL_NAME="$("$APK_ANALYZER" manifest version-name "$APK")"
+            EXPECTED_APK_CODE="$EXPECTED_VERSION_CODE"
+
+            # Flutter split-per-ABI APKs use ABI-specific version-code prefixes:
+            # armeabi-v7a=1, arm64-v8a=2, x86_64=3.
+            case "$APK" in
+              *-armeabi-v7a-release.apk) EXPECTED_APK_CODE="$((1000 + EXPECTED_VERSION_CODE))" ;;
+              *-arm64-v8a-release.apk)   EXPECTED_APK_CODE="$((2000 + EXPECTED_VERSION_CODE))" ;;
+              *-x86_64-release.apk)      EXPECTED_APK_CODE="$((3000 + EXPECTED_VERSION_CODE))" ;;
+              *-release.apk)
+                echo "ERROR: Unrecognized split APK ABI filename: $APK"
+                exit 1
+                ;;
+            esac
+
+            echo "$APK -> versionName=$ACTUAL_NAME, versionCode=$ACTUAL_CODE (expected $EXPECTED_APK_CODE)"
+            if [[ "$ACTUAL_NAME" != "$EXPECTED_VERSION_NAME" || "$ACTUAL_CODE" != "$EXPECTED_APK_CODE" ]]; then
+              echo "ERROR: APK metadata does not match expected version for this APK ($EXPECTED_VERSION_NAME / $EXPECTED_APK_CODE)."
+              exit 1
+            fi
+          done
+          echo "Verified: every generated APK contains the expected Android version metadata."
+
+      - name: Upload APK files
+        uses: actions/upload-artifact@v6
+        with:
+          name: pcwork-android-apks
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+          retention-days: 14
