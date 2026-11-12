@@ -221,8 +221,7 @@ jobs:
           echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
           echo "Validated app version $PUBSPEC_VERSION"
 
-      # Resolve the current splash generator before generating Android plugin metadata.
-      # Version 2.4.8 removed the obsolete Android plugin class referenced by old registrants.
+      # Resolve the splash generator before generating Android plugin metadata.
       - name: Clean generated Flutter and Android state
         shell: bash
         run: |
@@ -236,34 +235,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Pin the splash generator exactly. `flutter pub upgrade` alone can
-          # retain 2.4.7 when the project lockfile/constraints do not select 2.4.8.
-          python3 - <<'PYCONFIG'
-          from pathlib import Path
-          import re
-          path = Path("pubspec.yaml")
-          content = path.read_text()
-          if re.search(r"(?m)^dependency_overrides:\s*$", content):
-              lines = content.splitlines()
-              start = next(i for i, line in enumerate(lines) if line == "dependency_overrides:")
-              end = start + 1
-              while end < len(lines) and (lines[end].startswith("  ") or not lines[end].strip()):
-                  end += 1
-              block = lines[start + 1:end]
-              found = False
-              for i, line in enumerate(block):
-                  if re.match(r"^  flutter_native_splash:", line):
-                      block[i] = "  flutter_native_splash: 2.4.8"
-                      found = True
-                      break
-              if not found:
-                  block.append("  flutter_native_splash: 2.4.8")
-              lines[start + 1:end] = block
-              content = "\n".join(lines) + "\n"
-          else:
-              content = content.rstrip() + "\n\ndependency_overrides:\n  flutter_native_splash: 2.4.8\n"
-          path.write_text(content)
-          PYCONFIG
           flutter pub get
           SPLASH_VERSION="$(python3 - <<'PYCHECK'
           from pathlib import Path
