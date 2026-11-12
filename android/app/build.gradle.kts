@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,6 +19,12 @@ val releaseKeyAlias = System.getenv("PCWORK_KEY_ALIAS")
 val releaseKeyPassword = System.getenv("PCWORK_KEY_PASSWORD")
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 android {
     namespace = "com.pcworkbg.pcwork_mobile"
     compileSdk = flutter.compileSdkVersion
@@ -26,7 +34,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = JavaVersion.VERSION_17.toString() }
 
     defaultConfig {
         applicationId = "com.pcworkbg.pcwork_mobile"
@@ -35,12 +42,14 @@ android {
         targetSdk = maxOf(flutter.targetSdkVersion, 33)
         // Flutter derives these values from pubspec.yaml (version: x.y.z+build).
         // Keep Android's manifest metadata aligned with the single project version source.
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-        require(versionCode > 0) { "Android versionCode must be a positive integer." }
-        require(versionName.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"))) {
-            "Android versionName must be a valid semantic app version, got: $versionName"
+        val resolvedVersionCode = flutter.versionCode
+        val resolvedVersionName = flutter.versionName
+        require(resolvedVersionCode > 0) { "Android versionCode must be a positive integer." }
+        require(resolvedVersionName.matches(Regex("^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"))) {
+            "Android versionName must be a valid semantic app version, got: $resolvedVersionName"
         }
+        versionCode = resolvedVersionCode
+        versionName = resolvedVersionName
         multiDexEnabled = true
     }
     signingConfigs {
