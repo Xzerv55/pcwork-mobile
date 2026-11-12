@@ -79,8 +79,8 @@ jobs:
           PYVERSION
           )"
           echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
-          if [[ "$SPLASH_VERSION" != "2.4.7" ]]; then
-            echo "ERROR: expected flutter_native_splash 2.4.7 for Flutter 3.41.9, got ${SPLASH_VERSION:-missing}."
+          if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
+            echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
             exit 1
           fi
 
