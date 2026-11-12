@@ -38,25 +38,14 @@ jobs:
         run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
       - name: Remove generated placeholder test for MyApp
         run: rm -f test/widget_test.dart
-      - name: Validate and export the single app build number
+      - name: Validate and export the single app version
         shell: bash
         run: |
           set -euo pipefail
+          bash ./scripts/validate_version.sh
           PUBSPEC_VERSION="$(sed -n 's/^version: //p' pubspec.yaml | head -n 1)"
-          PUBSPEC_BUILD="${PUBSPEC_VERSION##*+}"
-          DART_BUILD="$(sed -n "s/.*defaultValue: \([0-9][0-9]*\)).*/\1/p" lib/app/pcwork_app.dart | head -n 1)"
-          if [[ ! "$PUBSPEC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ || -z "$PUBSPEC_BUILD" || "$PUBSPEC_BUILD" != "$DART_BUILD" ]]; then
-            echo "ERROR: pubspec.yaml build number ($PUBSPEC_BUILD) and Dart fallback ($DART_BUILD) do not match."
-            exit 1
-          fi
-          echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
-          echo "Validated app version $PUBSPEC_VERSION"
-
-      - name: Clean generated Flutter state
-        run: |
-          flutter clean
-          rm -rf .dart_tool
-          rm -f .flutter-plugins .flutter-plugins-dependencies
+          echo "PUBSPEC_VERSION=$PUBSPEC_VERSION" >> "$GITHUB_ENV"
+          echo "PCWORK_BUILD_NUMBER=${PUBSPEC_VERSION##*+}" >> "$GITHUB_ENV"
 
       - name: Resolve compatible splash generator
         shell: bash

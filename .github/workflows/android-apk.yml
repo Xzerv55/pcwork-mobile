@@ -58,74 +58,55 @@ jobs:
       - name: Generate Android project
         run: bash ./scripts/prepare_android.sh
 
-      # Remove any incomplete NDK download and install the exact version required
-      # by the Android project before Gradle evaluates the Android build.
-      - name: Repair and install Android NDK
+      # Install the pinned NDK only when it is absent or incomplete. Preserve
+      # runner download caches and avoid deleting a healthy installation.
+      - name: Verify and install Android NDK when needed
         shell: bash
         run: |
           set -euo pipefail
-
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
-            echo "ERROR: Android SDK directory was not found (ANDROID_SDK_ROOT/ANDROID_HOME)."
+            echo "ERROR: Android SDK directory was not found."
             exit 1
           fi
-
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          if [[ ! -x "$SDKMANAGER" ]]; then
-            SDKMANAGER="$(command -v sdkmanager || true)"
-          fi
+          if [[ ! -x "$SDKMANAGER" ]]; then SDKMANAGER="$(command -v sdkmanager || true)"; fi
           if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
             echo "ERROR: Android sdkmanager was not found."
             exit 1
           fi
-
           NDK_VERSION="28.2.13676358"
           NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
-
-          # Keep sdkmanager and every later Gradle step on the exact same SDK root.
           {
             printf 'ANDROID_SDK_ROOT=%s\n' "$SDK_ROOT"
             printf 'ANDROID_HOME=%s\n' "$SDK_ROOT"
           } >> "$GITHUB_ENV"
-
-          echo "Cleaning previous/partial NDK installation and download cache..."
-          rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
-
-          echo "Accepting Android SDK licenses..."
+          valid_ndk() {
+            [[ -s "$NDK_DIR/source.properties" && -s "$NDK_DIR/package.xml" && -x "$NDK_DIR/ndk-build" ]] &&
+              grep -Fq "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"
+          }
+          if valid_ndk; then
+            echo "Android NDK $NDK_VERSION is already installed and valid."
+            exit 0
+          fi
+          echo "Installing missing or incomplete Android NDK $NDK_VERSION."
+          # Remove only a detected broken package directory; retain SDK download caches.
+          if [[ -d "$NDK_DIR" ]]; then rm -rf "$NDK_DIR"; fi
           LICENSE_INPUT="$(printf 'y\n%.0s' {1..100})"
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses <<< "$LICENSE_INPUT" >/dev/null
-
-          installed=false
           for attempt in 1 2 3; do
-            echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)..."
-            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
-
-            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION" --verbose; then
-              # source.properties alone can exist in a damaged/partial extraction.
-              # Require the package manifest and executable NDK tool as well.
-              if [[ -s "$NDK_DIR/source.properties" &&
-                    -s "$NDK_DIR/package.xml" &&
-                    -x "$NDK_DIR/ndk-build" ]] &&
-                 grep -Fq "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
-                installed=true
-                break
+            echo "NDK installation attempt $attempt/3..."
+            if "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install "ndk;$NDK_VERSION"; then
+              if valid_ndk; then
+                echo "Android NDK $NDK_VERSION installed and verified."
+                exit 0
               fi
             fi
-
-            echo "NDK installation attempt $attempt did not produce a complete package."
-            rm -rf "$NDK_DIR" "$SDK_ROOT/.temp" "$HOME/.android/cache"
+            echo "NDK attempt $attempt did not produce a complete package."
+            if [[ "$attempt" -lt 3 ]]; then sleep 5; fi
           done
-
-          if [[ "$installed" != true ]]; then
-            echo "ERROR: NDK $NDK_VERSION download/extraction is invalid or incomplete."
-            echo "Gradle build was stopped before project configuration to avoid a misleading secondary error."
-            exit 1
-          fi
-
-          echo "Android NDK $NDK_VERSION installed and verified at $NDK_DIR."
-          test -s "$NDK_DIR/package.xml"
-          test -x "$NDK_DIR/ndk-build"
+          echo "ERROR: Android NDK $NDK_VERSION is invalid or incomplete."
+          exit 1
 
       # The Flutter settings plugin reads android/local.properties while Gradle
       # evaluates settings.gradle.kts. Create it immediately before invoking Gradle
@@ -207,30 +188,16 @@ jobs:
         run: rm -f test/widget_test.dart
 
 
-      - name: Validate and export the single app build number
+      - name: Validate and export the single app version
         shell: bash
         run: |
           set -euo pipefail
+          bash ./scripts/validate_version.sh
           PUBSPEC_VERSION="$(sed -n 's/^version: //p' pubspec.yaml | head -n 1)"
-          PUBSPEC_BUILD="${PUBSPEC_VERSION##*+}"
-          DART_BUILD="$(sed -n "s/.*defaultValue: \([0-9][0-9]*\)).*/\1/p" lib/app/pcwork_app.dart | head -n 1)"
-          if [[ ! "$PUBSPEC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ || -z "$PUBSPEC_BUILD" || "$PUBSPEC_BUILD" != "$DART_BUILD" ]]; then
-            echo "ERROR: pubspec.yaml build number ($PUBSPEC_BUILD) and Dart fallback ($DART_BUILD) do not match."
-            exit 1
-          fi
-          echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
-          echo "Validated app version $PUBSPEC_VERSION"
+          echo "PUBSPEC_VERSION=$PUBSPEC_VERSION" >> "$GITHUB_ENV"
+          echo "PCWORK_BUILD_NUMBER=${PUBSPEC_VERSION##*+}" >> "$GITHUB_ENV"
 
       # Resolve the splash generator version that no longer declares native Android plugin code.
-      - name: Clean generated Flutter and Android state
-        shell: bash
-        run: |
-          set -euo pipefail
-          flutter clean
-          rm -rf .dart_tool android/.gradle
-          rm -f .flutter-plugins .flutter-plugins-dependencies
-          find android/app/src -name GeneratedPluginRegistrant.java -type f -delete 2>/dev/null || true
-
       - name: Resolve dependencies and exclude splash generator from Android plugin registration
         shell: bash
         run: |
@@ -318,6 +285,35 @@ jobs:
           --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
           --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
           --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+
+      - name: Verify Android APK version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          APK_ANALYZER="$(find "$SDK_ROOT/cmdline-tools" -type f -name apkanalyzer -perm -u+x 2>/dev/null | head -n 1)"
+          if [[ -z "$APK_ANALYZER" ]]; then
+            echo "ERROR: apkanalyzer was not found in the Android SDK command-line tools."
+            exit 1
+          fi
+          EXPECTED_VERSION_NAME="${PUBSPEC_VERSION%%+*}"
+          EXPECTED_VERSION_CODE="${PUBSPEC_VERSION##*+}"
+          shopt -s nullglob
+          APKS=(build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/app-*-release.apk)
+          if [[ "${#APKS[@]}" -lt 2 ]]; then
+            echo "ERROR: Expected the debug APK and split release APKs, found ${#APKS[@]} APK(s)."
+            exit 1
+          fi
+          for APK in "${APKS[@]}"; do
+            ACTUAL_CODE="$("$APK_ANALYZER" manifest version-code "$APK")"
+            ACTUAL_NAME="$("$APK_ANALYZER" manifest version-name "$APK")"
+            echo "$APK -> versionName=$ACTUAL_NAME, versionCode=$ACTUAL_CODE"
+            if [[ "$ACTUAL_NAME" != "$EXPECTED_VERSION_NAME" || "$ACTUAL_CODE" != "$EXPECTED_VERSION_CODE" ]]; then
+              echo "ERROR: APK metadata does not match pubspec.yaml ($EXPECTED_VERSION_NAME / $EXPECTED_VERSION_CODE)."
+              exit 1
+            fi
+          done
+          echo "Verified: every generated APK contains the expected Android version metadata."
 
       - name: Upload APK files
         uses: actions/upload-artifact@v6
