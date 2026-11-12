@@ -2467,11 +2467,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                     }
                     pendingItems = await api.pendingOperations(token);
                     lastChecked = DateTime.now();
-                    if (mounted) setState(() {
-                      apiReady = true;
-                      _pendingSyncCount = pending;
-                      if (sent > 0) repairsFuture = _loadRepairsFuture();
-                    });
+                    if (mounted) {
+                      setState(() {
+                        apiReady = true;
+                        _pendingSyncCount = pending;
+                        if (sent > 0) repairsFuture = _loadRepairsFuture();
+                      });
+                    }
                     status = tr('Изпратени: $sent · Оставащи: $pending', 'Sent: $sent · Remaining: $pending');
                   } catch (error) {
                     if (!healthPassed) connected = false;
