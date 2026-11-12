@@ -1571,41 +1571,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ),
       );
 
-  Widget _infoTile(IconData icon, String title, VoidCallback onTap) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(17),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(17),
-            child: Ink(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xD9183459), Color(0xD90D1B36), Color(0xD91A1740)]),
-                borderRadius: BorderRadius.circular(17),
-                border: Border.all(color: const Color(0xFF238DFF).withValues(alpha: .48)),
-                boxShadow: [BoxShadow(color: const Color(0xFF168BFF).withValues(alpha: .09), blurRadius: 14, spreadRadius: -5)],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-                child: Row(children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF16BFF4).withValues(alpha: .13), border: Border.all(color: const Color(0xFF28C9FF).withValues(alpha: .6))),
-                    child: Icon(icon, color: const Color(0xFF47D9FF), size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white))),
-                  const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF7FCBFF), size: 15),
-                ]),
-              ),
-            ),
-          ),
-        ),
-      );
-
   Widget _repairs() {
     if (visibleUser == null) {
       return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 28), children: [
@@ -2043,7 +2008,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     model.dispose(); problem.dispose(); otherDevice.dispose();
   }
 
-  Widget _repairMetric(String title, int value) => Card(child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6), child: Column(children: [Text('$value', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: cyan)), Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12))])));
 
   Future<List<Repair>> _loadRepairsFuture() async {
     final token = await auth.token;
