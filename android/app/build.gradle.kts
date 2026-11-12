@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -17,6 +19,12 @@ val releaseKeyAlias = System.getenv("PCWORK_KEY_ALIAS")
 val releaseKeyPassword = System.getenv("PCWORK_KEY_PASSWORD")
 val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 android {
     namespace = "com.pcworkbg.pcwork_mobile"
     compileSdk = flutter.compileSdkVersion
@@ -26,15 +34,31 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = JavaVersion.VERSION_17.toString() }
 
     defaultConfig {
         applicationId = "com.pcworkbg.pcwork_mobile"
         minSdk = 23
         // POST_NOTIFICATIONS requires Android 13+ runtime permission handling.
         targetSdk = maxOf(flutter.targetSdkVersion, 33)
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        // Read the app version directly from the repository's pubspec.yaml.
+        // Flutter's Gradle extension may fall back to 1.0/1 when its version
+        // properties are not explicitly populated by the invoking workflow.
+        // Parsing the single source of truth here keeps every Android variant aligned.
+        val pubspecFile = rootProject.file("../pubspec.yaml")
+        require(pubspecFile.isFile) {
+            "pubspec.yaml was not found at ${pubspecFile.absolutePath}."
+        }
+        val pubspecVersionLine = pubspecFile.readLines().firstOrNull { it.startsWith("version:") }
+            ?: error("pubspec.yaml does not declare an app version.")
+        val versionMatch = Regex("""^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$""")
+            .matchEntire(pubspecVersionLine)
+            ?: error("pubspec.yaml version must use MAJOR.MINOR.PATCH+BUILD format; got: $pubspecVersionLine")
+        val resolvedVersionName = versionMatch.groupValues[1]
+        val resolvedVersionCode = versionMatch.groupValues[2].toIntOrNull()
+            ?: error("pubspec.yaml build number is outside Android's supported integer range.")
+        require(resolvedVersionCode > 0) { "Android versionCode must be a positive integer." }
+        versionCode = resolvedVersionCode
+        versionName = resolvedVersionName
         multiDexEnabled = true
     }
     signingConfigs {

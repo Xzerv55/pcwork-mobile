@@ -78,7 +78,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 155);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 156);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -969,6 +969,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                                   height: 1.05,
                                   fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                                   color: selected ? Colors.white : muted,
+                                  decoration: TextDecoration.none,
+                                  decorationColor: Colors.transparent,
                                 )),
                               ),
                             ),

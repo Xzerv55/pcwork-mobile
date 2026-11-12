@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 155});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 156});
   final String baseUrl;
   final int userId;
   final int clientBuild;
