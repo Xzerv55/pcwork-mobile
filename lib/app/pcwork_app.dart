@@ -66,7 +66,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   ServiceLocation? selectedLocation;
   Timer? _offlineSyncTimer;
   Timer? _appUpdateCheckTimer;
-  int _lastNotifiedUpdateBuild = 0;
   bool _syncingOfflineQueue = false;
   int _pendingSyncCount = 0;
   bool _marketingOptIn = false;
@@ -78,9 +77,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
-  bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 151);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 152);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -174,28 +172,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try {
       final info = await api.getAppUpdateInfo();
       if (!mounted) return;
-      _lastUpdateCheckSucceeded = true;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
       final update = availableBuild > _currentBuildNumber ? info : null;
       setState(() => _appUpdateInfo = update);
-      if (update != null && availableBuild > _lastNotifiedUpdateBuild) {
-        _lastNotifiedUpdateBuild = availableBuild;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _messengerKey.currentState?.showSnackBar(SnackBar(
-            content: Text(tr('Налична е нова версия на PCWork Mobile.', 'A new version of PCWork Mobile is available.')),
-            duration: const Duration(seconds: 8),
-            action: RegExp(r'^[a-f0-9]{64}$').hasMatch((update['sha256'] ?? '').toString().toLowerCase())
-                ? SnackBarAction(
-                    label: tr('АКТУАЛИЗИРАЙ', 'UPDATE'),
-                    onPressed: () => unawaited(_downloadAndInstallUpdate()),
-                  )
-                : null,
-          ));
-        });
-      }
     } catch (_) {
-      _lastUpdateCheckSucceeded = false;
       // Update checks are optional and must never block app startup.
     }
   }
@@ -899,39 +879,45 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     });
   }
 
-  // Custom six-item bar: the icon/label group is centered in a fixed-height
-  // cell, so its top and bottom free space is mathematically equal.
+  // Six-item floating glass navigation, matching the PCWork 2030 home design.
   Widget _buildBottomNavigation(List<String> labels) {
     const icons = [
-      Icons.grid_view_rounded,
+      Icons.home_outlined,
       Icons.handyman_outlined,
-      Icons.storefront_outlined,
+      Icons.description_outlined,
       Icons.forum_outlined,
       Icons.calendar_month_outlined,
       Icons.person_outline_rounded,
     ];
     const selectedIcons = [
-      Icons.grid_view_rounded,
+      Icons.home_rounded,
       Icons.handyman_rounded,
-      Icons.storefront_rounded,
+      Icons.description_rounded,
       Icons.forum_rounded,
       Icons.calendar_month_rounded,
       Icons.person_rounded,
     ];
-    final selectedColor = isDarkTheme ? cyan : const Color(0xFF087F83);
-    final surface = isDarkTheme ? const Color(0xFF0D1725) : Colors.white;
-    const mutedColor = Color(0xFF8796AA);
+    const muted = Color(0xFF91A9D8);
     return SafeArea(
       top: false,
       child: Container(
-        height: 82,
+        margin: const EdgeInsets.fromLTRB(8, 2, 8, 7),
+        height: 78,
         decoration: BoxDecoration(
-          color: surface,
-          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF26364A) : const Color(0xFFE5EAF2))),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .16 : .055), blurRadius: 18, offset: const Offset(0, -5))],
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xF20A1B3B), Color(0xF4071028), Color(0xF21A1244)],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFF168BFF).withValues(alpha: .62)),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF087DFF).withValues(alpha: .18), blurRadius: 24, spreadRadius: -5, offset: const Offset(0, -3)),
+            BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 18, offset: const Offset(0, 7)),
+          ],
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
           child: Row(
             children: List<Widget>.generate(6, (index) {
               final selected = tab == index;
@@ -943,41 +929,40 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                   child: Tooltip(
                     message: labels[index],
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      splashColor: cyan.withValues(alpha: .20),
+                      borderRadius: BorderRadius.circular(23),
                       onTap: () => _selectTab(index),
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
+                        duration: const Duration(milliseconds: 240),
                         curve: Curves.easeOutCubic,
-                        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
                         padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
                         decoration: BoxDecoration(
-                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .20 : .13) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(28),
+                          gradient: selected ? const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF09C9F5), Color(0xFF087BFF), Color(0xFF6048FF)],
+                          ) : null,
+                          color: selected ? null : Colors.transparent,
+                          borderRadius: BorderRadius.circular(22),
+                          border: selected ? Border.all(color: const Color(0xFF5CEBFF), width: 1) : null,
+                          boxShadow: selected ? [
+                            BoxShadow(color: const Color(0xFF10CFFF).withValues(alpha: .42), blurRadius: 17, spreadRadius: -3),
+                          ] : const [],
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.max,
                           children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              width: selected ? 48 : 42,
-                              height: 36,
-                              decoration: const BoxDecoration(),
-                              alignment: Alignment.center,
-                              child: Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 31 : 29, color: selected ? selectedColor : mutedColor),
-                            ),
+                            Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 29 : 27, color: selected ? Colors.white : muted),
                             const SizedBox(height: 3),
                             Flexible(
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(labels[index], maxLines: 1, style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11.5,
                                   height: 1.05,
-                                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-                                  color: selected ? selectedColor : mutedColor,
-                                  decoration: TextDecoration.none,
-                                  decorationColor: Colors.transparent,
+                                  fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+                                  color: selected ? Colors.white : muted,
                                 )),
                               ),
                             ),
@@ -1279,7 +1264,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         _homeAccountDashboard(),
       ],
       const SizedBox(height: 20),
-      Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      _homeSectionHeader(tr('Свържи се с нас', 'Contact us'), Icons.headset_mic_rounded),
       const SizedBox(height: 8),
       Row(children: [
         Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
@@ -1314,25 +1299,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ]))),
       ],
       const SizedBox(height: 16),
-      Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      _homeSectionHeader(tr('Бърз достъп', 'Quick access'), Icons.bolt_rounded),
       const SizedBox(height: 6),
-      if (isCustomerAccount || noRegPreview) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
-      _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
-      if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
-      _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton.icon(
-          onPressed: () async {
-            await _checkForAppUpdate();
-            if (mounted && _appUpdateInfo == null) {
-              _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.'));
-            }
-          },
-          icon: const Icon(Icons.system_update_alt_rounded, size: 17),
-          label: Text(tr('Провери за актуализация', 'Check for updates')),
-        ),
-      ),
+      Wrap(spacing: 9, runSpacing: 9, children: [
+        if (isCustomerAccount || noRegPreview) _homeQuickAccessCard(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
+        _homeQuickAccessCard(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
+        if (isCustomerAccount) _homeQuickAccessCard(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
+        _homeQuickAccessCard(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+      ]),
     ],
   );
 
@@ -1505,94 +1479,414 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     }
   }
 
-  Widget _contactCard(Widget icon, String title, String? subtitle, Color accent, VoidCallback onTap) =>
-      Card(child: InkWell(
+  Widget _homeSectionHeader(String title, IconData icon) => Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Row(children: [
+      Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xFF12BFF4).withValues(alpha: .13),
+          border: Border.all(color: const Color(0xFF20C8FF).withValues(alpha: .55)),
+          boxShadow: [BoxShadow(color: const Color(0xFF168BFF).withValues(alpha: .14), blurRadius: 12)],
+        ),
+        child: Icon(icon, color: const Color(0xFF42D8FF), size: 18),
+      ),
+      const SizedBox(width: 10),
+      Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, letterSpacing: -.2)),
+      const SizedBox(width: 10),
+      Expanded(child: Container(height: 1, decoration: BoxDecoration(gradient: LinearGradient(colors: [const Color(0xFF20C8FF).withValues(alpha: .55), Colors.transparent])))),
+    ]),
+  );
+
+  Widget _homeQuickAccessCard(IconData icon, String title, VoidCallback onTap) => SizedBox(
+    width: (MediaQuery.sizeOf(context).width - 37) / 2,
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(17),
+      child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 14),
+        borderRadius: BorderRadius.circular(17),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xD91A3458), Color(0xD90B1730), Color(0xD91A1640)]),
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .38)),
+            boxShadow: [BoxShadow(color: PCWorkColors.electricBlue.withValues(alpha: .09), blurRadius: 15, spreadRadius: -6)],
+          ),
           child: Row(children: [
-            Container(width: 39, height: 39, decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(13)), alignment: Alignment.center, child: icon),
+            PCWorkGlowIcon(icon: icon, size: 38, iconSize: 19, color: PCWorkColors.cyan),
             const SizedBox(width: 9),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-              if (subtitle != null && subtitle.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Color(0xFF93A4B8))),
-              ],
-            ])),
+            Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: PCWorkColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w800, height: 1.2))),
+            const Icon(Icons.chevron_right_rounded, color: PCWorkColors.textMuted, size: 19),
           ]),
         ),
-      ));
+      ),
+    ),
+  );
+
+  Widget _contactCard(Widget icon, String title, String? subtitle, Color accent, VoidCallback onTap) =>
+      Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(19),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(19),
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xD91A345B), Color(0xD90C1934), Color(0xD91B1741)]),
+              borderRadius: BorderRadius.circular(19),
+              border: Border.all(color: accent.withValues(alpha: .58)),
+              boxShadow: [BoxShadow(color: accent.withValues(alpha: .12), blurRadius: 16, spreadRadius: -5)],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+              child: Row(children: [
+                Container(
+                  width: 39,
+                  height: 39,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(colors: [accent.withValues(alpha: .28), accent.withValues(alpha: .08)]),
+                    border: Border.all(color: accent.withValues(alpha: .78)),
+                    boxShadow: [BoxShadow(color: accent.withValues(alpha: .18), blurRadius: 12)],
+                  ),
+                  alignment: Alignment.center,
+                  child: icon,
+                ),
+                const SizedBox(width: 9),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.white)),
+                  if (subtitle != null && subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, height: 1.15, color: Color(0xFFB8CBE8))),
+                  ],
+                ])),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF9DCBFF), size: 20),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   Widget _infoTile(IconData icon, String title, VoidCallback onTap) =>
-      Card(
-        child: ListTile(
-          onTap: onTap,
-          leading: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: cyan.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(12),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(17),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(17),
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xD9183459), Color(0xD90D1B36), Color(0xD91A1740)]),
+                borderRadius: BorderRadius.circular(17),
+                border: Border.all(color: const Color(0xFF238DFF).withValues(alpha: .48)),
+                boxShadow: [BoxShadow(color: const Color(0xFF168BFF).withValues(alpha: .09), blurRadius: 14, spreadRadius: -5)],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                child: Row(children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF16BFF4).withValues(alpha: .13), border: Border.all(color: const Color(0xFF28C9FF).withValues(alpha: .6))),
+                    child: Icon(icon, color: const Color(0xFF47D9FF), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white))),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF7FCBFF), size: 15),
+                ]),
+              ),
             ),
-            alignment: Alignment.center,
-            child: Icon(icon, color: cyan, size: 20),
           ),
-          title: Text(
-            title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-          ),
-          trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF93A4B8)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       );
 
   Widget _repairs() {
-    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
-      Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
-      const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
-    ]); }
-    final future = repairsFuture ??= _loadRepairsFuture();
-    return RefreshIndicator(onRefresh: () async { final f = _loadRepairsFuture(); setState(() => repairsFuture = f); await f; }, child: FutureBuilder<List<Repair>>(
-      future: future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
-        if (snapshot.hasError) return ListView(padding: const EdgeInsets.all(24), children: [Text(tr('Неуспешно зареждане на ремонтите:', 'Could not load repairs:')), const SizedBox(height: 8), Text('${snapshot.error}'), const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()), icon: const Icon(Icons.refresh), label: Text(tr('Опитай отново', 'Try again')))]);
-        final rows = List<Repair>.from(snapshot.data ?? [])..sort((a, b) => _repairDate(b.createdAt).compareTo(_repairDate(a.createdAt)));
-        final query = repairSearch.text.trim().toLowerCase();
-        final filtered = rows.where((r) => (repairStatusFilter == 'all' || r.status == repairStatusFilter) && (query.isEmpty || [r.number,r.device,r.model,r.serial,r.location].any((v) => v.toLowerCase().contains(query)))).toList();
-        final active = rows.where((r) => !['completed','cancelled'].contains(r.status)).length;
-        final ready = rows.where((r) => r.status == 'ready').length;
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          if (canSeeStaffUi) ...[
-            SizedBox(width: double.infinity, child: FilledButton.icon(
-              onPressed: _showIntakeForm,
-              icon: const Icon(Icons.add_circle_outline_rounded),
-              label: Text(tr('Приеми устройство', 'Device intake')),
+    if (visibleUser == null) {
+      return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 28), children: [
+        _repairsHero(
+          title: tr('Твоите ремонти', 'Your repairs'),
+          subtitle: tr('Следи всяка стъпка от сервиза на едно място.', 'Follow every service step in one place.'),
+          actionLabel: tr('Вход / Регистрация', 'Sign in / Register'),
+          onAction: authBusy ? null : () => _openAuthScreen(register: false),
+        ),
+        const SizedBox(height: 16),
+        const PCWorkGlassPanel(
+          glow: true,
+          child: Row(children: [
+            PCWorkGlowIcon(icon: Icons.lock_outline_rounded, color: PCWorkColors.cyan),
+            SizedBox(width: 13),
+            Expanded(child: Text(
+              'Влез в профила си, за да видиш ремонтите, историята и актуалния им статус.',
+              style: TextStyle(color: PCWorkColors.textSecondary, height: 1.4),
             )),
-            const SizedBox(height: 10),
-          ],
-          if (!canSeeStaffUi) ...[
-            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _showCustomerRepairRequest, icon: const Icon(Icons.add_circle_outline), label: Text(tr('Нова заявка за ремонт','New repair request')))),
-            const SizedBox(height: 10),
-          ],
-          if (_pendingSyncCount > 0) Card(color: const Color(0xFF3A2B16), child: ListTile(leading: const Icon(Icons.cloud_upload_outlined, color: Colors.orangeAccent), title: Text(tr('Чакащи синхронизации: $_pendingSyncCount', 'Pending sync: $_pendingSyncCount')), subtitle: Text(tr('Ще бъдат изпратени автоматично при възстановяване на интернет.', 'They will sync automatically when internet is restored.')), trailing: IconButton(onPressed: _syncOfflineQueue, icon: const Icon(Icons.sync)))),
-          if ((snapshot.data ?? []).any((r) => r.fromCache)) Card(color: const Color(0xFF17283D), child: ListTile(leading: const Icon(Icons.cloud_off, color: cyan), title: Text(tr('Офлайн копие', 'Offline copy')), subtitle: Text(tr('Показват се последно запазените ремонти. Данните може да не са актуални.', 'Showing the last saved repairs. Data may be out of date.')))),
-          Row(children: [Expanded(child: _repairMetric(tr('Всички','Total'), rows.length)), Expanded(child: _repairMetric(tr('Активни','Active'), active)), Expanded(child: _repairMetric(tr('Готови','Ready'), ready))]),
-          const SizedBox(height: 12),
-          TextField(controller: repairSearch, onChanged: (_) => setState(() {}), decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('Търси номер, устройство или модел','Search number, device or model'), border: const OutlineInputBorder(), suffixIcon: repairSearch.text.isEmpty ? null : IconButton(onPressed: () { repairSearch.clear(); setState(() {}); }, icon: const Icon(Icons.close)))),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(initialValue: repairStatusFilter, decoration: InputDecoration(labelText: tr('Филтър по статус','Filter by status'), border: const OutlineInputBorder()), items: [DropdownMenuItem(value:'all', child:Text(tr('Всички статуси','All statuses'))), ...['requested','received','diagnostics','waiting_approval','in_repair','ready','completed','cancelled'].map((v)=>DropdownMenuItem(value:v,child:Text(_statusLabel(v))))], onChanged:(v)=>setState(()=>repairStatusFilter=v ?? 'all')),
-          const SizedBox(height: 12),
-          if (filtered.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(rows.isEmpty ? tr('Все още няма ремонти, свързани с профила ви.','There are no repairs linked to your account yet.') : tr('Няма ремонти, отговарящи на търсенето.','No repairs match your search.'), textAlign: TextAlign.center)),
-          ...filtered.map((r) => Card(child: ListTile(leading: CircleAvatar(child: Icon(r.status == 'ready' ? Icons.check_circle_outline : Icons.build, color: cyan)), title: Text(r.number.isEmpty ? 'Ремонт #${r.id}' : r.number), subtitle: Text([r.device, r.model, _statusLabel(r.status), if (r.pendingSync) tr('Чака синхронизация', 'Pending sync')].where((v) => v.isNotEmpty).join(' · ')), trailing: const Icon(Icons.chevron_right), onTap: () => _showRepairDetails(r))))
-        ]);
+          ]),
+        ),
+      ]);
+    }
+
+    final future = repairsFuture ??= _loadRepairsFuture();
+    return RefreshIndicator(
+      color: PCWorkColors.cyan,
+      onRefresh: () async {
+        final f = _loadRepairsFuture();
+        setState(() => repairsFuture = f);
+        await f;
       },
-    ));
+      child: FutureBuilder<List<Repair>>(
+        future: future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator(color: PCWorkColors.cyan));
+          }
+          if (snapshot.hasError) {
+            return ListView(padding: const EdgeInsets.all(24), children: [
+              _repairsHero(
+                title: tr('Сервизен център', 'Service center'),
+                subtitle: tr('Не успяхме да заредим ремонтите.', 'We could not load your repairs.'),
+              ),
+              const SizedBox(height: 14),
+              PCWorkGlassPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${snapshot.error}', style: const TextStyle(color: PCWorkColors.textSecondary)),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => setState(() => repairsFuture = _loadRepairsFuture()),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(tr('Опитай отново', 'Try again')),
+                ),
+              ])),
+            ]);
+          }
+
+          final rows = List<Repair>.from(snapshot.data ?? [])
+            ..sort((a, b) => _repairDate(b.createdAt).compareTo(_repairDate(a.createdAt)));
+          final query = repairSearch.text.trim().toLowerCase();
+          final filtered = rows.where((r) =>
+            (repairStatusFilter == 'all' || r.status == repairStatusFilter) &&
+            (query.isEmpty || [r.number, r.device, r.model, r.serial, r.location]
+              .any((v) => v.toLowerCase().contains(query)))
+          ).toList();
+          final active = rows.where((r) => !['completed', 'cancelled'].contains(r.status)).length;
+          final ready = rows.where((r) => r.status == 'ready').length;
+
+          return ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 28), children: [
+            _repairsHero(
+              title: tr('Сервизен център', 'Service center'),
+              subtitle: tr('Всички твои устройства и ремонти – с актуален статус и история.', 'All your devices and repairs, with current status and history.'),
+              actionLabel: canSeeStaffUi ? tr('Приеми устройство', 'Device intake') : tr('Нова заявка', 'New request'),
+              onAction: canSeeStaffUi ? _showIntakeForm : _showCustomerRepairRequest,
+            ),
+            const SizedBox(height: 15),
+            Row(children: [
+              Expanded(child: _repairMetricGlass(tr('Всички', 'All'), rows.length, Icons.devices_rounded, PCWorkColors.electricBlue)),
+              const SizedBox(width: 8),
+              Expanded(child: _repairMetricGlass(tr('Активни', 'Active'), active, Icons.settings_suggest_rounded, PCWorkColors.cyan)),
+              const SizedBox(width: 8),
+              Expanded(child: _repairMetricGlass(tr('Готови', 'Ready'), ready, Icons.check_circle_rounded, PCWorkColors.success)),
+            ]),
+            if (_pendingSyncCount > 0) ...[
+              const SizedBox(height: 12),
+              PCWorkGlassPanel(
+                borderColor: PCWorkColors.warning.withValues(alpha: .55),
+                child: Row(children: [
+                  const PCWorkGlowIcon(icon: Icons.cloud_upload_outlined, color: PCWorkColors.warning),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('Чакащи синхронизации: $_pendingSyncCount', 'Pending sync: $_pendingSyncCount'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(tr('Ще бъдат изпратени автоматично при възстановяване на интернет.', 'They will sync automatically when internet is restored.'), style: const TextStyle(color: PCWorkColors.textSecondary, fontSize: 12)),
+                  ])),
+                  IconButton(onPressed: _syncOfflineQueue, icon: const Icon(Icons.sync_rounded, color: PCWorkColors.cyan)),
+                ]),
+              ),
+            ],
+            if ((snapshot.data ?? []).any((r) => r.fromCache)) ...[
+              const SizedBox(height: 10),
+              const PCWorkGlassPanel(
+                borderColor: Color(0x6648C9F5),
+                child: Row(children: [
+                  Icon(Icons.cloud_off_rounded, color: PCWorkColors.cyan),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Офлайн копие – показват се последно запазените данни.', style: TextStyle(color: PCWorkColors.textSecondary, fontSize: 12))),
+                ]),
+              ),
+            ],
+            const SizedBox(height: 17),
+            Row(children: [
+              Expanded(child: Text(tr('Моите ремонти', 'My repairs'), style: Theme.of(context).textTheme.titleLarge)),
+              Text('${filtered.length} ${tr('резултата', 'results')}', style: const TextStyle(color: PCWorkColors.textMuted, fontSize: 12)),
+            ]),
+            const SizedBox(height: 10),
+            PCWorkGlassPanel(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 2),
+              child: TextField(
+                controller: repairSearch,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(color: PCWorkColors.textPrimary),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded, color: PCWorkColors.cyan),
+                  hintText: tr('Търси номер, устройство или модел', 'Search number, device or model'),
+                  hintStyle: const TextStyle(color: PCWorkColors.textMuted, fontSize: 13),
+                  border: InputBorder.none,
+                  suffixIcon: repairSearch.text.isEmpty ? null : IconButton(
+                    onPressed: () { repairSearch.clear(); setState(() {}); },
+                    icon: const Icon(Icons.close_rounded, color: PCWorkColors.textMuted),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 11),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                _repairFilterChip('all', tr('Всички', 'All')),
+                _repairFilterChip('requested', tr('Заявени', 'Requested')),
+                _repairFilterChip('diagnostics', tr('Диагностика', 'Diagnostics')),
+                _repairFilterChip('in_repair', tr('В ремонт', 'In repair')),
+                _repairFilterChip('ready', tr('Готови', 'Ready')),
+                _repairFilterChip('completed', tr('Приключени', 'Completed')),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            if (filtered.isEmpty)
+              PCWorkGlassPanel(
+                padding: const EdgeInsets.all(22),
+                child: Column(children: [
+                  const PCWorkGlowIcon(icon: Icons.search_off_rounded, size: 58, iconSize: 28, color: PCWorkColors.textMuted),
+                  const SizedBox(height: 10),
+                  Text(
+                    rows.isEmpty ? tr('Все още няма ремонти, свързани с профила ви.', 'There are no repairs linked to your account yet.') : tr('Няма ремонти, отговарящи на търсенето.', 'No repairs match your search.'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: PCWorkColors.textSecondary),
+                  ),
+                ]),
+              ),
+            ...filtered.map(_repairGlassCard),
+          ]);
+        },
+      ),
+    );
+  }
+
+  Widget _repairsHero({required String title, required String subtitle, String? actionLabel, VoidCallback? onAction}) => Container(
+    height: 196,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(26),
+      border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .55)),
+      boxShadow: [BoxShadow(color: PCWorkColors.electricBlue.withValues(alpha: .16), blurRadius: 24, spreadRadius: -7)],
+      image: const DecorationImage(image: AssetImage('assets/images/repairs_hero.webp'), fit: BoxFit.cover, alignment: Alignment.centerRight),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(25),
+      child: Stack(children: [
+        const Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xF5051026), Color(0xD9051026), Color(0x55101D38)])))),
+        Padding(padding: const EdgeInsets.fromLTRB(17, 17, 15, 15), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('PCWORK SERVICE', style: TextStyle(color: PCWorkColors.cyan, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.6)),
+          const SizedBox(height: 8),
+          SizedBox(width: 220, child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 23, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.5))),
+          const SizedBox(height: 7),
+          SizedBox(width: 225, child: Text(subtitle, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD6E8FF), fontSize: 12, height: 1.35, fontWeight: FontWeight.w600))),
+          const Spacer(),
+          if (actionLabel != null && onAction != null)
+            SizedBox(height: 39, child: DecoratedBox(
+              decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF08C8F4), Color(0xFF187BFF), Color(0xFF8B42FF)]), borderRadius: BorderRadius.circular(30)),
+              child: FilledButton.icon(
+                onPressed: onAction,
+                style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 14), shape: const StadiumBorder()),
+                icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                label: Text(actionLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+              ),
+            )),
+        ])),
+      ]),
+    ),
+  );
+
+  Widget _repairMetricGlass(String title, int value, IconData icon, Color accent) => PCWorkGlassPanel(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 12),
+    borderColor: accent.withValues(alpha: .42),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: accent, size: 20),
+      const SizedBox(height: 7),
+      Text('$value', style: TextStyle(color: accent, fontSize: 23, fontWeight: FontWeight.w900, height: 1)),
+      const SizedBox(height: 4),
+      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: PCWorkColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w700)),
+    ]),
+  );
+
+  Widget _repairFilterChip(String value, String label) {
+    final selected = repairStatusFilter == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: ChoiceChip(
+        selected: selected,
+        onSelected: (_) => setState(() => repairStatusFilter = value),
+        label: Text(label),
+        labelStyle: TextStyle(color: selected ? Colors.white : PCWorkColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w700),
+        selectedColor: PCWorkColors.electricBlue,
+        backgroundColor: const Color(0xFF10213D),
+        side: BorderSide(color: selected ? PCWorkColors.cyan : const Color(0xFF294365)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  Widget _repairGlassCard(Repair repair) {
+    final accent = _repairAccent(repair.status);
+    final icon = repair.status == 'ready' || repair.status == 'completed'
+        ? Icons.check_circle_outline_rounded
+        : repair.status == 'diagnostics' ? Icons.manage_search_rounded : Icons.build_circle_outlined;
+    final number = repair.number.isEmpty ? 'Ремонт #${repair.id}' : repair.number;
+    final details = [repair.device, repair.model, if (repair.pendingSync) tr('Чака синхронизация', 'Pending sync')].where((v) => v.isNotEmpty).join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(21),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(21),
+          onTap: () => _showRepairDetails(repair),
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xD91A3458), Color(0xE90B1730), Color(0xD91A1640)]),
+              borderRadius: BorderRadius.circular(21),
+              border: Border.all(color: accent.withValues(alpha: .48)),
+              boxShadow: [BoxShadow(color: accent.withValues(alpha: .10), blurRadius: 17, spreadRadius: -6)],
+            ),
+            child: Padding(padding: const EdgeInsets.all(13), child: Row(children: [
+              Container(width: 48, height: 48, decoration: BoxDecoration(shape: BoxShape.circle, color: accent.withValues(alpha: .13), border: Border.all(color: accent.withValues(alpha: .5))), child: Icon(icon, color: accent, size: 24)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(number, style: const TextStyle(color: PCWorkColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 14)),
+                if (details.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: PCWorkColors.textSecondary, fontSize: 11, height: 1.3))),
+                const SizedBox(height: 7),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4), decoration: BoxDecoration(color: accent.withValues(alpha: .13), borderRadius: BorderRadius.circular(20), border: Border.all(color: accent.withValues(alpha: .35))), child: Text(_statusLabel(repair.status), style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w800))),
+              ])),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right_rounded, color: accent, size: 25),
+            ])),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _repairAccent(String status) {
+    switch (status) {
+      case 'ready':
+      case 'completed': return PCWorkColors.success;
+      case 'diagnostics': return PCWorkColors.violet;
+      case 'waiting_approval': return PCWorkColors.warning;
+      case 'cancelled': return PCWorkColors.danger;
+      default: return PCWorkColors.cyan;
+    }
   }
 
   DateTime _repairDate(String value) => DateTime.tryParse(value)?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
