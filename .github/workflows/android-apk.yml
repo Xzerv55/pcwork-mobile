@@ -47,7 +47,6 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            android/.gradle
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*', 'android/gradle.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
@@ -222,6 +221,13 @@ jobs:
           echo "PCWORK_BUILD_NUMBER=$PUBSPEC_BUILD" >> "$GITHUB_ENV"
           echo "Validated app version $PUBSPEC_VERSION"
 
+      - name: Clean generated Flutter state
+        run: |
+          flutter clean
+          rm -rf .dart_tool
+          rm -f .flutter-plugins .flutter-plugins-dependencies
+          rm -rf android/.gradle
+
       - name: Install Flutter dependencies
         run: flutter pub get
 
@@ -229,6 +235,24 @@ jobs:
         run: |
           dart run flutter_launcher_icons
           dart run flutter_native_splash:create
+
+      # flutter_native_splash >=2.4.8 no longer provides an Android plugin.
+      # Remove only the obsolete registration left by older generated projects.
+      - name: Remove obsolete native splash Android plugin registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          REGISTRANT="android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash.FlutterNativeSplashPlugin' "$REGISTRANT"; then
+            sed -i '/net\.jonhanson\.flutter_native_splash\.FlutterNativeSplashPlugin/d' "$REGISTRANT"
+            echo "Removed obsolete flutter_native_splash Android registration."
+          else
+            echo "No obsolete flutter_native_splash Android registration found."
+          fi
+          if [[ -f "$REGISTRANT" ]] && grep -q 'net.jonhanson.flutter_native_splash' "$REGISTRANT"; then
+            echo "ERROR: obsolete flutter_native_splash registration remains."
+            exit 1
+          fi
 
       - name: Analyze Dart code
         run: flutter analyze
