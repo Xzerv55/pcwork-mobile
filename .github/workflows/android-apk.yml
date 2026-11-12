@@ -223,7 +223,7 @@ jobs:
               if active and line.startswith('  ') and not line.startswith('    '):
                   break
               if active and line.startswith('    version:'):
-                  print(line.split(':', 1)[1].strip().strip('"\\''))
+                  print(line.split(':', 1)[1].strip().strip("\"'"))
                   break
           PYVERSION
           )"
