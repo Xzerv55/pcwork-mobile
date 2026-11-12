@@ -28,6 +28,7 @@ import '../screens/device_monitor_screen.dart';
 import '../screens/internal_service_assistant_screen.dart';
 import '../screens/beach_game_screen.dart';
 import '../screens/booking_screen.dart';
+import '../screens/ai_assistant_chat_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -79,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Map<String, dynamic>? _appUpdateInfo;
   bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 150);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 151);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1080,7 +1081,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             ),
           ),
           title: Row(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(width: 36, height: 36, child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
+            SizedBox(width: 42, height: 42, child: Image.asset('assets/images/LogoPCwork.webp', fit: BoxFit.contain)),
             const SizedBox(width: 7),
             const Text('PCWork', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .2)),
             const SizedBox(width: 9), Container(width: 5, height: 5, decoration: const BoxDecoration(color: cyan, shape: BoxShape.circle)),
@@ -1187,83 +1188,302 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ),
   );
 
-  Widget _home() => ListView(padding: const EdgeInsets.fromLTRB(18, 14, 18, 28), children: [
-    Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDarkTheme ? null : Colors.white,
-        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]) : null,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDarkTheme ? const Color(0xFF2B7180).withValues(alpha: .55) : const Color(0xFF26364A).withValues(alpha: .45)),
-        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 24, spreadRadius: -9, offset: const Offset(0, 9))],
+  Widget _home() => ListView(
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+    children: [
+      _homeHero(),
+      if (_appUpdateInfo != null) ...[
+        const SizedBox(height: 12),
+        _appUpdateBanner(),
+      ],
+      const SizedBox(height: 18),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              tr('Услуги на PCWork', 'PCWork services'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -.3),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _selectTab(1),
+            child: Text(tr('Всички услуги', 'All services')),
+          ),
+        ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SizedBox(height: 7),
+      GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 11,
+        mainAxisSpacing: 11,
+        childAspectRatio: .98,
+        children: [
+          _homeServiceCard(
+            image: 'assets/images/repair_laptop.webp',
+            title: tr('Ремонти', 'Repairs'),
+            subtitle: tr('Компютри, лаптопи, PlayStation', 'Computers, laptops, PlayStation'),
+            icon: Icons.build_rounded,
+            accent: const Color(0xFF25C9FF),
+            onTap: () => _selectTab(1),
+          ),
+          _homeServiceCard(
+            image: 'assets/images/repair_diagnostics.webp',
+            title: tr('Диагностика', 'Diagnostics'),
+            subtitle: tr('Тестване на устройства', 'Device testing'),
+            icon: Icons.search_rounded,
+            accent: const Color(0xFF31D8FF),
+            onTap: () => _openWebsite('https://pcwork-bg.com/produkt/diagnostika/'),
+          ),
+          _homeServiceCard(
+            image: 'assets/images/repair_warranty.webp',
+            title: tr('Удължена гаранция', 'Extended warranty'),
+            subtitle: tr('Спокойствие за повече време', 'Peace of mind for longer'),
+            icon: Icons.verified_user_rounded,
+            accent: const Color(0xFF28D8F4),
+            onTap: () => _selectTab(1),
+          ),
+          _homeServiceCard(
+            image: 'assets/images/repair_console.webp',
+            title: 'PS4 / PS5',
+            subtitle: tr('Профилактика и ремонт', 'Maintenance and repair'),
+            icon: Icons.sports_esports_rounded,
+            accent: const Color(0xFF9A67FF),
+            onTap: () => _openWebsite('https://pcwork-bg.com/produkt/profilaktika-na-sony-playstation-4-i-5/'),
+          ),
+          _homeServiceCard(
+            image: 'assets/images/pcwork_ai_mascot.webp',
+            title: 'PCWork AI',
+            subtitle: tr('Твоят AI асистент', 'Your AI assistant'),
+            icon: Icons.auto_awesome_rounded,
+            accent: const Color(0xFF28D8F4),
+            onTap: _openAiAssistant,
+          ),
+          _homeServiceCard(
+            image: null,
+            title: tr('Обяви', 'Marketplace'),
+            subtitle: tr('Купи, продай, открий повече', 'Buy, sell and discover'),
+            icon: Icons.campaign_rounded,
+            accent: const Color(0xFF9A67FF),
+            onTap: () => _selectTab(2),
+          ),
+        ],
+      ),
+      const SizedBox(height: 13),
+      _homeBookingBanner(),
+      const SizedBox(height: 20),
+      if (visibleUser == null) _homeSignInCard() else ...[
+        _customerCenterHomeCard(),
+        const SizedBox(height: 12),
+        _homeAccountDashboard(),
+      ],
+      const SizedBox(height: 20),
+      Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
+        const SizedBox(width: 10),
+        Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
+      ]),
+      Row(children: [
+        Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
+        const SizedBox(width: 10),
+        Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
+      ]),
+      const SizedBox(height: 8),
+      if (visibleUser != null)
         Row(children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
-            Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
-          ])),
-          Icon(Icons.auto_awesome_rounded, color: isDarkTheme ? const Color(0xFFB49BFF) : const Color(0xFF7952C7), size: 23),
+          Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+          const SizedBox(width: 10),
+          Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
+        ])
+      else
+        SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
+      if (visibleUser != null && canSeeStaffUi) ...[
+        const SizedBox(height: 21),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
         ]),
-        const SizedBox(height: 14),
-        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 21, height: 1.14, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
-        const SizedBox(height: 6),
-        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: TextStyle(color: isDarkTheme ? const Color(0xFFC3D1E0) : const Color(0xFF68778B), fontSize: 13)),
-        const SizedBox(height: 13),
-        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42), padding: const EdgeInsets.symmetric(vertical: 9)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        const SizedBox(height: 7),
+        Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
+          Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
+          const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
+          IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
+        ]))),
+      ],
+      const SizedBox(height: 16),
+      Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 6),
+      if (isCustomerAccount || noRegPreview) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
+      _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
+      if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
+      _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () async {
+            await _checkForAppUpdate();
+            if (mounted && _appUpdateInfo == null) {
+              _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.'));
+            }
+          },
+          icon: const Icon(Icons.system_update_alt_rounded, size: 17),
+          label: Text(tr('Провери за актуализация', 'Check for updates')),
+        ),
+      ),
+    ],
+  );
+
+  Widget _homeHero() => Container(
+    height: 292,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(27),
+      border: Border.all(color: const Color(0xFF20BFFF).withValues(alpha: .62)),
+      boxShadow: [BoxShadow(color: const Color(0xFF087DFF).withValues(alpha: .20), blurRadius: 26, spreadRadius: -7, offset: const Offset(0, 10))],
+      image: const DecorationImage(image: AssetImage('assets/images/repairs_hero.webp'), fit: BoxFit.cover, alignment: Alignment.centerRight),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: Stack(children: [
+        const Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xF5051026), Color(0xD9051026), Color(0x44051026)])))),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 22, 16, 18),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('PCWork Mobile', 'PCWork Mobile'), style: const TextStyle(color: Color(0xFF24D6F3), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: 205,
+              child: Text(tr('Добре дошли в PCWork!', 'Welcome to PCWork!'), style: const TextStyle(fontSize: 27, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.7, color: Colors.white)),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: 190,
+              child: Text(tr('Твоят доверен партньор за бърз и професионален сервиз.', 'Your trusted partner for fast, professional service.'), style: const TextStyle(color: Color(0xFFD6E8FF), fontSize: 13, height: 1.35, fontWeight: FontWeight.w600)),
+            ),
+            const Spacer(),
+            SizedBox(
+              height: 46,
+              child: DecoratedBox(
+                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF08C8F4), Color(0xFF187BFF), Color(0xFF8B42FF)]), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFF12BDFB).withValues(alpha: .35), blurRadius: 18)]),
+                child: FilledButton.icon(
+                  onPressed: _startHomeRequest,
+                  style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 17), shape: const StadiumBorder()),
+                  icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white),
+                  label: Text(tr('Нова заявка', 'New request'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ),
+          ]),
+        ),
       ]),
     ),
-    if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
-    Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { await _checkForAppUpdate(); if (mounted && _appUpdateInfo == null) _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.')); }, icon: const Icon(Icons.system_update_alt_rounded, size: 17), label: Text(tr('Провери за актуализация', 'Check for updates')))),
-    const SizedBox(height: 22),
-    if (visibleUser == null) _homeSignInCard() else ...[
-      _customerCenterHomeCard(),
-      const SizedBox(height: 12),
-      _homeAccountDashboard(),
-    ],
-    const SizedBox(height: 20),
-    Text(tr('Свържи се с нас', 'Contact us'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-    const SizedBox(height: 8),
-    Row(children: [
-      Expanded(child: _contactCard(const Icon(Icons.call_rounded, color: Color(0xFF21D4D8), size: 21), tr('Обади се', 'Call us'), null, const Color(0xFF21D4D8), () => _launchContact(Uri(scheme: 'tel', path: '0886638848')))),
-      const SizedBox(width: 10),
-      Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
+  );
+
+  Widget _homeServiceCard({
+    required String? image,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color accent,
+    required VoidCallback onTap,
+  }) => Material(
+    color: const Color(0xFF0B1A35),
+    borderRadius: BorderRadius.circular(23),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(23),
+          border: Border.all(color: accent.withValues(alpha: .75), width: 1.1),
+          boxShadow: [BoxShadow(color: accent.withValues(alpha: .17), blurRadius: 17, spreadRadius: -6)],
+        ),
+        child: Stack(fit: StackFit.expand, children: [
+          if (image != null)
+            Image.asset(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: const Color(0xFF10294B)))
+          else
+            DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [accent.withValues(alpha: .35), const Color(0xFF07142D), const Color(0xFF24114C)])), child: Center(child: Icon(icon, size: 88, color: accent.withValues(alpha: .55)))),
+          const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x22030B1D), Color(0x55030B1D), Color(0xF0030B1D)]))),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: Container(
+              width: 43,
+              height: 43,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xCC06142B), border: Border.all(color: accent, width: 1.4), boxShadow: [BoxShadow(color: accent.withValues(alpha: .30), blurRadius: 12)]),
+              child: Icon(icon, color: accent, size: 23),
+            ),
+          ),
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: 12,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+              const SizedBox(height: 4),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD7E8FF), fontSize: 10.5, height: 1.2, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+            ]),
+          ),
+          Positioned(
+            right: 9,
+            bottom: 9,
+            child: Container(width: 28, height: 28, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xAA07152E), border: Border.all(color: accent.withValues(alpha: .8))), child: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 22)),
+          ),
+        ]),
+      ),
+    ),
+  );
+
+  Widget _homeBookingBanner() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(24),
+      gradient: const LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xFF07365B), Color(0xFF10234B), Color(0xFF24124D)]),
+      border: Border.all(color: const Color(0xFF25BFFF).withValues(alpha: .75)),
+      boxShadow: [BoxShadow(color: const Color(0xFF197DFF).withValues(alpha: .17), blurRadius: 20, spreadRadius: -6)],
+    ),
+    child: Row(children: [
+      Container(width: 50, height: 50, decoration: BoxDecoration(color: const Color(0xFF10BFF2).withValues(alpha: .15), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7))), child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF45D9FF), size: 29)),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Резервирай час', 'Book an appointment'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(tr('Бързо и лесно', 'Quick and easy'), style: const TextStyle(color: Color(0xFFB8D8F8), fontSize: 12, fontWeight: FontWeight.w600))])),
+      const SizedBox(width: 8),
+      DecoratedBox(
+        decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF08C8F4), Color(0xFF187BFF), Color(0xFF8B42FF)]), borderRadius: BorderRadius.circular(30)),
+        child: FilledButton(
+          onPressed: () => _selectTab(4),
+          style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [Text(tr('Запази час', 'Book now'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)), const SizedBox(width: 4), const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 20)]),
+        ),
+      ),
     ]),
-    Row(children: [
-      Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
-      const SizedBox(width: 10),
-      Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
-    ]),
-    const SizedBox(height: 8),
-    if (visibleUser != null)
-      Row(children: [
-        Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-        const SizedBox(width: 10),
-        Expanded(child: _contactCard(const Icon(Icons.star_rate_rounded, color: Color(0xFFFFC857), size: 22), tr('Оцени приложението', 'Rate the app'), tr('Сподели впечатленията си с PCWork', 'Share your feedback with PCWork'), const Color(0xFFFFC857), () => _showRatingDialog(type: 'app'))),
-      ])
-    else
-      SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-    if (visibleUser != null && canSeeStaffUi) ...[
-      const SizedBox(height: 21),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
-      ]),
-      const SizedBox(height: 7),
-      Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
-        Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
-        const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
-        IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
-      ]))),
-    ],
-    const SizedBox(height: 16),
-    Text(tr('Бърз достъп', 'Quick access'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-    const SizedBox(height: 6),
-    if (isCustomerAccount || noRegPreview) _infoTile(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
-    _infoTile(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
-    if (isCustomerAccount) _infoTile(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
-    _infoTile(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
-  ]);
+  );
+
+  Future<void> _startHomeRequest() async {
+    if (canSeeStaffUi) {
+      _showIntakeForm();
+      return;
+    }
+    if (visibleUser != null) {
+      await _showCustomerRepairRequest();
+      return;
+    }
+    await _openAuthScreen(register: false);
+  }
+
+  Future<void> _openAiAssistant() async {
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      _message(tr('Влез в профила си, за да използваш PCWork AI.', 'Sign in to use PCWork AI.'));
+      await _openAuthScreen(register: false);
+      return;
+    }
+    await _navigatorKey.currentState?.push(MaterialPageRoute(
+      builder: (_) => AiAssistantChatScreen(api: api, token: token, english: english, staffMode: canSeeStaffUi),
+    ));
+  }
 
   Future<void> _openBeachGame() async {
     if (!(isCustomerAccount || noRegPreview)) return;

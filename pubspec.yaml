@@ -1,7 +1,7 @@
 name: pcwork_mobile
 description: PCWork cross-platform mobile application for Android and iOS.
 publish_to: none
-version: 1.50.0+150
+version: 1.51.0+151
 environment:
   sdk: '>=3.3.0 <4.0.0'
 dependencies:
