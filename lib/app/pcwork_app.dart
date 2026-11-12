@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/push_notification_service.dart';
+import '../design_system/pcwork_design_system.dart';
 import '../screens/repair_protocol_screen.dart';
 import '../screens/repair_evidence_screen.dart';
 import '../screens/repair_documents_screen.dart';
@@ -76,8 +77,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _refreshingOnTabExit = false;
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
+  bool _lastUpdateCheckSucceeded = false;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 153);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 150);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -171,6 +173,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try {
       final info = await api.getAppUpdateInfo();
       if (!mounted) return;
+      _lastUpdateCheckSucceeded = true;
       final availableBuild = int.tryParse((info?['version_code'] ?? '').toString()) ?? 0;
       final update = availableBuild > _currentBuildNumber ? info : null;
       setState(() => _appUpdateInfo = update);
@@ -191,6 +194,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         });
       }
     } catch (_) {
+      _lastUpdateCheckSucceeded = false;
       // Update checks are optional and must never block app startup.
     }
   }
@@ -919,11 +923,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     return SafeArea(
       top: false,
       child: Container(
-        height: 84,
+        height: 82,
         decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF090F1E) : surface,
-          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF273957) : const Color(0xFFE5EAF2))),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .30 : .055), blurRadius: 22, offset: const Offset(0, -7)), if (isDarkTheme) BoxShadow(color: cyan.withValues(alpha: .045), blurRadius: 24, spreadRadius: -8, offset: const Offset(0, -2))],
+          color: surface,
+          border: Border(top: BorderSide(color: isDarkTheme ? const Color(0xFF26364A) : const Color(0xFFE5EAF2))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDarkTheme ? .16 : .055), blurRadius: 18, offset: const Offset(0, -5))],
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(5, 4, 5, 4),
@@ -947,10 +951,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
                         padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 3),
                         decoration: BoxDecoration(
-                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .16 : .13) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(22),
-                          border: selected && isDarkTheme ? Border.all(color: cyan.withValues(alpha: .34), width: 1) : null,
-                          boxShadow: selected && isDarkTheme ? [BoxShadow(color: cyan.withValues(alpha: .13), blurRadius: 18, spreadRadius: -4)] : const [],
+                          color: selected ? cyan.withValues(alpha: isDarkTheme ? .20 : .13) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(28),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1057,173 +1059,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           _buildBottomNavigation(labels),
         ],
       ),
-      theme: ThemeData(
-        useMaterial3: true,
-        pageTransitionsTheme: const PageTransitionsTheme(builders: {
-          TargetPlatform.android: ZoomPageTransitionsBuilder(),
-          TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
-          TargetPlatform.macOS: ZoomPageTransitionsBuilder(),
-          TargetPlatform.windows: ZoomPageTransitionsBuilder(),
-          TargetPlatform.linux: ZoomPageTransitionsBuilder(),
-        }),
-        splashFactory: InkSparkle.splashFactory,
-        splashColor: cyan.withValues(alpha: .22),
-        highlightColor: cyan.withValues(alpha: .12),
-        hoverColor: cyan.withValues(alpha: .06),
-        fontFamily: 'NotoSans',
-        brightness: isDarkTheme ? Brightness.dark : Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF45F3E7),
-          brightness: isDarkTheme ? Brightness.dark : Brightness.light,
-        ).copyWith(
-          primary: isDarkTheme ? cyan : const Color(0xFF087F83),
-          secondary: const Color(0xFF9B7BFF),
-          tertiary: const Color(0xFF4A8DFF),
-          surface: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
-        ),
-        scaffoldBackgroundColor: isDarkTheme ? const Color(0xFF070B16) : const Color(0xFFF3F6FB),
-        cardColor: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
-        appBarTheme: AppBarTheme(
-          backgroundColor: Colors.transparent,
-          foregroundColor: isDarkTheme ? Colors.white : const Color(0xFF172033),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          centerTitle: false,
-          titleSpacing: 16,
-          toolbarHeight: 62,
-          iconTheme: IconThemeData(color: isDarkTheme ? const Color(0xFFD5E2F0) : const Color(0xFF53647A), size: 22),
-        ),
-        textTheme: ThemeData(brightness: isDarkTheme ? Brightness.dark : Brightness.light).textTheme.copyWith(
-          headlineLarge: TextStyle(fontSize: 29, height: 1.12, fontWeight: FontWeight.w800, letterSpacing: -.8, color: isDarkTheme ? Colors.white : const Color(0xFF172033)),
-          headlineMedium: TextStyle(fontSize: 24, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.55, color: isDarkTheme ? Colors.white : const Color(0xFF172033)),
-          titleLarge: TextStyle(fontSize: 19, height: 1.2, fontWeight: FontWeight.w800, letterSpacing: -.25, color: isDarkTheme ? Colors.white : const Color(0xFF172033)),
-          titleMedium: TextStyle(fontSize: 15, height: 1.25, fontWeight: FontWeight.w700, color: isDarkTheme ? const Color(0xFFEAF1F8) : const Color(0xFF26364A)),
-          bodyMedium: TextStyle(fontSize: 14, height: 1.4, color: isDarkTheme ? const Color(0xFFC4D0DE) : const Color(0xFF53647A)),
-        ),
-        cardTheme: CardThemeData(
-          color: isDarkTheme ? const Color(0xFF101A2B) : Colors.white,
-          elevation: isDarkTheme ? 0 : 2,
-          shadowColor: Colors.black.withValues(alpha: isDarkTheme ? .12 : .07),
-          surfaceTintColor: Colors.transparent,
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-            side: BorderSide(color: isDarkTheme ? const Color(0xFF293B5C) : const Color(0xFFE4EAF2)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: isDarkTheme ? const Color(0xFF111C2B) : const Color(0xFFF7F9FC),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          hintStyle: TextStyle(color: isDarkTheme ? const Color(0xFF8292A7) : const Color(0xFF8796AA), fontSize: 13),
-          labelStyle: TextStyle(color: isDarkTheme ? const Color(0xFFB5C3D3) : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w600),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide(color: isDarkTheme ? const Color(0xFF304158) : const Color(0xFFDCE4EE))),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: BorderSide(color: isDarkTheme ? const Color(0xFF2A3A50) : const Color(0xFFE0E7F0))),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: const BorderSide(color: cyan, width: 1.7)),
-          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: const BorderSide(color: Color(0xFFE56B75))),
-          focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(17), borderSide: const BorderSide(color: Color(0xFFE56B75), width: 1.7)),
-        ),
-        dialogTheme: DialogThemeData(
-          backgroundColor: isDarkTheme ? const Color(0xFF172334) : Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 18,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26), side: BorderSide(color: isDarkTheme ? const Color(0xFF2B3D53) : const Color(0xFFE5EAF2))),
-          titleTextStyle: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033)),
-          contentTextStyle: TextStyle(fontSize: 14, height: 1.4, color: isDarkTheme ? const Color(0xFFC4D0DE) : const Color(0xFF53647A)),
-        ),
-        bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: isDarkTheme ? const Color(0xFF111B2D) : Colors.white,
-          surfaceTintColor: Colors.transparent,
-          showDragHandle: true,
-          dragHandleColor: isDarkTheme ? const Color(0xFF60758D) : const Color(0xFFB5C2D1),
-          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-        ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: isDarkTheme ? const Color(0xFF243449) : const Color(0xFF17283D),
-          contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          insetPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-        ),
-        dividerTheme: DividerThemeData(color: isDarkTheme ? const Color(0xFF29394E) : const Color(0xFFE6EBF2), thickness: 1, space: 22),
-        listTileTheme: ListTileThemeData(
-          iconColor: isDarkTheme ? const Color(0xFF9FB1C6) : const Color(0xFF66788F),
-          textColor: isDarkTheme ? const Color(0xFFE8EFF7) : const Color(0xFF26364A),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 3),
-          minLeadingWidth: 34,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-        chipTheme: ChipThemeData(
-          backgroundColor: isDarkTheme ? const Color(0xFF1C2A3D) : const Color(0xFFEAF1F7),
-          selectedColor: cyan.withValues(alpha: .18),
-          side: BorderSide(color: isDarkTheme ? const Color(0xFF304158) : const Color(0xFFDDE6EF)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          labelStyle: TextStyle(color: isDarkTheme ? const Color(0xFFD7E3EF) : const Color(0xFF34465D), fontSize: 12, fontWeight: FontWeight.w600),
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-        ),
-        tabBarTheme: TabBarThemeData(
-          labelColor: isDarkTheme ? cyan : const Color(0xFF087F83),
-          unselectedLabelColor: isDarkTheme ? const Color(0xFF91A2B7) : const Color(0xFF718096),
-          labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-          indicatorSize: TabBarIndicatorSize.label,
-          indicator: UnderlineTabIndicator(borderSide: BorderSide(color: isDarkTheme ? cyan : const Color(0xFF087F83), width: 3), borderRadius: BorderRadius.circular(3)),
-          dividerColor: isDarkTheme ? const Color(0xFF29394E) : const Color(0xFFE6EBF2),
-        ),
-        progressIndicatorTheme: ProgressIndicatorThemeData(color: isDarkTheme ? cyan : const Color(0xFF087F83), linearTrackColor: isDarkTheme ? const Color(0xFF2A3A50) : const Color(0xFFE3EAF2)),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: isDarkTheme ? const Color(0xFF0E1724) : Colors.white,
-          indicatorColor: cyan.withValues(alpha: .16),
-          elevation: 0,
-          height: 76,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
-            fontSize: 11, fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
-            color: states.contains(WidgetState.selected) ? (isDarkTheme ? cyan : const Color(0xFF087F83)) : const Color(0xFF8796AA),
-          )),
-        ),
-        filledButtonTheme: FilledButtonThemeData(style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.disabled) ? cyan.withValues(alpha: .35) : cyan),
-          foregroundColor: const WidgetStatePropertyAll(Color(0xFF061319)),
-          overlayColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.pressed)) return const Color(0xFF061319).withValues(alpha: .28);
-            if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) return Colors.white.withValues(alpha: .16);
-            return Colors.transparent;
-          }),
-          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .12 : .42)),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 6 : 3),
-          animationDuration: const Duration(milliseconds: 110),
-          shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(17))),
-          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 20, vertical: 14)),
-        )),
-        elevatedButtonTheme: ElevatedButtonThemeData(style: ButtonStyle(
-          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .30) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
-          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .10 : .38)),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 5 : 2),
-          animationDuration: const Duration(milliseconds: 110),
-        )),
-        outlinedButtonTheme: OutlinedButtonThemeData(style: ButtonStyle(
-          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .28) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .12) : Colors.transparent),
-          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .08 : .30)),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 4 : 1),
-          animationDuration: const Duration(milliseconds: 110),
-          side: WidgetStateProperty.resolveWith((states) => BorderSide(color: states.contains(WidgetState.pressed) ? cyan : const Color(0xFF2A3A50), width: states.contains(WidgetState.pressed) ? 1.8 : 1)),
-        )),
-        textButtonTheme: TextButtonThemeData(style: ButtonStyle(
-          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .25) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .10) : Colors.transparent),
-          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .06 : .24)),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 3 : 1),
-          animationDuration: const Duration(milliseconds: 110),
-        )),
-        iconButtonTheme: IconButtonThemeData(style: ButtonStyle(
-          overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? cyan.withValues(alpha: .32) : states.contains(WidgetState.hovered) ? cyan.withValues(alpha: .14) : Colors.transparent),
-          shadowColor: WidgetStateProperty.resolveWith((states) => cyan.withValues(alpha: states.contains(WidgetState.pressed) ? .08 : .30)),
-          elevation: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? 0 : states.contains(WidgetState.hovered) ? 4 : 1),
-          animationDuration: const Duration(milliseconds: 110),
-        )),
-      ),
+      theme: PCWorkTheme.build(dark: isDarkTheme),
       home: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, result) {
@@ -1238,7 +1074,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: isDarkTheme
-                    ? const [Color(0xFF111B32), Color(0xFF080D1A)]
+                    ? const [Color(0xFF101D2D), Color(0xFF0A101A)]
                     : const [Color(0xFFFFFFFF), Color(0xFFF2F7FA)],
               ),
             ),
@@ -1277,7 +1113,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         body: DecoratedBox(
           decoration: BoxDecoration(
             gradient: isDarkTheme
-                ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0B1428), Color(0xFF070B16), Color(0xFF0D1022)])
+                ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
                 : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF7F9FC), Color(0xFFEEF2F7)]),
           ),
           child: Stack(
@@ -1356,28 +1192,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDarkTheme ? null : Colors.white,
-        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF103C52), Color(0xFF172746), Color(0xFF34265A)]) : null,
+        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B4A), Color(0xFF17283D), Color(0xFF24233E)]) : null,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDarkTheme ? const Color(0xFF54E9E2).withValues(alpha: .42) : const Color(0xFF26364A).withValues(alpha: .45)),
-        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 30, spreadRadius: -8, offset: const Offset(0, 12))],
+        border: Border.all(color: isDarkTheme ? const Color(0xFF2B7180).withValues(alpha: .55) : const Color(0xFF26364A).withValues(alpha: .45)),
+        boxShadow: [BoxShadow(color: (isDarkTheme ? cyan : const Color(0xFF26364A)).withValues(alpha: .08), blurRadius: 24, spreadRadius: -9, offset: const Offset(0, 9))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('PCWORK  //  SERVICE OS', style: TextStyle(color: isDarkTheme ? const Color(0xFF70F8EE) : const Color(0xFF087F83), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.7)),
+            Text('PCWORK SERVICE', style: TextStyle(color: isDarkTheme ? cyan.withValues(alpha: .95) : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
             Text(tr('Технологиите. В сигурни ръце.', 'Technology. In safe hands.'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
           ])),
-          Container(width: 64, height: 64, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(19), border: Border.all(color: cyan.withValues(alpha: .58)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .20), blurRadius: 18)]), child: Image.asset('assets/images/pcwork_ai_mascot.webp', fit: BoxFit.cover)),
+          Icon(Icons.auto_awesome_rounded, color: isDarkTheme ? const Color(0xFFB49BFF) : const Color(0xFF7952C7), size: 23),
         ]),
         const SizedBox(height: 14),
-        Text(tr('Технологиите на следващото ниво.', 'Technology at the next level.'), style: TextStyle(fontSize: 25, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.8, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
+        Text(tr('Сервиз от ново поколение.', 'Next-generation device care.'), style: TextStyle(fontSize: 21, height: 1.14, fontWeight: FontWeight.w800, letterSpacing: -.5, color: isDarkTheme ? Colors.white : const Color(0xFF172033))),
         const SizedBox(height: 6),
-        Text(tr('PC  /  LAPTOP  /  PLAYSTATION', 'PC  /  LAPTOP  /  PLAYSTATION'), style: TextStyle(color: isDarkTheme ? const Color(0xFFB8C9E4) : const Color(0xFF68778B), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
+        Text(tr('Компютри • Лаптопи • PlayStation', 'Computers • Laptops • PlayStation'), style: TextStyle(color: isDarkTheme ? const Color(0xFFC3D1E0) : const Color(0xFF68778B), fontSize: 13)),
         const SizedBox(height: 13),
-        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), padding: const EdgeInsets.symmetric(vertical: 11)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
+        SizedBox(width: double.infinity, child: FilledButton.icon(style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(42), padding: const EdgeInsets.symmetric(vertical: 9)), onPressed: () => _selectTab(4), icon: const Icon(Icons.calendar_month_rounded), label: Text(tr('Запази час за сервиз', 'Book a service appointment')))),
       ]),
     ),
     if (_appUpdateInfo != null) ...[const SizedBox(height: 12), _appUpdateBanner()],
+    Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { await _checkForAppUpdate(); if (mounted && _appUpdateInfo == null) _message(_lastUpdateCheckSucceeded ? tr('Няма открита по-нова версия.', 'No newer version found.') : tr('Проверката не успя. Провери интернет връзката и PCWork API.', 'Update check failed. Check your internet connection and PCWork API.')); }, icon: const Icon(Icons.system_update_alt_rounded, size: 17), label: Text(tr('Провери за актуализация', 'Check for updates')))),
     const SizedBox(height: 22),
     if (visibleUser == null) _homeSignInCard() else ...[
       _customerCenterHomeCard(),
@@ -1491,58 +1328,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ),
       );
 
-  Widget _repairsDesignHeader() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        height: 178,
-        decoration: BoxDecoration(
-          border: Border.all(color: cyan.withValues(alpha: .65)),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 22)],
-        ),
-        child: Stack(fit: StackFit.expand, children: [
-          Image.asset('assets/images/repairs_hero.webp', fit: BoxFit.cover),
-          DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-            begin: Alignment.centerLeft, end: Alignment.centerRight,
-            colors: [const Color(0xFF061326).withValues(alpha: .96), const Color(0xFF061326).withValues(alpha: .70), Colors.transparent],
-            stops: const [0, .48, 1],
-          ))),
-          Padding(padding: const EdgeInsets.all(18), child: Align(alignment: Alignment.centerLeft, child: SizedBox(width: 205, child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(tr('PCWORK  //  SERVICE LAB', 'PCWORK  //  SERVICE LAB'), style: const TextStyle(color: Color(0xFF70F8EE), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-              const SizedBox(height: 7),
-              Text(tr('Ремонти', 'Repairs'), style: const TextStyle(color: Colors.white, fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.5)),
-              const SizedBox(height: 5),
-              Text(tr('Бързо. Надеждно. Професионално.', 'Fast. Reliable. Professional.'), style: const TextStyle(color: Color(0xFFD4E8FF), fontSize: 12, fontWeight: FontWeight.w600)),
-            ],
-          )))),
-        ]),
-      ),
-    ),
-    const SizedBox(height: 12),
-    Row(children: [
-      _repairVisualChip('assets/images/repair_laptop.webp', tr('Лаптопи', 'Laptops')),
-      const SizedBox(width: 8),
-      _repairVisualChip('assets/images/repair_console.webp', tr('Конзоли', 'Consoles')),
-      const SizedBox(width: 8),
-      _repairVisualChip('assets/images/repair_diagnostics.webp', tr('Диагностика', 'Diagnostics')),
-      const SizedBox(width: 8),
-      _repairVisualChip('assets/images/repair_warranty.webp', tr('Гаранция', 'Warranty')),
-    ]),
-    const SizedBox(height: 18),
-  ]);
-
-  Widget _repairVisualChip(String image, String label) => Expanded(child: Column(children: [
-    ClipRRect(borderRadius: BorderRadius.circular(13), child: AspectRatio(aspectRatio: 1, child: Image.asset(image, fit: BoxFit.cover))),
-    const SizedBox(height: 5),
-    Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-  ]));
-
   Widget _repairs() {
-    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(16), children: [
-      _repairsDesignHeader(),
+    if (visibleUser == null) { return ListView(padding: const EdgeInsets.all(20), children: [
       Text(tr('Проследяване на ремонт', 'Repair tracking'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12), Text(tr('Влезте в профила си, за да видите ремонтите, историята и актуалния им статус.', 'Sign in to see your repairs, history and current status.')),
       const SizedBox(height: 16), FilledButton.icon(onPressed: authBusy ? null : () => _openAuthScreen(register: false), icon: const Icon(Icons.login), label: Text(tr('Вход / Регистрация', 'Sign in / Register'))),
@@ -1559,7 +1346,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         final active = rows.where((r) => !['completed','cancelled'].contains(r.status)).length;
         final ready = rows.where((r) => r.status == 'ready').length;
         return ListView(padding: const EdgeInsets.all(16), children: [
-          _repairsDesignHeader(),
           Text(tr('Моите ремонти', 'My repairs'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           if (canSeeStaffUi) ...[
@@ -2067,28 +1853,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     );
   }
 
-  Widget _profile() => ListView(padding: const EdgeInsets.fromLTRB(18, 16, 18, 30), children: [
-    Container(
-      padding: const EdgeInsets.all(19),
-      decoration: BoxDecoration(
-        gradient: isDarkTheme ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF123B52), Color(0xFF172342), Color(0xFF302451)]) : null,
-        color: isDarkTheme ? null : Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: isDarkTheme ? cyan.withValues(alpha: .35) : const Color(0xFFE1E8F0)),
-        boxShadow: [if (isDarkTheme) BoxShadow(color: cyan.withValues(alpha: .08), blurRadius: 26, spreadRadius: -8, offset: const Offset(0, 10))],
-      ),
-      child: Row(children: [
-        Container(width: 66, height: 66, decoration: BoxDecoration(shape: BoxShape.circle, color: cyan.withValues(alpha: .13), border: Border.all(color: cyan.withValues(alpha: .55)), boxShadow: [BoxShadow(color: cyan.withValues(alpha: .16), blurRadius: 20)]), child: Icon(visibleUser == null ? Icons.person_outline_rounded : Icons.verified_user_rounded, size: 33, color: cyan)),
-        const SizedBox(width: 15),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('PCWORK ID  /  PROFILE', style: TextStyle(color: isDarkTheme ? const Color(0xFF7CF5EA) : const Color(0xFF087F83), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.3)),
-          const SizedBox(height: 5),
-          Text(visibleUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 3),
-          Text(visibleUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFFB9C9DE))),
-        ])),
-      ]),
-    ),
+  Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
+    CircleAvatar(radius: 38, child: Icon(visibleUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
+    const SizedBox(height: 14),
+    Text(visibleUser?.name ?? tr('Вашият PCWork профил', 'Your PCWork account'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 6),
+    Text(visibleUser?.email ?? tr('Влезте или създайте профил, за да виждате ремонтите си.', 'Sign in or create an account to access your repairs.')),
     if (visibleUser != null && visibleUser!.phone.isNotEmpty) ...[const SizedBox(height: 5), Text(visibleUser!.phone, style: TextStyle(color: isDarkTheme ? Colors.white60 : const Color(0xFF68778B)))],
     if (visibleUser != null) ...[
       const SizedBox(height: 12), OutlinedButton.icon(onPressed: _editCustomerProfile, icon: const Icon(Icons.edit_outlined), label: Text(tr('Редактирай профила','Edit profile'))),

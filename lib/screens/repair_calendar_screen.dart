@@ -68,28 +68,6 @@ class _RepairCalendarScreenState extends State<RepairCalendarScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Stack(children: [
-                  Image.asset('assets/images/pcwork_diagnostics_hero.webp', height: 142, width: double.infinity, fit: BoxFit.cover),
-                  Container(height: 142, decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight,
-                      colors: [const Color(0xFF061329).withValues(alpha: 0.96), const Color(0xFF061329).withValues(alpha: 0.62), Colors.transparent]),
-                    border: Border.all(color: cyan.withValues(alpha: 0.55)),
-                  )),
-                  Positioned.fill(child: Padding(padding: const EdgeInsets.all(16), child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(tr('PCWORK SERVICE CONTROL', 'PCWORK SERVICE CONTROL'), style: const TextStyle(color: cyan, fontSize: 10, letterSpacing: 1.5, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 7),
-                      Text(tr('Контрол на ремонтите', 'Repair control center'), style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Colors.white)),
-                      Text(tr('График • срокове • натоварване', 'Schedule • deadlines • workload'), style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 12)),
-                    ],
-                  ))),
-                ]),
-              ),
-              const SizedBox(height: 14),
               _summary(active.length, scheduled.length, unscheduled.length),
               const SizedBox(height: 14),
               _monthHeader(),
