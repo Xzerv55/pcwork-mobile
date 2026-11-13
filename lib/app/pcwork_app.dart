@@ -78,7 +78,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 156);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 157);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1211,7 +1211,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 11,
         mainAxisSpacing: 11,
-        childAspectRatio: .98,
+        childAspectRatio: 1.16,
         children: [
           _homeServiceCard(
             image: 'assets/images/repair_laptop.webp',
@@ -1235,7 +1235,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             subtitle: tr('Спокойствие за повече време', 'Peace of mind for longer'),
             icon: Icons.verified_user_rounded,
             accent: const Color(0xFF28D8F4),
-            onTap: () => _selectTab(1),
+            onTap: () => _openWebsite('https://pcwork-bg.com/produkt/garancziya-remont/'),
           ),
           _homeServiceCard(
             image: 'assets/images/repair_console.webp',
@@ -1254,7 +1254,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             onTap: _openAiAssistant,
           ),
           _homeServiceCard(
-            image: null,
+            image: 'assets/images/marketplace_listings.webp',
             title: tr('Обяви', 'Marketplace'),
             subtitle: tr('Купи, продай, открий повече', 'Buy, sell and discover'),
             icon: Icons.campaign_rounded,
@@ -1279,12 +1279,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(width: 10),
         Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
       ]),
+      const SizedBox(height: 10),
       Row(children: [
         Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
         const SizedBox(width: 10),
         Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
       ]),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       if (visibleUser != null)
         Row(children: [
           Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
@@ -1427,7 +1428,15 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       boxShadow: [BoxShadow(color: const Color(0xFF197DFF).withValues(alpha: .17), blurRadius: 20, spreadRadius: -6)],
     ),
     child: Row(children: [
-      Container(width: 50, height: 50, decoration: BoxDecoration(color: const Color(0xFF10BFF2).withValues(alpha: .15), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7))), child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF45D9FF), size: 29)),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: 66,
+          height: 66,
+          decoration: BoxDecoration(border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7)), borderRadius: BorderRadius.circular(14)),
+          child: Image.asset('assets/images/pcwork_booking_hero.webp', fit: BoxFit.cover, alignment: Alignment.center),
+        ),
+      ),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Резервирай час', 'Book an appointment'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(tr('Бързо и лесно', 'Quick and easy'), style: const TextStyle(color: Color(0xFFB8D8F8), fontSize: 12, fontWeight: FontWeight.w600))])),
       const SizedBox(width: 8),
