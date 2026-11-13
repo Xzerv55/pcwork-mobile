@@ -29,6 +29,7 @@ import '../screens/internal_service_assistant_screen.dart';
 import '../screens/beach_game_screen.dart';
 import '../screens/booking_screen.dart';
 import '../screens/ai_assistant_chat_screen.dart';
+import '../screens/synchronization_center_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -78,7 +79,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 158);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 159);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -2288,221 +2289,27 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   );
 
   Future<void> _openSyncCenter() async {
-    if (!isAdministrator || !mounted) return;
-    var checking = false;
-    var syncing = false;
-    var initialized = false;
-    var connected = false;
-    var pending = _pendingSyncCount;
-    var pendingItems = <Map<String, dynamic>>[];
-    var syncResults = <Map<String, dynamic>>[];
-    String? status;
-    String? pluginVersion;
-    DateTime? lastChecked;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) {
-          Future<void> refresh({bool checkServer = true}) async {
-            if (checking || syncing) return;
-            setDialogState(() { checking = true; status = null; });
-            try {
-              final token = await auth.token;
-              if (token == null || token.isEmpty) throw Exception(tr('Няма активна сесия.', 'No active session.'));
-              // Read the local queue first so it remains visible even when the
-              // server is currently unreachable.
-              pending = await api.pendingOperationCount(token);
-              pendingItems = await api.pendingOperations(token);
-              syncResults = await api.getSyncHistory(token);
-              if (checkServer) {
-                final health = await api.getHealthDetails();
-                connected = health['ok'] == true;
-                pluginVersion = health['version']?.toString();
-              }
-              lastChecked = DateTime.now();
-              if (mounted) setState(() { apiReady = connected || apiReady; _pendingSyncCount = pending; });
-              status = checkServer
-                  ? tr('Проверката приключи успешно.', 'Connection check completed successfully.')
-                  : tr('Опашката е обновена.', 'Queue refreshed.');
-            } catch (error) {
-              if (checkServer) connected = false;
-              status = tr('Проверка неуспешна: $error', 'Check failed: $error');
-              if (mounted && checkServer) setState(() => apiReady = false);
-            } finally {
-              if (dialogContext.mounted) setDialogState(() => checking = false);
-            }
-          }
-
-          if (!initialized) {
-            initialized = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (dialogContext.mounted) refresh(checkServer: true);
-            });
-          }
-
-          final queueRows = pendingItems.take(12).map((item) {
-            final type = item['type'] == 'create'
-                ? tr('Нов прием на устройство', 'New device intake')
-                : item['type'] == 'status'
-                    ? tr('Промяна на статус', 'Status change')
-                    : tr('Непозната операция', 'Unknown operation');
-            final repairId = item['repair_id']?.toString();
-            final queuedAt = item['queued_at']?.toString();
-            final repairDetail = repairId == null || repairId.isEmpty
-                ? tr('Очаква изпращане', 'Waiting to send')
-                : '${tr('Ремонт', 'Repair')} #$repairId';
-            final detail = queuedAt == null ? repairDetail : '$repairDetail · $queuedAt';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
-                dense: true,
-                leading: const Icon(Icons.schedule_rounded, color: Colors.orangeAccent),
-                title: Text(type, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                subtitle: Text(detail, style: const TextStyle(fontSize: 11)),
-                trailing: const Icon(Icons.cloud_upload_outlined, size: 18),
-              ),
-            );
-          }).toList();
-
-          final resultRows = syncResults.reversed.take(8).map((item) {
-            final success = item['success'] == true;
-            final message = item['message']?.toString() ?? '—';
-            final timestamp = item['at']?.toString();
-            final subtitle = timestamp == null ? message : '$message\n$timestamp';
-            final type = item['type'] == 'create'
-                ? tr('Нов прием', 'New intake')
-                : item['type'] == 'status'
-                    ? tr('Статус', 'Status')
-                    : tr('Операция', 'Operation');
-            return ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(success ? Icons.check_circle_outline : Icons.error_outline,
-                  color: success ? Colors.greenAccent : Colors.orangeAccent, size: 19),
-              title: Text(type, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-              subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
-            );
-          }).toList();
-
-          return AlertDialog(
-            title: Row(children: [
-              const Icon(Icons.sync_alt_rounded, color: cyan),
-              const SizedBox(width: 10),
-              Expanded(child: Text(tr('Център за синхронизация', 'Synchronization center'))),
-            ]),
-            content: SizedBox(
-              width: 520,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(dialogContext).height * .68),
-                child: SingleChildScrollView(child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Card(child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-                      leading: Icon(connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
-                          color: connected ? Colors.greenAccent : Colors.orangeAccent),
-                      title: Text(connected ? tr('Сървърът е достъпен', 'Server is reachable') : tr('Няма потвърдена връзка', 'Connection not confirmed')),
-                      subtitle: Text(apiUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: pluginVersion == null ? null : Text('v$pluginVersion', style: const TextStyle(fontSize: 10)),
-                    )),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _syncMetricCard(tr('Чакащи', 'Pending'), '$pending', Icons.pending_actions_outlined)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _syncMetricCard(tr('Успешни операции', 'Successful operations'), '${syncResults.where((e) => e['success'] == true).length}', Icons.cloud_done_outlined)),
-                    ]),
-                    const SizedBox(height: 12),
-                    Text(tr('Чакащи операции', 'Pending operations'), style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 6),
-                    if (pendingItems.isEmpty)
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text(
-                        tr('Няма чакащи операции. Опашката е празна.', 'No pending operations. The queue is empty.'),
-                        style: const TextStyle(fontSize: 12, color: Colors.white60)))
-                    else ...queueRows,
-                    if (pendingItems.length > 12)
-                      Padding(padding: const EdgeInsets.only(top: 3), child: Text(
-                        tr('Показани са първите 12 от ${pendingItems.length} операции.', 'Showing the first 12 of ${pendingItems.length} operations.'),
-                        style: const TextStyle(fontSize: 11, color: Colors.white54))),
-                    if (syncResults.isNotEmpty) ...[
-                      const Divider(height: 22),
-                      Text(tr('Резултати от последната синхронизация', 'Last synchronization results'), style: const TextStyle(fontWeight: FontWeight.w800)),
-                      ...resultRows,
-                    ],
-                    if (status != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(status!, style: const TextStyle(fontSize: 12))),
-                    if (checking || syncing) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),
-                    const SizedBox(height: 8),
-                    Text(tr('Операциите се пазят локално, докато сървърът потвърди успешното им приемане. Неуспешните операции остават в опашката за повторен опит; идентификаторите за заявките предотвратяват дублиране при повторно изпращане.',
-                      'Operations remain stored locally until the server confirms acceptance. Failed operations stay queued for retry; request IDs protect against duplicate submissions.'),
-                      style: const TextStyle(fontSize: 11, color: Colors.white60)),
-                    if (lastChecked != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(
-                      '${tr('Последна проверка', 'Last checked')}: ${TimeOfDay.fromDateTime(lastChecked!).format(dialogContext)}',
-                      style: const TextStyle(fontSize: 10, color: Colors.white38))),
-                  ],
-                )),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: checking || syncing ? null : () => refresh(checkServer: true),
-                child: Text(tr('Провери връзката', 'Check connection')),
-              ),
-              TextButton(
-                onPressed: checking || syncing ? null : () => refresh(checkServer: false),
-                child: Text(tr('Обнови опашката', 'Refresh queue')),
-              ),
-              FilledButton.icon(
-                onPressed: checking || syncing || pending == 0 ? null : () async {
-                  if (_syncingOfflineQueue) {
-                    setDialogState(() => status = tr('Вече се изпълнява автоматична синхронизация. Изчакайте.', 'Automatic synchronization is already running. Please wait.'));
-                    return;
-                  }
-                  setDialogState(() { syncing = true; status = null; syncResults = []; });
-                  _syncingOfflineQueue = true;
-                  var healthPassed = false;
-                  try {
-                    final token = await auth.token;
-                    if (token == null || token.isEmpty) throw Exception(tr('Няма активна сесия.', 'No active session.'));
-                    final health = await api.getHealthDetails();
-                    connected = health['ok'] == true;
-                    healthPassed = connected;
-                    pluginVersion = health['version']?.toString();
-                    final report = await api.syncPendingOperationsDetailed(token);
-                    final sent = (report['sent'] as num?)?.toInt() ?? 0;
-                    pending = (report['remaining'] as num?)?.toInt() ?? await api.pendingOperationCount(token);
-                    syncResults = await api.getSyncHistory(token);
-                    if (syncResults.isEmpty && report['results'] is List) {
-                      syncResults = (report['results'] as List).whereType<Map>()
-                          .map((row) => Map<String, dynamic>.from(row)).toList();
-                    }
-                    pendingItems = await api.pendingOperations(token);
-                    lastChecked = DateTime.now();
-                    if (mounted) {
-                      setState(() {
-                        apiReady = true;
-                        _pendingSyncCount = pending;
-                        if (sent > 0) repairsFuture = _loadRepairsFuture();
-                      });
-                    }
-                    status = tr('Изпратени: $sent · Оставащи: $pending', 'Sent: $sent · Remaining: $pending');
-                  } catch (error) {
-                    if (!healthPassed) connected = false;
-                    status = tr('Грешка при синхронизация: $error', 'Synchronization error: $error');
-                  } finally {
-                    _syncingOfflineQueue = false;
-                    if (dialogContext.mounted) setDialogState(() => syncing = false);
-                  }
-                },
-                icon: const Icon(Icons.sync_rounded),
-                label: Text(tr('Синхронизирай сега', 'Sync now')),
-              ),
-              TextButton(onPressed: checking || syncing ? null : () => Navigator.pop(dialogContext), child: Text(tr('Затвори', 'Close'))),
-            ],
-          );
+    if (!mounted) return;
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      _messengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(tr('Необходим е активен администраторски вход.', 'An active administrator session is required.'))),
+      );
+      return;
+    }
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SynchronizationCenterScreen(
+        api: api,
+        token: token,
+        english: english,
+        onSyncCompleted: () async {
+          await _refreshPendingSyncCount(token);
+          if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
         },
       ),
-    );
+    ));
+    if (mounted) await _refreshPendingSyncCount(token);
   }
 
   Widget _syncMetricCard(String label, String value, IconData icon) => Card(
