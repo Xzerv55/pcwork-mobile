@@ -2312,20 +2312,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     if (mounted) await _refreshPendingSyncCount(token);
   }
 
-  Widget _syncMetricCard(String label, String value, IconData icon) => Card(
-    margin: EdgeInsets.zero,
-    child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
-      Icon(icon, color: cyan, size: 19),
-      const SizedBox(width: 8),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white60)),
-        const SizedBox(height: 3),
-        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-      ])),
-    ])),
-  );
-
-
   Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
     CircleAvatar(radius: 38, child: Icon(visibleUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
     const SizedBox(height: 14),
