@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 159);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 160);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1311,19 +1311,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ])
       else
         SizedBox(width: double.infinity, child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
-      if (visibleUser != null && canSeeStaffUi) ...[
-        const SizedBox(height: 21),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(tr('Състояние на услугите', 'Service status'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: const Color(0xFF21D4D8).withValues(alpha: .10), borderRadius: BorderRadius.circular(30)), child: Text(tr('LIVE', 'LIVE'), style: const TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1))),
-        ]),
-        const SizedBox(height: 7),
-        Card(child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: (apiReady ? Colors.greenAccent : Colors.orangeAccent).withValues(alpha: .12), borderRadius: BorderRadius.circular(14)), child: Icon(apiReady ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, color: apiReady ? Colors.greenAccent : Colors.orangeAccent)),
-          const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('PCWork сървър', 'PCWork server'), style: const TextStyle(fontWeight: FontWeight.w700)), const SizedBox(height: 3), Text(apiMessage ?? tr('Проверка на връзката…', 'Checking connection…'), style: const TextStyle(color: Color(0xFF93A4B8), fontSize: 12))])),
-          IconButton(onPressed: _checkApi, icon: const Icon(Icons.refresh_rounded, color: cyan)),
-        ]))),
-      ],
       const SizedBox(height: 16),
       _homeSectionHeader(tr('Бърз достъп', 'Quick access'), Icons.bolt_rounded),
       const SizedBox(height: 6),
@@ -2327,6 +2314,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         english: english,
         autoSyncEnabled: _autoSyncEnabled,
         onAutoSyncChanged: _setAutoSyncEnabled,
+        onOpenCacheMonitor: _openCacheMonitor,
       ),
     ));
   }
@@ -2346,8 +2334,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (isAdministrator) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(onPressed: _openVisitorAnalytics, icon: const Icon(Icons.analytics_outlined), label: Text(tr('Данни на посетителите', 'Visitor analytics'))),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: _openCacheMonitor, icon: const Icon(Icons.memory_outlined), label: Text(tr('Redis и Object Cache монитор', 'Redis & Object Cache monitor'))),
         const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: _openSyncCenter, icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Център за синхронизация', 'Synchronization center'))),
       ],

@@ -9,6 +9,7 @@ class SyncCenterScreen extends StatefulWidget {
     required this.english,
     required this.autoSyncEnabled,
     required this.onAutoSyncChanged,
+    required this.onOpenCacheMonitor,
   });
 
   final ApiService api;
@@ -16,6 +17,7 @@ class SyncCenterScreen extends StatefulWidget {
   final bool english;
   final bool autoSyncEnabled;
   final ValueChanged<bool> onAutoSyncChanged;
+  final VoidCallback onOpenCacheMonitor;
 
   @override
   State<SyncCenterScreen> createState() => _SyncCenterScreenState();
@@ -209,6 +211,16 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
               const SizedBox(width: 9),
               Expanded(child: _metric(tr('Общо в историята', 'History records'), '${_history.length}', Icons.history_rounded, const Color(0xFF21D4D8))),
             ]),
+            _sectionTitle(tr('Redis и Object Cache', 'Redis & Object Cache'), Icons.storage_rounded),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.memory_rounded, color: Color(0xFF21D4D8)),
+                title: Text(tr('Сървърна кеш диагностика', 'Server cache diagnostics'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text(tr('Проверка на Redis, постоянния Object Cache, backend и тест за запис/четене.', 'Check Redis, persistent Object Cache, backend and read/write probe.')),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: onOpenCacheMonitor,
+              ),
+            ),
             _sectionTitle(tr('Автоматична синхронизация', 'Automatic synchronization'), Icons.autorenew_rounded),
             Card(child: SwitchListTile(
               value: _autoSync,
