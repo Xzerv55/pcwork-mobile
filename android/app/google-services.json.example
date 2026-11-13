@@ -1,5 +1,0 @@
-{
-  "comment": "Template only. Download the real google-services.json from Firebase Console and save it as android/app/google-services.json. Do not commit production API keys to a public repository.",
-  "project_info": {"project_id": "REPLACE_WITH_FIREBASE_PROJECT_ID", "project_number": "REPLACE_WITH_SENDER_ID"},
-  "client": [{"client_info": {"mobilesdk_app_id": "REPLACE_WITH_ANDROID_APP_ID", "android_client_info": {"package_name": "com.pcworkbg.pcwork_mobile"}}, "api_key": [{"current_key": "REPLACE_WITH_ANDROID_API_KEY"}]}]
-}
