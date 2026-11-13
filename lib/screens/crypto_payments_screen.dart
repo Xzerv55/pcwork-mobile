@@ -30,6 +30,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   Map<String, dynamic>? invoice;
   bool loading = true;
   bool creating = false;
+  bool refreshing = false;
   String? error;
   Timer? pollTimer;
 
@@ -65,6 +66,20 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = _friendlyError(e); });
+    }
+  }
+
+  Future<void> _refreshServerStatus() async {
+    if (token == null || token!.isEmpty) return;
+    setState(() { refreshing = true; error = null; });
+    try {
+      final result = await widget.api.getCryptoPaymentStatus(token!);
+      if (!mounted) return;
+      setState(() => serverStatus = result);
+    } catch (e) {
+      if (mounted) setState(() => error = _friendlyError(e));
+    } finally {
+      if (mounted) setState(() => refreshing = false);
     }
   }
 
@@ -134,7 +149,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: dark ? const Color(0xFF071225) : const Color(0xFFF3F6FB),
-      appBar: AppBar(title: Text(tr('Криптоплащания', 'Crypto payments')), backgroundColor: Colors.transparent, foregroundColor: foreground, elevation: 0),
+      appBar: AppBar(title: Text(tr('Криптоплащания', 'Crypto payments')), backgroundColor: Colors.transparent, foregroundColor: foreground, elevation: 0, actions: [IconButton(tooltip: tr('Обнови статуса', 'Refresh status'), onPressed: refreshing ? null : _refreshServerStatus, icon: refreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh))]),
       body: loading
           ? const Center(child: CircularProgressIndicator(color: _cyan))
           : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 28), children: [
@@ -142,7 +157,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
               const SizedBox(height: 16),
               if (error != null) _notice(error!, isError: true),
               if (!enabled) ...[
-                _notice(tr('Сървърната услуга е изключена или все още не е инсталирана. Екранът е подготвен, но няма да показва фиктивни адреси, курсове или потвърждения.', 'The server service is disabled or not installed yet. This screen is prepared, but it will not show fake addresses, exchange rates, or confirmations.'), isError: false),
+                _notice((serverStatus?['message'] ?? tr('Сървърната услуга е изключена или все още не е инсталирана. Не се показват фиктивни адреси или потвърждения.', 'The server service is disabled or not installed yet. No fake addresses or confirmations are shown.')).toString(), isError: false),
                 const SizedBox(height: 12),
                 _securityNote(),
               ] else ...[
