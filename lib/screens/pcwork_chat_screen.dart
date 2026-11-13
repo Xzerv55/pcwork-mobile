@@ -139,6 +139,8 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     try {
       final result = await widget.api.getChatMessages(token, afterId: _lastId);
       final rows = (result['data'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      final wasNearBottom = !_scroll.hasClients || (_scroll.position.maxScrollExtent - _scroll.position.pixels) < 120;
+      final shouldScrollToLatest = forceBottom || _lastId == 0 || wasNearBottom;
       if (_lastId == 0) _hasOlder = result['has_more'] == true;
       if (rows.isNotEmpty && _oldestId == 0) _oldestId = int.tryParse('${rows.first['id']}') ?? 0;
       if (!mounted) return;
@@ -150,9 +152,9 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
           _lastId = rows.fold<int>(_lastId, (v, row) => (int.tryParse('${row['id']}') ?? v) > v ? int.parse('${row['id']}') : v);
           _error = null;
         });
-        // Keep the conversation anchored to the newest message on initial load,
-        // after every incoming message and after sending a reply.
-        _scrollToLatest();
+        // Follow incoming messages only when the reader is already near the
+        // bottom; never yank the view away while older history is being read.
+        if (shouldScrollToLatest) _scrollToLatest();
       } else if (mounted && _error != null) {
         setState(() => _error = null);
       }
@@ -200,7 +202,7 @@ class _PCWorkChatScreenState extends State<PCWorkChatScreen> with WidgetsBinding
     try {
       await widget.api.sendChatMessage(token, message: text, imageBase64: imageBase64, imageMime: imageMime);
       _message.clear();
-      await _loadMessages(silent: true);
+      await _loadMessages(silent: true, forceBottom: true);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${tr('Съобщението не беше изпратено:', 'Message was not sent:')} $e')));
     } finally {

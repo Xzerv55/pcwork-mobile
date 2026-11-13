@@ -73,9 +73,9 @@ class PushNotificationService {
     final title = (message.notification?.title ?? data['title'] ?? data['notification_title'] ?? 'Известие от PCWork').toString();
     final body = (message.notification?.body ?? data['body'] ?? data['message'] ?? data['notification_body'] ?? '').toString();
     final suppliedId = (data['notification_id'] ?? data['id'] ?? '').toString().trim();
-    final id = message.messageId?.trim().isNotEmpty == true
-        ? message.messageId!.trim()
-        : (suppliedId.isNotEmpty ? suppliedId : '${DateTime.now().microsecondsSinceEpoch}');
+    final id = suppliedId.isNotEmpty
+        ? suppliedId
+        : (message.messageId?.trim().isNotEmpty == true ? message.messageId!.trim() : '${DateTime.now().microsecondsSinceEpoch}');
     await saveNotificationRecord({
       'id': id,
       'title': title.trim().isEmpty ? 'Известие от PCWork' : title,
@@ -146,21 +146,34 @@ class PushNotificationService {
     await prefs.remove(_notificationHistoryKey);
   }
 
-  static Future<void> removeNotificationById(String id) async {
+  static Future<void> markNotificationRead(String id) async {
     if (id.trim().isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-    final raw = prefs.getString(_notificationHistoryKey);
-    if (raw == null || raw.isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return;
-      final records = decoded.whereType<Map>()
-          .map((item) => Map<String, dynamic>.from(item))
-          .where((item) => (item['id'] ?? '').toString() != id)
-          .toList();
-      await prefs.setString(_notificationHistoryKey, jsonEncode(records));
-    } catch (_) { /* Leave the notification history untouched if it is malformed. */ }
+    final records = await loadNotificationHistory();
+    for (final record in records) {
+      if ((record['id'] ?? '').toString() == id) record['read'] = true;
+    }
+    await saveNotificationHistory(records);
+  }
+
+  /// Synchronizes the bounded local inbox with the authenticated WordPress account.
+  /// Server-side merge preserves notifications across reinstallations and devices.
+  Future<List<Map<String, dynamic>>> syncNotificationHistory(String bearerToken, {List<String> deletedIds = const <String>[]}) async {
+    final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final local = await loadNotificationHistory();
+    final response = await _httpClient.post(
+      Uri.parse('$base/wp-json/pcwork/v1/notifications/history'),
+      headers: {'Authorization': 'Bearer $bearerToken', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({'records': local, 'deleted_ids': deletedIds}),
+    ).timeout(const Duration(seconds: 15));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Notification history sync failed (HTTP ${response.statusCode}).');
+    }
+    final decoded = jsonDecode(response.body);
+    final data = decoded is Map ? decoded['data'] : null;
+    if (data is! List) throw Exception('Invalid notification history response.');
+    final records = data.whereType<Map>().map((item) => Map<String, dynamic>.from(item)).toList();
+    await saveNotificationHistory(records);
+    return records;
   }
 
   static Future<void> initialize() async {
@@ -280,7 +293,7 @@ class PushNotificationService {
 
   void _dispatchOpenedMessage(RemoteMessage message, void Function(Map<String, dynamic>) onOpened) {
     final data = Map<String, dynamic>.from(message.data);
-    data['_notification_id'] = message.messageId ?? data['notification_id'] ?? data['id'] ?? '';
+    data['_notification_id'] = data['notification_id'] ?? data['id'] ?? message.messageId ?? '';
     final title = message.notification?.title ?? '';
     final body = message.notification?.body ?? '';
     if (title.isNotEmpty) data['_notification_title'] = title;

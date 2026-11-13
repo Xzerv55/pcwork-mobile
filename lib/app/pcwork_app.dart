@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 160);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 161);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -437,8 +437,19 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
 
   Future<void> _loadNotificationHistory() async {
-    final records = await PushNotificationService.loadNotificationHistory();
+    var records = await PushNotificationService.loadNotificationHistory();
     if (mounted) setState(() => _notificationHistory = records);
+    if (signedInUser != null && !noRegPreview) {
+      try {
+        final bearer = await auth.token;
+        if (bearer != null && bearer.isNotEmpty) {
+          records = await push.syncNotificationHistory(bearer);
+          if (mounted) setState(() => _notificationHistory = records);
+        }
+      } catch (_) {
+        // The local inbox remains available when the server is temporarily offline.
+      }
+    }
   }
 
   Future<void> _openNotifications() async {
@@ -446,14 +457,29 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     await PushNotificationService.saveNotificationHistory(readRecords);
     if (!mounted) return;
     setState(() => _notificationHistory = readRecords);
+    if (signedInUser != null) {
+      final bearer = await auth.token;
+      if (bearer != null && bearer.isNotEmpty) unawaited(push.syncNotificationHistory(bearer));
+    }
     await _navigatorKey.currentState?.push(MaterialPageRoute<void>(
       builder: (_) => NotificationHistoryScreen(
         records: _notificationHistory,
         english: english,
         isDarkTheme: isDarkTheme,
         onChanged: (records) async {
+          final retainedIds = records.map((item) => (item['id'] ?? '').toString()).toSet();
+          final deletedIds = _notificationHistory
+              .map((item) => (item['id'] ?? '').toString())
+              .where((id) => id.isNotEmpty && !retainedIds.contains(id))
+              .toList();
           await PushNotificationService.saveNotificationHistory(records);
           if (mounted) setState(() => _notificationHistory = records);
+          if (signedInUser != null) {
+            final bearer = await auth.token;
+            if (bearer != null && bearer.isNotEmpty) {
+              unawaited(push.syncNotificationHistory(bearer, deletedIds: deletedIds));
+            }
+          }
         },
         onOpen: _openNotificationRecord,
       ),
@@ -494,7 +520,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
     // Remove the notification from the in-app active list once its destination
     // is opened, instead of leaving a stale unread/active card behind.
-    await PushNotificationService.removeNotificationById(notificationId);
+    await PushNotificationService.markNotificationRead(notificationId);
     await _loadNotificationHistory();
     if (!mounted) return;
 
@@ -581,13 +607,13 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             event == 'customer_repair_requested' ||
             (event == 'repair_status_changed' && status == 'requested');
         if (event != 'marketing_campaign' && hasKnownDestination && tab == destinationTab && !transactionalPush) {
-          unawaited(PushNotificationService.removeNotificationById(notificationId).then((_) => _loadNotificationHistory()));
+          unawaited(PushNotificationService.markNotificationRead(notificationId).then((_) => _loadNotificationHistory()));
           if (destinationTab == 1) setState(() => repairsFuture = _loadRepairsFuture());
           return;
         }
         unawaited(_loadNotificationHistory());
         if ((data['event'] ?? '').toString() == 'marketing_campaign') {
-          unawaited(PushNotificationService.removeNotificationById(notificationId).then((_) => _loadNotificationHistory()));
+          unawaited(PushNotificationService.markNotificationRead(notificationId).then((_) => _loadNotificationHistory()));
           unawaited(_showMarketingDialog(
             title: title,
             body: body,
@@ -633,6 +659,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         await _loadNotificationHistory();
         await _openNotificationRecord(record);
       });
+      unawaited(_loadNotificationHistory());
       if (mounted) {
         setState(() => _pushStatusMessage = registered
             ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
@@ -1025,7 +1052,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             });
           },
         );
-      case 3: return ContactHubScreen(api: api, tokenProvider: _uiToken, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: canSeeStaffUi);
+      case 3: return ContactHubScreen(api: api, tokenProvider: _uiToken, sessionKey: signedInUser?.id ?? 0, english: english, isDarkTheme: isDarkTheme, isActive: tab == 3, isAdministrator: canUseAdminChat, canUploadFiles: true);
       case 4: return _booking();
       case 5: return _profile();
       default: return const SizedBox.shrink();
