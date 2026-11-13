@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 157});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 159});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -70,6 +70,7 @@ class ApiService {
   static final Map<String, Future<List<Map<String, dynamic>>>> _customerHistoryInFlight = <String, Future<List<Map<String, dynamic>>>>{};
   static final Map<String, _TimedRepairListCache> _repairsListCache = <String, _TimedRepairListCache>{};
   static final Map<String, Future<List<Repair>>> _repairsInFlight = <String, Future<List<Repair>>>{};
+  static final Set<String> _syncLocks = <String>{};
 
   List<Map<String, dynamic>> _copyShopRows(List<Map<String, dynamic>> rows) =>
       rows.map((row) => Map<String, dynamic>.from(row)).toList(growable: false);
@@ -493,6 +494,23 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> syncPendingOperationsDetailed(String token) async {
+    final lockKey = _queueKey(token);
+    if (!_syncLocks.add(lockKey)) {
+      return <String, dynamic>{
+        'sent': 0,
+        'remaining': await pendingOperationCount(token),
+        'results': <Map<String, dynamic>>[],
+        'busy': true,
+      };
+    }
+    try {
+      return await _syncPendingOperationsDetailedLocked(token);
+    } finally {
+      _syncLocks.remove(lockKey);
+    }
+  }
+
+  Future<Map<String, dynamic>> _syncPendingOperationsDetailedLocked(String token) async {
     final queue = await _readQueue(token);
     if (queue.isEmpty) {
       return <String, dynamic>{'sent': 0, 'remaining': 0, 'results': <Map<String, dynamic>>[]};
