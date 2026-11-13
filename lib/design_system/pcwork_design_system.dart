@@ -168,8 +168,8 @@ abstract final class PCWorkTheme {
     const accent = PCWorkColors.cyan;
     final brightness = dark ? Brightness.dark : Brightness.light;
     final foreground = dark ? PCWorkColors.textPrimary : PCWorkColors.lightText;
-    final muted = dark ? PCWorkColors.textSecondary : const Color(0xFF53647A);
-    final outline = dark ? const Color(0xFF294365) : const Color(0xFFE1E8F0);
+    final muted = dark ? PCWorkColors.textSecondary : const Color(0xFF3F5066);
+    final outline = dark ? const Color(0xFF294365) : const Color(0xFFD5DFEA);
     final surface = dark ? const Color(0xFF101D32) : Colors.white;
 
     return ThemeData(
@@ -183,7 +183,7 @@ abstract final class PCWorkTheme {
       }),
       brightness: brightness,
       fontFamily: 'NotoSans',
-      scaffoldBackgroundColor: dark ? PCWorkColors.midnight : PCWorkColors.lightBackground,
+      scaffoldBackgroundColor: dark ? PCWorkColors.midnight : const Color(0xFFF1F5FA),
       canvasColor: dark ? PCWorkColors.midnight : PCWorkColors.lightBackground,
       cardColor: surface,
       colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
@@ -214,7 +214,10 @@ abstract final class PCWorkTheme {
         headlineMedium: TextStyle(fontSize: 24, height: 1.16, fontWeight: FontWeight.w800, letterSpacing: -.55, color: foreground),
         titleLarge: TextStyle(fontSize: 19, height: 1.2, fontWeight: FontWeight.w800, letterSpacing: -.25, color: foreground),
         titleMedium: TextStyle(fontSize: 15, height: 1.25, fontWeight: FontWeight.w700, color: foreground),
-        bodyMedium: TextStyle(fontSize: 14, height: 1.4, color: muted),
+        bodyMedium: TextStyle(fontSize: 14, height: 1.45, color: muted),
+        bodySmall: TextStyle(fontSize: 12, height: 1.4, color: dark ? PCWorkColors.textMuted : const Color(0xFF596B80)),
+        titleSmall: TextStyle(fontSize: 13, height: 1.3, fontWeight: FontWeight.w700, color: foreground),
+        labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: foreground),
       ),
       cardTheme: CardThemeData(
         color: surface,
@@ -227,9 +230,9 @@ abstract final class PCWorkTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: dark ? const Color(0xFF0D192B) : const Color(0xFFF7F9FC),
+        fillColor: dark ? const Color(0xFF0D192B) : const Color(0xFFF5F8FC),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        hintStyle: TextStyle(color: dark ? PCWorkColors.textMuted : const Color(0xFF8796AA), fontSize: 13),
+        hintStyle: TextStyle(color: dark ? PCWorkColors.textMuted : const Color(0xFF66778D), fontSize: 13),
         labelStyle: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(PCWorkRadii.md), borderSide: BorderSide(color: outline)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(PCWorkRadii.md), borderSide: BorderSide(color: outline)),
@@ -285,12 +288,12 @@ abstract final class PCWorkTheme {
         labelTextStyle: WidgetStateProperty.resolveWith((states) => TextStyle(
           fontSize: 11,
           fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
-          color: states.contains(WidgetState.selected) ? (dark ? accent : const Color(0xFF087F83)) : const Color(0xFF8796AA),
+          color: states.contains(WidgetState.selected) ? (dark ? accent : const Color(0xFF087F83)) : (dark ? PCWorkColors.textMuted : const Color(0xFF596B80)),
         )),
       ),
       filledButtonTheme: FilledButtonThemeData(style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.disabled) ? accent.withValues(alpha: .35) : accent),
-        foregroundColor: const WidgetStatePropertyAll(Color(0xFF061319)),
+        backgroundColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.disabled) ? (dark ? accent.withValues(alpha: .35) : const Color(0xFF087F83).withValues(alpha: .45)) : (dark ? accent : const Color(0xFF087F83))),
+        foregroundColor: WidgetStatePropertyAll(dark ? const Color(0xFF061319) : Colors.white),
         overlayColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.pressed) ? const Color(0xFF061319).withValues(alpha: .24) : Colors.transparent),
         shadowColor: WidgetStatePropertyAll(accent.withValues(alpha: .30)),
         elevation: const WidgetStatePropertyAll(2),

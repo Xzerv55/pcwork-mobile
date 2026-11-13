@@ -1081,6 +1081,14 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Обяви', 'Listings'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: isDarkTheme ? const Color(0xFF101D2D) : const Color(0xFFF1F5FA),
+      statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDarkTheme ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF1F5FA),
+      systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+    );
+    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _messengerKey,
@@ -1090,13 +1098,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       // Pushed pages, dialogs and bottom sheets are therefore constrained
       // to the area above the navigation and can never cover it.
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarColor: isDarkTheme ? const Color(0xFF101D2D) : Colors.white,
-          statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
-          statusBarBrightness: isDarkTheme ? Brightness.dark : Brightness.light,
-          systemNavigationBarColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF2F7FA),
-          systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
-        ),
+        value: overlayStyle,
         child: Column(
           children: [
             // Keep route content below the Android status bar, including on
