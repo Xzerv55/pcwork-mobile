@@ -217,6 +217,38 @@ class PushNotificationService {
     }
   }
 
+  /// Register a first-run No Reg installation. Marketing consent is explicit
+  /// and independent from the operating-system notification permission.
+  Future<bool> registerAnonymous({required bool marketingOptIn}) async {
+    if (!DefaultFirebaseOptions.isConfigured) return false;
+    try {
+      await initialize();
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final allowed = settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (!allowed) return false;
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return false;
+      final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+      final response = await _httpClient.post(Uri.parse('$base/wp-json/pcwork/v1/push/anonymous/register'),
+        headers: {'Content-Type':'application/json','Accept':'application/json'},
+        body: jsonEncode({'token':token,'platform':Platform.isIOS ? 'ios' : 'android','marketing_opt_in':marketingOptIn}),
+      ).timeout(const Duration(seconds:15));
+      if (response.statusCode < 200 || response.statusCode >= 300) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map || decoded['registered'] != true) return false;
+      await _tokenSubscription?.cancel();
+      _tokenSubscription = FirebaseMessaging.instance.onTokenRefresh.listen((fresh) async {
+        try {
+          await _httpClient.post(Uri.parse('$base/wp-json/pcwork/v1/push/anonymous/register'),
+            headers: {'Content-Type':'application/json'},
+            body: jsonEncode({'token':fresh,'platform':Platform.isIOS ? 'ios' : 'android','marketing_opt_in':marketingOptIn}),
+          ).timeout(const Duration(seconds:15));
+        } catch (_) {}
+      });
+      return true;
+    } catch (_) { return false; }
+  }
+
   Future<bool> register(String bearerToken,
       {required void Function(String title, String body, Map<String, dynamic> data) onForeground,
       required void Function(Map<String, dynamic> data) onOpened}) async {

@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 164);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 165);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -574,9 +574,34 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Future<void> _requestSystemNotifications() async {
-    // Ask Android for POST_NOTIFICATIONS at first launch, even before login
-    // and independently of Firebase token registration.
-    await push.requestPermission();
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('pcwork_first_run_push_prompt_v1') == true) {
+      final granted = await push.requestPermission();
+      final bearer = await auth.token;
+      if (granted && (bearer == null || bearer.isEmpty)) {
+        await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_no_reg_marketing_opt_in') == true);
+      }
+      return;
+    }
+    if (!mounted) return;
+    var marketingConsent = false;
+    final allow = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+      title: Text(tr('Известия от PCWork', 'PCWork notifications')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(tr('Разреши известия, за да получаваш важни съобщения и актуална информация от PCWork. Можеш да ги управляваш и по-късно.', 'Allow notifications to receive important messages and updates from PCWork. You can manage them later.')),
+        const SizedBox(height: 12),
+        CheckboxListTile(contentPadding: EdgeInsets.zero, value: marketingConsent, onChanged: (v) => setDialogState(() => marketingConsent = v == true), title: Text(tr('Съгласен/на съм да получавам промоции и маркетингови кампании.', 'I agree to receive promotions and marketing campaigns.')), controlAffinity: ListTileControlAffinity.leading),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('По-късно', 'Later'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Разреши известия', 'Allow notifications')))],
+    )));
+    await prefs.setBool('pcwork_first_run_push_prompt_v1', true);
+    await prefs.setBool('pcwork_no_reg_marketing_opt_in', allow == true && marketingConsent);
+    if (allow != true) return;
+    final granted = await push.requestPermission();
+    final bearer = await auth.token;
+    if (granted && (bearer == null || bearer.isEmpty)) {
+      await push.registerAnonymous(marketingOptIn: marketingConsent);
+    }
   }
 
   Future<void> _retryPushRegistration() async {
@@ -592,7 +617,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final bearer = knownToken ?? await auth.token;
       if (!mounted) return;
       if (bearer == null || bearer.isEmpty) {
-        await push.requestPermission();
+        final granted = await push.requestPermission();
+        if (granted) {
+          final prefs = await SharedPreferences.getInstance();
+          await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_no_reg_marketing_opt_in') == true);
+        }
         return;
       }
       final registered = await push.register(bearer, onForeground: (title, body, data) {
