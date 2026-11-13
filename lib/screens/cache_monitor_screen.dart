@@ -92,7 +92,7 @@ class _CacheMonitorScreenState extends State<CacheMonitorScreen> {
 
   Widget _metricGrid(List<Widget> metrics) => LayoutBuilder(builder: (context, constraints) {
     final columns = constraints.maxWidth >= 760 ? 3 : 2;
-    const gap = 9.0;
+    final gap = 9.0;
     final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
     return Wrap(spacing: gap, runSpacing: gap,
         children: metrics.map((metric) => SizedBox(width: width, child: metric)).toList());

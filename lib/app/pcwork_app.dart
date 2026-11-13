@@ -29,7 +29,6 @@ import '../screens/internal_service_assistant_screen.dart';
 import '../screens/beach_game_screen.dart';
 import '../screens/booking_screen.dart';
 import '../screens/ai_assistant_chat_screen.dart';
-import '../screens/synchronization_center_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -79,7 +78,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 159);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 155);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -970,8 +969,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                                   height: 1.05,
                                   fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
                                   color: selected ? Colors.white : muted,
-                                  decoration: TextDecoration.none,
-                                  decorationColor: Colors.transparent,
                                 )),
                               ),
                             ),
@@ -1200,7 +1197,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             ),
           ),
           TextButton(
-            onPressed: () => _openWebsite('https://pcwork-bg.com/category/uslugi/'),
+            onPressed: () => _selectTab(1),
             child: Text(tr('Всички услуги', 'All services')),
           ),
         ],
@@ -1212,7 +1209,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 11,
         mainAxisSpacing: 11,
-        childAspectRatio: 1.48,
+        childAspectRatio: .98,
         children: [
           _homeServiceCard(
             image: 'assets/images/repair_laptop.webp',
@@ -1236,7 +1233,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             subtitle: tr('Спокойствие за повече време', 'Peace of mind for longer'),
             icon: Icons.verified_user_rounded,
             accent: const Color(0xFF28D8F4),
-            onTap: () => _openWebsite('https://pcwork-bg.com/produkt/garancziya-remont/'),
+            onTap: () => _selectTab(1),
           ),
           _homeServiceCard(
             image: 'assets/images/repair_console.webp',
@@ -1255,7 +1252,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             onTap: _openAiAssistant,
           ),
           _homeServiceCard(
-            image: 'assets/images/marketplace_listings.webp',
+            image: null,
             title: tr('Обяви', 'Marketplace'),
             subtitle: tr('Купи, продай, открий повече', 'Buy, sell and discover'),
             icon: Icons.campaign_rounded,
@@ -1280,13 +1277,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         const SizedBox(width: 10),
         Expanded(child: _contactCard(const Icon(Icons.chat_rounded, color: Color(0xFF8B70E8), size: 21), 'Viber', tr('Пиши ни', 'Message us'), const Color(0xFF8B70E8), () => _launchContact(Uri.parse('viber://chat?number=%2B359886638848')))),
       ]),
-      const SizedBox(height: 10),
       Row(children: [
         Expanded(child: _contactCard(const Icon(Icons.facebook, color: Color(0xFF3988F7), size: 21), 'Messenger', tr('Пиши ни', 'Message us'), const Color(0xFF3988F7), () => _launchContact(Uri.parse('https://m.me/PcWorkService')))),
         const SizedBox(width: 10),
         Expanded(child: _contactCard(const FaIcon(FontAwesomeIcons.tiktok, color: Color(0xFFE05A8D), size: 21), 'TikTok', null, const Color(0xFFE05A8D), () => _launchContact(Uri.parse('https://www.tiktok.com/@css.ps4.ps5')))),
       ]),
-      const SizedBox(height: 10),
+      const SizedBox(height: 8),
       if (visibleUser != null)
         Row(children: [
           Expanded(child: _contactCard(const Icon(Icons.chat_bubble_outline_rounded, color: cyan, size: 21), tr('Чат с PCWork', 'Chat with PCWork'), tr('Отвори директния чат със сервизния екип', 'Open the direct chat with our service team'), cyan, () => _selectTab(3))),
@@ -1394,20 +1390,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             top: 10,
             right: 10,
             child: Container(
-              width: 36,
-              height: 36,
+              width: 43,
+              height: 43,
               decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xCC06142B), border: Border.all(color: accent, width: 1.4), boxShadow: [BoxShadow(color: accent.withValues(alpha: .30), blurRadius: 12)]),
-              child: Icon(icon, color: accent, size: 20),
+              child: Icon(icon, color: accent, size: 23),
             ),
           ),
           Positioned(
-            left: 10,
-            right: 10,
-            bottom: 9,
+            left: 12,
+            right: 12,
+            bottom: 12,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.1, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
               const SizedBox(height: 4),
-              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD7E8FF), fontSize: 9.5, height: 1.15, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD7E8FF), fontSize: 10.5, height: 1.2, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
             ]),
           ),
           Positioned(
@@ -1429,15 +1425,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       boxShadow: [BoxShadow(color: const Color(0xFF197DFF).withValues(alpha: .17), blurRadius: 20, spreadRadius: -6)],
     ),
     child: Row(children: [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 66,
-          height: 66,
-          decoration: BoxDecoration(border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7)), borderRadius: BorderRadius.circular(14)),
-          child: Image.asset('assets/images/pcwork_booking_hero_fixed.webp', fit: BoxFit.cover, alignment: Alignment.center),
-        ),
-      ),
+      Container(width: 50, height: 50, decoration: BoxDecoration(color: const Color(0xFF10BFF2).withValues(alpha: .15), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7))), child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF45D9FF), size: 29)),
       const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('Резервирай час', 'Book an appointment'), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(tr('Бързо и лесно', 'Quick and easy'), style: const TextStyle(color: Color(0xFFB8D8F8), fontSize: 12, fontWeight: FontWeight.w600))])),
       const SizedBox(width: 8),
@@ -2289,28 +2277,234 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   );
 
   Future<void> _openSyncCenter() async {
-    if (!mounted) return;
-    final token = await auth.token;
-    if (!mounted) return;
-    if (token == null || token.isEmpty) {
-      _messengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text(tr('Необходим е активен администраторски вход.', 'An active administrator session is required.'))),
-      );
-      return;
-    }
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => SynchronizationCenterScreen(
-        api: api,
-        token: token,
-        english: english,
-        onSyncCompleted: () async {
-          await _refreshPendingSyncCount(token);
-          if (mounted) setState(() => repairsFuture = _loadRepairsFuture());
+    if (!isAdministrator || !mounted) return;
+    var checking = false;
+    var syncing = false;
+    var initialized = false;
+    var connected = false;
+    var pending = _pendingSyncCount;
+    var pendingItems = <Map<String, dynamic>>[];
+    var syncResults = <Map<String, dynamic>>[];
+    String? status;
+    String? pluginVersion;
+    DateTime? lastChecked;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> refresh({bool checkServer = true}) async {
+            if (checking || syncing) return;
+            setDialogState(() { checking = true; status = null; });
+            try {
+              final token = await auth.token;
+              if (token == null || token.isEmpty) throw Exception(tr('Няма активна сесия.', 'No active session.'));
+              // Read the local queue first so it remains visible even when the
+              // server is currently unreachable.
+              pending = await api.pendingOperationCount(token);
+              pendingItems = await api.pendingOperations(token);
+              syncResults = await api.getSyncHistory(token);
+              if (checkServer) {
+                final health = await api.getHealthDetails();
+                connected = health['ok'] == true;
+                pluginVersion = health['version']?.toString();
+              }
+              lastChecked = DateTime.now();
+              if (mounted) setState(() { apiReady = connected || apiReady; _pendingSyncCount = pending; });
+              status = checkServer
+                  ? tr('Проверката приключи успешно.', 'Connection check completed successfully.')
+                  : tr('Опашката е обновена.', 'Queue refreshed.');
+            } catch (error) {
+              if (checkServer) connected = false;
+              status = tr('Проверка неуспешна: $error', 'Check failed: $error');
+              if (mounted && checkServer) setState(() => apiReady = false);
+            } finally {
+              if (dialogContext.mounted) setDialogState(() => checking = false);
+            }
+          }
+
+          if (!initialized) {
+            initialized = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (dialogContext.mounted) refresh(checkServer: true);
+            });
+          }
+
+          final queueRows = pendingItems.take(12).map((item) {
+            final type = item['type'] == 'create'
+                ? tr('Нов прием на устройство', 'New device intake')
+                : item['type'] == 'status'
+                    ? tr('Промяна на статус', 'Status change')
+                    : tr('Непозната операция', 'Unknown operation');
+            final repairId = item['repair_id']?.toString();
+            final queuedAt = item['queued_at']?.toString();
+            final repairDetail = repairId == null || repairId.isEmpty
+                ? tr('Очаква изпращане', 'Waiting to send')
+                : '${tr('Ремонт', 'Repair')} #$repairId';
+            final detail = queuedAt == null ? repairDetail : '$repairDetail · $queuedAt';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.schedule_rounded, color: Colors.orangeAccent),
+                title: Text(type, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                subtitle: Text(detail, style: const TextStyle(fontSize: 11)),
+                trailing: const Icon(Icons.cloud_upload_outlined, size: 18),
+              ),
+            );
+          }).toList();
+
+          final resultRows = syncResults.reversed.take(8).map((item) {
+            final success = item['success'] == true;
+            final message = item['message']?.toString() ?? '—';
+            final timestamp = item['at']?.toString();
+            final subtitle = timestamp == null ? message : '$message\n$timestamp';
+            final type = item['type'] == 'create'
+                ? tr('Нов прием', 'New intake')
+                : item['type'] == 'status'
+                    ? tr('Статус', 'Status')
+                    : tr('Операция', 'Operation');
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(success ? Icons.check_circle_outline : Icons.error_outline,
+                  color: success ? Colors.greenAccent : Colors.orangeAccent, size: 19),
+              title: Text(type, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+            );
+          }).toList();
+
+          return AlertDialog(
+            title: Row(children: [
+              const Icon(Icons.sync_alt_rounded, color: cyan),
+              const SizedBox(width: 10),
+              Expanded(child: Text(tr('Център за синхронизация', 'Synchronization center'))),
+            ]),
+            content: SizedBox(
+              width: 520,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(dialogContext).height * .68),
+                child: SingleChildScrollView(child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Card(child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                      leading: Icon(connected ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                          color: connected ? Colors.greenAccent : Colors.orangeAccent),
+                      title: Text(connected ? tr('Сървърът е достъпен', 'Server is reachable') : tr('Няма потвърдена връзка', 'Connection not confirmed')),
+                      subtitle: Text(apiUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: pluginVersion == null ? null : Text('v$pluginVersion', style: const TextStyle(fontSize: 10)),
+                    )),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(child: _syncMetricCard(tr('Чакащи', 'Pending'), '$pending', Icons.pending_actions_outlined)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _syncMetricCard(tr('Успешни операции', 'Successful operations'), '${syncResults.where((e) => e['success'] == true).length}', Icons.cloud_done_outlined)),
+                    ]),
+                    const SizedBox(height: 12),
+                    Text(tr('Чакащи операции', 'Pending operations'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    if (pendingItems.isEmpty)
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Text(
+                        tr('Няма чакащи операции. Опашката е празна.', 'No pending operations. The queue is empty.'),
+                        style: const TextStyle(fontSize: 12, color: Colors.white60)))
+                    else ...queueRows,
+                    if (pendingItems.length > 12)
+                      Padding(padding: const EdgeInsets.only(top: 3), child: Text(
+                        tr('Показани са първите 12 от ${pendingItems.length} операции.', 'Showing the first 12 of ${pendingItems.length} operations.'),
+                        style: const TextStyle(fontSize: 11, color: Colors.white54))),
+                    if (syncResults.isNotEmpty) ...[
+                      const Divider(height: 22),
+                      Text(tr('Резултати от последната синхронизация', 'Last synchronization results'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                      ...resultRows,
+                    ],
+                    if (status != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(status!, style: const TextStyle(fontSize: 12))),
+                    if (checking || syncing) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),
+                    const SizedBox(height: 8),
+                    Text(tr('Операциите се пазят локално, докато сървърът потвърди успешното им приемане. Неуспешните операции остават в опашката за повторен опит; идентификаторите за заявките предотвратяват дублиране при повторно изпращане.',
+                      'Operations remain stored locally until the server confirms acceptance. Failed operations stay queued for retry; request IDs protect against duplicate submissions.'),
+                      style: const TextStyle(fontSize: 11, color: Colors.white60)),
+                    if (lastChecked != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(
+                      '${tr('Последна проверка', 'Last checked')}: ${TimeOfDay.fromDateTime(lastChecked!).format(dialogContext)}',
+                      style: const TextStyle(fontSize: 10, color: Colors.white38))),
+                  ],
+                )),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: checking || syncing ? null : () => refresh(checkServer: true),
+                child: Text(tr('Провери връзката', 'Check connection')),
+              ),
+              TextButton(
+                onPressed: checking || syncing ? null : () => refresh(checkServer: false),
+                child: Text(tr('Обнови опашката', 'Refresh queue')),
+              ),
+              FilledButton.icon(
+                onPressed: checking || syncing || pending == 0 ? null : () async {
+                  if (_syncingOfflineQueue) {
+                    setDialogState(() => status = tr('Вече се изпълнява автоматична синхронизация. Изчакайте.', 'Automatic synchronization is already running. Please wait.'));
+                    return;
+                  }
+                  setDialogState(() { syncing = true; status = null; syncResults = []; });
+                  _syncingOfflineQueue = true;
+                  var healthPassed = false;
+                  try {
+                    final token = await auth.token;
+                    if (token == null || token.isEmpty) throw Exception(tr('Няма активна сесия.', 'No active session.'));
+                    final health = await api.getHealthDetails();
+                    connected = health['ok'] == true;
+                    healthPassed = connected;
+                    pluginVersion = health['version']?.toString();
+                    final report = await api.syncPendingOperationsDetailed(token);
+                    final sent = (report['sent'] as num?)?.toInt() ?? 0;
+                    pending = (report['remaining'] as num?)?.toInt() ?? await api.pendingOperationCount(token);
+                    syncResults = await api.getSyncHistory(token);
+                    if (syncResults.isEmpty && report['results'] is List) {
+                      syncResults = (report['results'] as List).whereType<Map>()
+                          .map((row) => Map<String, dynamic>.from(row)).toList();
+                    }
+                    pendingItems = await api.pendingOperations(token);
+                    lastChecked = DateTime.now();
+                    if (mounted) setState(() {
+                      apiReady = true;
+                      _pendingSyncCount = pending;
+                      if (sent > 0) repairsFuture = _loadRepairsFuture();
+                    });
+                    status = tr('Изпратени: $sent · Оставащи: $pending', 'Sent: $sent · Remaining: $pending');
+                  } catch (error) {
+                    if (!healthPassed) connected = false;
+                    status = tr('Грешка при синхронизация: $error', 'Synchronization error: $error');
+                  } finally {
+                    _syncingOfflineQueue = false;
+                    if (dialogContext.mounted) setDialogState(() => syncing = false);
+                  }
+                },
+                icon: const Icon(Icons.sync_rounded),
+                label: Text(tr('Синхронизирай сега', 'Sync now')),
+              ),
+              TextButton(onPressed: checking || syncing ? null : () => Navigator.pop(dialogContext), child: Text(tr('Затвори', 'Close'))),
+            ],
+          );
         },
       ),
-    ));
-    if (mounted) await _refreshPendingSyncCount(token);
+    );
   }
+
+  Widget _syncMetricCard(String label, String value, IconData icon) => Card(
+    margin: EdgeInsets.zero,
+    child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
+      Icon(icon, color: cyan, size: 19),
+      const SizedBox(width: 8),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white60)),
+        const SizedBox(height: 3),
+        Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+      ])),
+    ])),
+  );
+
 
   Widget _profile() => ListView(padding: const EdgeInsets.all(20), children: [
     CircleAvatar(radius: 38, child: Icon(visibleUser == null ? Icons.person_outline : Icons.verified_user, size: 40, color: cyan)),
