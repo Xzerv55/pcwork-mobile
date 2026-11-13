@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 162});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 163});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -350,7 +350,7 @@ class ApiService {
       _uri('ai/chat'),
       headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: jsonEncode({'messages': messages}),
-    ).timeout(const Duration(seconds: 75));
+    ).timeout(const Duration(seconds: 195));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
     final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;

@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 162);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 163);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1089,13 +1089,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       // Keep the six-item main navigation outside the route Navigator.
       // Pushed pages, dialogs and bottom sheets are therefore constrained
       // to the area above the navigation and can never cover it.
-      builder: (context, child) => Column(
-        children: [
-          // Clip the route overlay to the content viewport. Dialogs, pushed
-          // pages and modal sheets cannot paint over the persistent tab bar.
-          Expanded(child: ClipRect(child: child ?? const SizedBox.shrink())),
-          _buildBottomNavigation(labels),
-        ],
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle(
+          statusBarColor: isDarkTheme ? const Color(0xFF101D2D) : Colors.white,
+          statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDarkTheme ? Brightness.dark : Brightness.light,
+          systemNavigationBarColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF2F7FA),
+          systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+        ),
+        child: Column(
+          children: [
+            // Keep route content below the Android status bar, including on
+            // edge-to-edge Android versions, without double-applying insets.
+            Expanded(child: SafeArea(top: true, bottom: false, child: ClipRect(child: child ?? const SizedBox.shrink()))),
+            _buildBottomNavigation(labels),
+          ],
+        ),
       ),
       theme: PCWorkTheme.build(dark: isDarkTheme),
       home: PopScope(
@@ -1351,7 +1360,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   );
 
   Widget _homeHero() => Container(
-    height: 292,
+    height: 196,
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(27),
       border: Border.all(color: const Color(0xFF20BFFF).withValues(alpha: .62)),
@@ -1363,27 +1372,27 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       child: Stack(children: [
         const Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Color(0xF5051026), Color(0xD9051026), Color(0x44051026)])))),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 22, 16, 18),
+          padding: const EdgeInsets.fromLTRB(16, 13, 14, 12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('PCWork Mobile', 'PCWork Mobile'), style: const TextStyle(color: Color(0xFF24D6F3), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.4)),
-            const SizedBox(height: 12),
+            Text(tr('PCWork Mobile', 'PCWork Mobile'), style: const TextStyle(color: Color(0xFF24D6F3), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+            const SizedBox(height: 6),
             SizedBox(
               width: 205,
-              child: Text(tr('Добре дошли в PCWork!', 'Welcome to PCWork!'), style: const TextStyle(fontSize: 27, height: 1.08, fontWeight: FontWeight.w900, letterSpacing: -.7, color: Colors.white)),
+              child: Text(tr('Добре дошли в PCWork!', 'Welcome to PCWork!'), style: const TextStyle(fontSize: 23, height: 1.06, fontWeight: FontWeight.w900, letterSpacing: -.7, color: Colors.white)),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             SizedBox(
               width: 190,
-              child: Text(tr('Твоят доверен партньор за бърз и професионален сервиз.', 'Your trusted partner for fast, professional service.'), style: const TextStyle(color: Color(0xFFD6E8FF), fontSize: 13, height: 1.35, fontWeight: FontWeight.w600)),
+              child: Text(tr('Твоят доверен партньор за бърз и професионален сервиз.', 'Your trusted partner for fast, professional service.'), style: const TextStyle(color: Color(0xFFD6E8FF), fontSize: 11.5, height: 1.25, fontWeight: FontWeight.w600)),
             ),
             const Spacer(),
             SizedBox(
-              height: 46,
+              height: 39,
               child: DecoratedBox(
                 decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF08C8F4), Color(0xFF187BFF), Color(0xFF8B42FF)]), borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: const Color(0xFF12BDFB).withValues(alpha: .35), blurRadius: 18)]),
                 child: FilledButton.icon(
                   onPressed: _startHomeRequest,
-                  style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 17), shape: const StadiumBorder()),
+                  style: FilledButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 14), shape: const StadiumBorder()),
                   icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white),
                   label: Text(tr('Нова заявка', 'New request'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                 ),
