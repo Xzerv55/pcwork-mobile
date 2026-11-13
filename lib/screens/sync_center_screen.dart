@@ -34,6 +34,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
   List<Map<String, dynamic>> _queue = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _history = <Map<String, dynamic>>[];
   Map<String, dynamic>? _health;
+  Map<String, dynamic>? _syncContract;
   String? _message;
   String? _error;
   DateTime? _lastChecked;
@@ -73,6 +74,8 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
       final queue = results[0] as List<Map<String, dynamic>>;
       final history = results[1] as List<Map<String, dynamic>>;
       final pending = results[2] as int;
+      Map<String, dynamic>? syncContract = _syncContract;
+      try { syncContract = await widget.api.getSyncContractStatus(widget.token); } catch (_) { /* Keep queue diagnostics usable with an older plugin. */ }
       Map<String, dynamic>? health = _health;
       var connected = _connected;
       if (checkServer) {
@@ -85,6 +88,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
         _history = history;
         _pending = pending;
         _health = health;
+        _syncContract = syncContract;
         _connected = connected;
         _lastChecked = DateTime.now();
         _message = checkServer
@@ -189,6 +193,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
                       Text(widget.api.baseUrl, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .65)), maxLines: 1, overflow: TextOverflow.ellipsis),
                     ])),
                     if (_health?['version'] != null) Text('v${_health!['version']}', style: const TextStyle(fontSize: 11)),
+                    if (_syncContract?['plugin_version'] != null) Text('WordPress плъгин v${_syncContract!['plugin_version']} · API ${_syncContract!['api_contract'] ?? 1}', style: const TextStyle(fontSize: 11)),
                   ]),
                   if (_lastChecked != null) Padding(padding: const EdgeInsets.only(top: 9), child: Text('${tr('Последна проверка', 'Last checked')}: ${_formatDate(_lastChecked!.toIso8601String())}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6)))),
                   if (_checkingServer) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),

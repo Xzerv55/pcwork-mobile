@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 161});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 162});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -141,6 +141,16 @@ class ApiService {
       'queued_at': operation['queued_at'],
     }).toList(growable: false);
   }
+
+  Future<Map<String, dynamic>> getSyncContractStatus(String token) async {
+    final response = await _httpClient.get(_uri('sync/status'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 12));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
+    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+    if (data is! Map) throw Exception('Невалиден отговор за синхронизацията.');
+    return Map<String, dynamic>.from(data);
+  }
+
   Future<List<Map<String, dynamic>>> getSyncHistory(String token) async {
     final raw = await _offlineStorage.read(key: _syncHistoryKey(token));
     if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
@@ -295,13 +305,24 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping, String paymentMethod = 'cash_courier', String? shippingRateId}) async {
-    final response = await _httpClient.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'}, body: jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'payment_method': paymentMethod, 'shipping_rate_id': shippingRateId})).timeout(const Duration(seconds: 35));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
-    final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
-    if (data is! Map) throw Exception('Невалиден отговор при създаване на поръчка.');
-    _shopCache.remove('${baseUrl.trim()}:orders:${_scope(token)}');
-    return Map<String, dynamic>.from(data);
+    // Keep one idempotency key across a retry: a lost HTTP response must not
+    // create a second WooCommerce order.
+    final requestId = _newRequestId();
+    final body = jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'payment_method': paymentMethod, 'shipping_rate_id': shippingRateId, 'client_request_id': requestId});
+    Future<Map<String, dynamic>> sendOnce() async {
+      final response = await _httpClient.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: body).timeout(const Duration(seconds: 35));
+      final decoded = _decodeResponse(response);
+      if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
+      final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
+      if (data is! Map) throw Exception('Невалиден отговор при създаване на поръчка.');
+      _shopCache.remove('${baseUrl.trim()}:orders:${_scope(token)}');
+      return Map<String, dynamic>.from(data);
+    }
+    try { return await sendOnce(); }
+    catch (error) {
+      if (error is TimeoutException || _isNetworkError(error)) return await sendOnce();
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getShopOrders(String token, {bool forceRefresh = false}) async {
