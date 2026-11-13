@@ -78,7 +78,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 157);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 158);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1199,7 +1199,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             ),
           ),
           TextButton(
-            onPressed: () => _selectTab(1),
+            onPressed: () => _openWebsite('https://pcwork-bg.com/category/uslugi/'),
             child: Text(tr('Всички услуги', 'All services')),
           ),
         ],
@@ -1211,7 +1211,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 11,
         mainAxisSpacing: 11,
-        childAspectRatio: 1.16,
+        childAspectRatio: 1.48,
         children: [
           _homeServiceCard(
             image: 'assets/images/repair_laptop.webp',
@@ -1393,20 +1393,20 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             top: 10,
             right: 10,
             child: Container(
-              width: 43,
-              height: 43,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xCC06142B), border: Border.all(color: accent, width: 1.4), boxShadow: [BoxShadow(color: accent.withValues(alpha: .30), blurRadius: 12)]),
-              child: Icon(icon, color: accent, size: 23),
+              child: Icon(icon, color: accent, size: 20),
             ),
           ),
           Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
+            left: 10,
+            right: 10,
+            bottom: 9,
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+              Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.1, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
               const SizedBox(height: 4),
-              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD7E8FF), fontSize: 10.5, height: 1.2, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
+              Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD7E8FF), fontSize: 9.5, height: 1.15, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black, blurRadius: 8)])),
             ]),
           ),
           Positioned(
@@ -1434,7 +1434,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
           width: 66,
           height: 66,
           decoration: BoxDecoration(border: Border.all(color: const Color(0xFF25C9FF).withValues(alpha: .7)), borderRadius: BorderRadius.circular(14)),
-          child: Image.asset('assets/images/pcwork_booking_hero.webp', fit: BoxFit.cover, alignment: Alignment.center),
+          child: Image.asset('assets/images/pcwork_booking_hero_fixed.webp', fit: BoxFit.cover, alignment: Alignment.center),
         ),
       ),
       const SizedBox(width: 12),
