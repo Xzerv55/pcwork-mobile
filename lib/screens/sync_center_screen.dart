@@ -218,7 +218,7 @@ class _SyncCenterScreenState extends State<SyncCenterScreen> {
                 title: Text(tr('Сървърна кеш диагностика', 'Server cache diagnostics'), style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text(tr('Проверка на Redis, постоянния Object Cache, backend и тест за запис/четене.', 'Check Redis, persistent Object Cache, backend and read/write probe.')),
                 trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: onOpenCacheMonitor,
+                onTap: widget.onOpenCacheMonitor,
               ),
             ),
             _sectionTitle(tr('Автоматична синхронизация', 'Automatic synchronization'), Icons.autorenew_rounded),
