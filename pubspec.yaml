@@ -1,7 +1,7 @@
 name: pcwork_mobile
 description: PCWork cross-platform mobile application for Android and iOS.
 publish_to: none
-version: 1.69.0+169
+version: 1.68.0+168
 environment:
   sdk: '>=3.3.0 <4.0.0'
 dependencies:
@@ -59,12 +59,12 @@ flutter_launcher_icons:
 
 # Branded native launch screen
 flutter_native_splash:
-  color: "#030F2D"
+  color: "#0A101A"
   image: assets/images/pcwork_splash_logo.png
   android: true
   ios: true
   web: false
   android_12:
-    color: "#030F2D"
+    color: "#0A101A"
     image: assets/images/pcwork_splash_logo.png
     icon_background_color: "#FFFFFF"
