@@ -67,6 +67,20 @@ class AuthService {
 
   Future<String?> get token => _storage.read(key: _tokenKey);
 
+  /// Last validated account profile, used for immediate UI restoration while
+  /// the server session is revalidated after process restart.
+  Future<AuthUser?> get cachedUser async {
+    final raw = await _storage.read(key: _cachedUserKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return AuthUser.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      await _storage.delete(key: _cachedUserKey);
+    }
+    return null;
+  }
+
   Future<void> logout() async {
     final bearer = await _storage.read(key: _tokenKey);
     if (bearer != null && bearer.isNotEmpty) {

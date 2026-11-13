@@ -50,7 +50,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool isDarkTheme = true;
   bool staffPreview = false;
   bool clientPreview = false;
-  bool noRegPreview = false;
+  bool anonymousPreview = false;
   int tab = 0;
   bool _settingsOpen = false;
   final Set<int> _visitedTabs = <int>{0};
@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 165);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 166);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -91,22 +91,22 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
 
   AuthService get auth => AuthService(baseUrl: apiUrl);
   PushNotificationService get push => PushNotificationService(baseUrl: apiUrl);
-  ApiService get api => ApiService(baseUrl: apiUrl, userId: noRegPreview ? 0 : (signedInUser?.id ?? 0), clientBuild: _currentBuildNumber);
+  ApiService get api => ApiService(baseUrl: apiUrl, userId: anonymousPreview ? 0 : (signedInUser?.id ?? 0), clientBuild: _currentBuildNumber);
   String tr(String bg, String en) => english ? en : bg;
-  AuthUser? get visibleUser => noRegPreview ? null : signedInUser;
+  AuthUser? get visibleUser => anonymousPreview ? null : signedInUser;
   bool get isAdministrator => signedInUser?.roles.contains('administrator') ?? false;
-  bool get canUseAdminChat => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
-  bool get isStaffAccount => !noRegPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
+  bool get canUseAdminChat => !anonymousPreview && (signedInUser?.roles.any((r) => ['administrator', 'shop_manager', 'pcwork_staff'].contains(r)) ?? false);
+  bool get isStaffAccount => !anonymousPreview && (signedInUser?.roles.any((r) => ['administrator', 'pcwork_staff', 'shop_manager', 'editor'].contains(r)) ?? false);
   bool get isCustomerAccount {
-    if (noRegPreview) return false;
+    if (anonymousPreview) return false;
     const allowedCustomerRoles = {'pcwork_customer', 'customer', 'subscriber'};
     final roles = signedInUser?.roles ?? const <String>[];
     return roles.isNotEmpty && roles.every(allowedCustomerRoles.contains);
   }
   bool get showStaffPreview => isAdministrator && staffPreview && !clientPreview;
   bool get showClientPreview => isAdministrator && clientPreview;
-  bool get canSeeStaffUi => !noRegPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
-  Future<String?> _uiToken() async => noRegPreview ? null : await auth.token;
+  bool get canSeeStaffUi => !anonymousPreview && ((isStaffAccount && !showClientPreview) || showStaffPreview);
+  Future<String?> _uiToken() async => anonymousPreview ? null : await auth.token;
 
   @override
   void initState() {
@@ -127,7 +127,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
-      noRegPreview = prefs.getBool('pcwork_no_reg_preview') ?? false;
+      anonymousPreview = prefs.getBool('pcwork_anonymous_preview') ?? false;
       _autoSyncEnabled = prefs.getBool('pcwork_auto_sync_enabled') ?? true;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty
@@ -154,10 +154,12 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     unawaited(_checkApi(silent: true));
     // Ask the operating system directly on first launch/update. Android keeps
     // an existing grant across app updates; in that case no second dialog is shown.
+    // Restore a previously authenticated account independently from the first-run
+    // notification prompt so permission UI/lifecycle transitions cannot delay login.
+    unawaited(_restoreSession());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _requestSystemNotifications();
-      if (mounted) unawaited(_restoreSession());
     });
     unawaited(_checkForAppUpdate());
     _appUpdateCheckTimer?.cancel();
@@ -165,10 +167,31 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
-    try { final t = await auth.token; if (t != null) { final u = await auth.me(); if (mounted) setState(() { signedInUser = u; repairsFuture = _loadRepairsFuture(); });
-      unawaited(_loadMarketingPreference(t));
-      unawaited(_enablePush(knownToken: t));
-      _startOfflineSync(t); } } catch (_) { if (mounted) setState(() => signedInUser = null); }
+    final token = await auth.token;
+    if (token == null || token.isEmpty) return;
+    // Show the last securely cached identity immediately. The server check below
+    // remains authoritative, but a slow network must not make the app look logged out.
+    try {
+      final cached = await auth.cachedUser;
+      if (cached != null && mounted) {
+        setState(() { signedInUser = cached; repairsFuture ??= _loadRepairsFuture(); });
+      }
+    } catch (_) { /* Ignore a malformed/old cache and validate the bearer token. */ }
+    try {
+      final user = await auth.me();
+      if (!mounted) return;
+      setState(() { signedInUser = user; repairsFuture = _loadRepairsFuture(); });
+      unawaited(_loadMarketingPreference(token));
+      unawaited(_enablePush(knownToken: token));
+      _startOfflineSync(token);
+    } catch (_) {
+      // Keep a cached identity visible only while the locally stored bearer token
+      // still exists. AuthService clears both only for an explicit 401/403 response.
+      final stillStored = await auth.token;
+      if ((stillStored == null || stillStored.isEmpty) && mounted) {
+        setState(() { signedInUser = null; repairsFuture = null; });
+      }
+    }
   }
 
   Future<void> _checkForAppUpdate() async {
@@ -315,7 +338,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       isDarkTheme = prefs.getBool('pcwork_dark_theme') ?? true;
       staffPreview = prefs.getBool('pcwork_staff_preview') ?? false;
       clientPreview = prefs.getBool('pcwork_client_preview') ?? false;
-      noRegPreview = prefs.getBool('pcwork_no_reg_preview') ?? false;
+      anonymousPreview = prefs.getBool('pcwork_anonymous_preview') ?? false;
       _autoSyncEnabled = prefs.getBool('pcwork_auto_sync_enabled') ?? true;
       final savedCode = prefs.getString('pcwork_selected_location') ?? '';
       selectedLocation = savedCode.isEmpty ? null : ServiceLocation(
@@ -439,7 +462,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _loadNotificationHistory() async {
     var records = await PushNotificationService.loadNotificationHistory();
     if (mounted) setState(() => _notificationHistory = records);
-    if (signedInUser != null && !noRegPreview) {
+    if (signedInUser != null && !anonymousPreview) {
       try {
         final bearer = await auth.token;
         if (bearer != null && bearer.isNotEmpty) {
@@ -579,7 +602,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final granted = await push.requestPermission();
       final bearer = await auth.token;
       if (granted && (bearer == null || bearer.isEmpty)) {
-        await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_no_reg_marketing_opt_in') == true);
+        await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_anonymous_marketing_opt_in') == true);
       }
       return;
     }
@@ -595,7 +618,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('По-късно', 'Later'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Разреши известия', 'Allow notifications')))],
     )));
     await prefs.setBool('pcwork_first_run_push_prompt_v1', true);
-    await prefs.setBool('pcwork_no_reg_marketing_opt_in', allow == true && marketingConsent);
+    await prefs.setBool('pcwork_anonymous_marketing_opt_in', allow == true && marketingConsent);
     if (allow != true) return;
     final granted = await push.requestPermission();
     final bearer = await auth.token;
@@ -620,7 +643,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         final granted = await push.requestPermission();
         if (granted) {
           final prefs = await SharedPreferences.getInstance();
-          await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_no_reg_marketing_opt_in') == true);
+          await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_anonymous_marketing_opt_in') == true);
         }
         return;
       }
@@ -977,22 +1000,23 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       Icons.person_rounded,
     ];
     const muted = Color(0xFF91A9D8);
+    final dark = isDarkTheme;
     return SafeArea(
       top: false,
       child: Container(
         margin: const EdgeInsets.fromLTRB(8, 2, 8, 7),
         height: 78,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          gradient: dark ? const LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [Color(0xF20A1B3B), Color(0xF4071028), Color(0xF21A1244)],
-          ),
+          ) : null,
+          color: dark ? null : Colors.white,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFF168BFF).withValues(alpha: .62)),
+          border: Border.all(color: dark ? const Color(0xFF168BFF).withValues(alpha: .62) : const Color(0xFFD5DFEA)),
           boxShadow: [
-            BoxShadow(color: const Color(0xFF087DFF).withValues(alpha: .18), blurRadius: 24, spreadRadius: -5, offset: const Offset(0, -3)),
-            BoxShadow(color: Colors.black.withValues(alpha: .28), blurRadius: 18, offset: const Offset(0, 7)),
+            BoxShadow(color: (dark ? const Color(0xFF087DFF) : Colors.black).withValues(alpha: dark ? .18 : .07), blurRadius: 24, spreadRadius: -5, offset: const Offset(0, -3)),
+            BoxShadow(color: Colors.black.withValues(alpha: dark ? .28 : .06), blurRadius: 18, offset: const Offset(0, 7)),
           ],
         ),
         child: Padding(
@@ -1032,7 +1056,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.max,
                           children: [
-                            Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 29 : 27, color: selected ? Colors.white : muted),
+                            Icon(selected ? selectedIcons[index] : icons[index], size: selected ? 29 : 27, color: selected ? Colors.white : (dark ? muted : const Color(0xFF65758A))),
                             const SizedBox(height: 3),
                             Flexible(
                               child: FittedBox(
@@ -1041,7 +1065,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                                   fontSize: 11.5,
                                   height: 1.05,
                                   fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
-                                  color: selected ? Colors.white : muted,
+                                  color: selected ? Colors.white : (dark ? muted : const Color(0xFF65758A)),
                                   decoration: TextDecoration.none,
                                   decorationColor: Colors.transparent,
                                 )),
@@ -1069,7 +1093,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         return ShopScreen(
           api: api,
           tokenProvider: _uiToken,
-          profileProvider: () async => visibleUser ?? (noRegPreview ? null : await auth.me()),
+          profileProvider: () async => visibleUser ?? (anonymousPreview ? null : await auth.me()),
           english: english,
           notificationOrderId: _pendingShopOrderId,
           openOrdersOnEntry: _openShopOrdersOnEntry,
@@ -1382,7 +1406,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       _homeSectionHeader(tr('Бърз достъп', 'Quick access'), Icons.bolt_rounded),
       const SizedBox(height: 6),
       Wrap(spacing: 9, runSpacing: 9, children: [
-        if (isCustomerAccount || noRegPreview) _homeQuickAccessCard(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
+        if (isCustomerAccount || anonymousPreview) _homeQuickAccessCard(Icons.sports_volleyball_rounded, tr('Плажно приключение', 'Beach Adventure'), _openBeachGame),
         _homeQuickAccessCard(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
         if (isCustomerAccount) _homeQuickAccessCard(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
         _homeQuickAccessCard(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
@@ -1556,7 +1580,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Future<void> _openBeachGame() async {
-    if (!(isCustomerAccount || noRegPreview)) return;
+    if (!(isCustomerAccount || anonymousPreview)) return;
     await _navigatorKey.currentState?.push(MaterialPageRoute(
       builder: (_) => BeachGameScreen(english: english),
     ));
@@ -3024,7 +3048,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     final controller = TextEditingController(text: apiUrl);
     var draftStaffPreview = staffPreview;
     var draftClientPreview = clientPreview;
-    var draftNoRegPreview = noRegPreview;
+    var draftAnonymousPreview = anonymousPreview;
     var draftDarkTheme = isDarkTheme;
     var draftLanguageMode = languageMode;
     Timer? apiSaveTimer;
@@ -3067,7 +3091,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () { controller.text = defaultApi; apiSaveTimer?.cancel(); saveApi(defaultApi, sheetContext); }, icon: const Icon(Icons.restart_alt), label: Text(tr('Възстанови адреса по подразбиране', 'Restore default address')))),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като служител', 'Preview as employee')), subtitle: Text(tr('Само визуализация. Не променя ролята или сървърните права.', 'Visual preview only. Does not change role or server permissions.')), value: draftStaffPreview, onChanged: (v) => savePreview(v, setSheetState)),
             SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Преглед като клиент', 'Preview as customer')), subtitle: Text(tr('Скрива служебните екрани само за визуална проверка.', 'Hides staff screens for visual review only.')), value: draftClientPreview, onChanged: (v) async { setSheetState(() { draftClientPreview = v; if (v) draftStaffPreview = false; }); if (mounted) setState(() { clientPreview = v; if (v) staffPreview = false; }); await _savePreference('pcwork_client_preview', v); if (v) await _savePreference('pcwork_staff_preview', false); }),
-            SwitchListTile(contentPadding: EdgeInsets.zero, secondary: const Icon(Icons.visibility_off_outlined), title: const Text('No Reg'), subtitle: Text(tr('Преглед на приложението като нерегистриран потребител. Само визуален режим; не променя профила и сървърните права.', 'Preview the app as an unregistered user. Visual mode only; does not change the account or server permissions.')), value: draftNoRegPreview, onChanged: (v) async { setSheetState(() => draftNoRegPreview = v); if (mounted) setState(() { noRegPreview = v; if (v) { tab = 0; _visitedTabs.add(0); } }); await _savePreference('pcwork_no_reg_preview', v); }),
+            SwitchListTile(contentPadding: EdgeInsets.zero, secondary: const Icon(Icons.visibility_off_outlined), title: const Text('Потребител без регистрация'), subtitle: Text(tr('Преглед на приложението като нерегистриран потребител. Само визуален режим; не променя профила и сървърните права.', 'Preview the app as an unregistered user. Visual mode only; does not change the account or server permissions.')), value: draftAnonymousPreview, onChanged: (v) async { setSheetState(() => draftAnonymousPreview = v); if (mounted) setState(() { anonymousPreview = v; if (v) { tab = 0; _visitedTabs.add(0); } }); await _savePreference('pcwork_anonymous_preview', v); }),
           ],
           SwitchListTile(contentPadding: EdgeInsets.zero, secondary: Icon(draftDarkTheme ? Icons.dark_mode_outlined : Icons.light_mode_outlined), title: Text(tr('Тъмна тема', 'Dark theme')), subtitle: Text(tr('Изключете за светла тема.', 'Turn off to use the light theme.')), value: draftDarkTheme, onChanged: (v) => saveTheme(v, setSheetState)),
           const SizedBox(height: 10),

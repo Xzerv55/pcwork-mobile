@@ -217,7 +217,7 @@ class PushNotificationService {
     }
   }
 
-  /// Register a first-run No Reg installation. Marketing consent is explicit
+  /// Register a first-run unregistered installation. Marketing consent is explicit
   /// and independent from the operating-system notification permission.
   Future<bool> registerAnonymous({required bool marketingOptIn}) async {
     if (!DefaultFirebaseOptions.isConfigured) return false;

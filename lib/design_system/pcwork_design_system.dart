@@ -168,9 +168,12 @@ abstract final class PCWorkTheme {
     const accent = PCWorkColors.cyan;
     final brightness = dark ? Brightness.dark : Brightness.light;
     final foreground = dark ? PCWorkColors.textPrimary : PCWorkColors.lightText;
-    final muted = dark ? PCWorkColors.textSecondary : const Color(0xFF3F5066);
-    final outline = dark ? const Color(0xFF294365) : const Color(0xFFD5DFEA);
-    final surface = dark ? const Color(0xFF101D32) : Colors.white;
+    final muted = dark ? PCWorkColors.textSecondary : const Color(0xFF34445A);
+    final outline = dark ? const Color(0xFF294365) : const Color(0xFFC8D4E2);
+    final surface = dark ? const Color(0xFF101D32) : const Color(0xFFFFFFFF);
+    const lightCanvas = Color(0xFFF0F4F9);
+    const lightSurfaceAlt = Color(0xFFF7F9FC);
+    const lightPrimary = Color(0xFF087F83);
 
     return ThemeData(
       useMaterial3: true,
@@ -183,14 +186,17 @@ abstract final class PCWorkTheme {
       }),
       brightness: brightness,
       fontFamily: 'NotoSans',
-      scaffoldBackgroundColor: dark ? PCWorkColors.midnight : const Color(0xFFF1F5FA),
-      canvasColor: dark ? PCWorkColors.midnight : PCWorkColors.lightBackground,
+      scaffoldBackgroundColor: dark ? PCWorkColors.midnight : lightCanvas,
+      canvasColor: dark ? PCWorkColors.midnight : lightCanvas,
       cardColor: surface,
       colorScheme: ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
-        primary: dark ? PCWorkColors.electricBlue : const Color(0xFF087F83),
+        primary: dark ? PCWorkColors.electricBlue : lightPrimary,
         secondary: PCWorkColors.violet,
-        tertiary: PCWorkColors.cyan,
+        tertiary: dark ? PCWorkColors.cyan : const Color(0xFF6B55C7),
         surface: surface,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        surfaceContainerHighest: dark ? const Color(0xFF1A2A42) : const Color(0xFFE8EEF5),
         onSurface: foreground,
         outline: outline,
       ),
@@ -230,7 +236,7 @@ abstract final class PCWorkTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: dark ? const Color(0xFF0D192B) : const Color(0xFFF5F8FC),
+        fillColor: dark ? const Color(0xFF0D192B) : lightSurfaceAlt,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         hintStyle: TextStyle(color: dark ? PCWorkColors.textMuted : const Color(0xFF66778D), fontSize: 13),
         labelStyle: TextStyle(color: muted, fontSize: 13, fontWeight: FontWeight.w600),
@@ -261,6 +267,32 @@ abstract final class PCWorkTheme {
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: dark ? accent : lightPrimary,
+        selectionColor: (dark ? accent : lightPrimary).withValues(alpha: .22),
+        selectionHandleColor: dark ? accent : lightPrimary,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? Colors.white : (dark ? const Color(0xFF8FA2BB) : const Color(0xFF718096))),
+        trackColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? (dark ? accent : lightPrimary) : outline),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? (dark ? accent : lightPrimary) : Colors.transparent),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+        side: BorderSide(color: muted, width: 1.4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+      ),
+      radioTheme: RadioThemeData(fillColor: WidgetStateProperty.resolveWith((states) => states.contains(WidgetState.selected) ? (dark ? accent : lightPrimary) : muted)),
+      popupMenuTheme: PopupMenuThemeData(
+        color: dark ? const Color(0xFF14243B) : Colors.white,
+        textStyle: TextStyle(color: foreground, fontSize: 14),
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: outline)),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: TextStyle(color: foreground, fontSize: 14),
+        inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: dark ? const Color(0xFF0D192B) : lightSurfaceAlt),
       ),
       dividerTheme: DividerThemeData(color: outline, thickness: 1, space: 22),
       listTileTheme: ListTileThemeData(
