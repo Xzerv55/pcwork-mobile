@@ -1,0 +1,11 @@
+App name: PCWork Care – Repairs & Service
+Short description: Service care for computers, laptops and gaming consoles — requests, repairs and updates in one place.
+Full description:
+PCWork Care is the mobile app from PCWork, designed to make it easier to connect with the service team and manage repair services.
+
+Use the app to view your devices and repair information, submit service requests, book appointments and communicate with the PCWork team. Access useful service tools and information about your service experience.
+
+PCWork Care is built for PCWork customers and staff, with a focus on convenience, clear communication and taking care of your devices.
+
+Services: computers, laptops, PlayStation consoles and other devices.
+Website: https://pcwork-bg.com/

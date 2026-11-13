@@ -1,0 +1,2 @@
+BG: PCWork, сервиз, ремонт, компютри, лаптопи, PlayStation, PS4, PS5, диагностика, профилактика, сервизна заявка, резервация, ремонт на конзоли
+EN: PCWork, repair, service, computer, laptop, PlayStation, PS4, PS5, diagnostics, maintenance, service request, appointment, console repair

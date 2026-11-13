@@ -117,14 +117,9 @@ class _BookingScreenState extends State<BookingScreen> {
   Widget build(BuildContext context) {
     final location = widget.location;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final muted = dark ? PCWorkColors.textSecondary : const Color(0xFF607187);
-    final foreground = dark ? PCWorkColors.textPrimary : const Color(0xFF172033);
-    final panelTint = dark ? Colors.white.withValues(alpha: .045) : const Color(0xFFF7FAFD);
+    final muted = dark ? PCWorkColors.textSecondary : Colors.blueGrey;
     return Container(
-      decoration: BoxDecoration(gradient: dark ? PCWorkEffects.background : const LinearGradient(
-        begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Color(0xFFF7F9FC), Color(0xFFF0F4F9), Color(0xFFEAF0F6)],
-      )),
+      decoration: const BoxDecoration(gradient: PCWorkEffects.background),
       child: RefreshIndicator(
         color: PCWorkColors.cyan,
         onRefresh: _load,
@@ -134,18 +129,16 @@ class _BookingScreenState extends State<BookingScreen> {
             PCWorkGlassPanel(
               glow: true,
               padding: const EdgeInsets.all(20),
-              gradient: dark ? const LinearGradient(
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [Color(0xE51B4773), Color(0xD20B1835), Color(0xCC26165A)],
-              ) : const LinearGradient(
-                begin: Alignment.topLeft, end: Alignment.bottomRight,
-                colors: [Color(0xFFE3F5FA), Color(0xFFF2F5FC), Color(0xFFEDEBFA)],
               ),
               child: Row(children: [
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('PCWORK • BOOKING', 'PCWORK • BOOKING'), style: TextStyle(color: dark ? PCWorkColors.cyan : const Color(0xFF087F83), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
+                  Text(tr('PCWORK • BOOKING', 'PCWORK • BOOKING'), style: const TextStyle(color: PCWorkColors.cyan, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.8)),
                   const SizedBox(height: 9),
-                  Text(tr('Запази своя час.', 'Book your service.'), style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: foreground)),
+                  Text(tr('Запази своя час.', 'Book your service.'), style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 7),
                   Text(tr('Избери услуга и удобно време. Ние ще се погрижим за устройството ти.', 'Choose a service and a convenient time. We will take care of your device.'), style: TextStyle(color: muted, height: 1.4)),
                 ])),
@@ -161,12 +154,12 @@ class _BookingScreenState extends State<BookingScreen> {
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: panelTint, borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .28))),
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: .045), borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.electricBlue.withValues(alpha: .28))),
                   child: Row(children: [
                     const PCWorkGlowIcon(icon: Icons.location_on_rounded, size: 44, iconSize: 22),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(location?.name ?? tr('Не е избран обект', 'No location selected'), style: TextStyle(fontWeight: FontWeight.w800, color: foreground)),
+                      Text(location?.name ?? tr('Не е избран обект', 'No location selected'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       if ((location?.address ?? '').isNotEmpty) Text(location!.address, style: TextStyle(color: muted, fontSize: 12)),
                       if (location == null) Text(tr('Избери обект, за да видиш свободните часове.', 'Choose a location to view available times.'), style: TextStyle(color: muted, fontSize: 12)),
                     ])),
@@ -183,7 +176,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     initialValue: serviceId,
                     isExpanded: true,
                     decoration: InputDecoration(
-                      filled: true, fillColor: panelTint,
+                      filled: true, fillColor: Colors.white.withValues(alpha: .045),
                       prefixIcon: const Icon(Icons.miscellaneous_services_rounded, color: PCWorkColors.cyan),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .3))),
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .25))),
@@ -199,15 +192,15 @@ class _BookingScreenState extends State<BookingScreen> {
                     onTap: _chooseDate,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-                      decoration: BoxDecoration(gradient: dark ? const LinearGradient(colors: [Color(0x4421D4D8), Color(0x332C66C9)]) : const LinearGradient(colors: [Color(0xFFDDF7F5), Color(0xFFE0EAFB)]), borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.cyan.withValues(alpha: .48))),
-                      child: Row(children: [const PCWorkGlowIcon(icon: Icons.calendar_today_rounded, size: 42, iconSize: 20, color: PCWorkColors.cyan), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('ИЗБРАНА ДАТА', 'SELECTED DATE'), style: TextStyle(fontSize: 10, color: dark ? PCWorkColors.cyan : const Color(0xFF087F83), letterSpacing: 1.2, fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_displayDate(_dateKey(selectedDate)), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: foreground))])), Icon(Icons.chevron_right_rounded, color: dark ? PCWorkColors.cyan : const Color(0xFF087F83), size: 28)],),
+                      decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0x4421D4D8), Color(0x332C66C9)]), borderRadius: BorderRadius.circular(18), border: Border.all(color: PCWorkColors.cyan.withValues(alpha: .48))),
+                      child: Row(children: [const PCWorkGlowIcon(icon: Icons.calendar_today_rounded, size: 42, iconSize: 20, color: PCWorkColors.cyan), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(tr('ИЗБРАНА ДАТА', 'SELECTED DATE'), style: const TextStyle(fontSize: 10, color: PCWorkColors.cyan, letterSpacing: 1.2, fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_displayDate(_dateKey(selectedDate)), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))])), const Icon(Icons.chevron_right_rounded, color: PCWorkColors.cyan, size: 28)],),
                     ),
                   ),
                   const SizedBox(height: 14),
                   if (location == null)
-                    _emptyPanel(Icons.location_searching_rounded, tr('Първо избери сервизен обект.', 'Choose a service location first.'), dark)
+                    _emptyPanel(Icons.location_searching_rounded, tr('Първо избери сервизен обект.', 'Choose a service location first.'))
                   else if (slots.isEmpty)
-                    _emptyPanel(Icons.event_busy_rounded, tr('Няма свободни часове за тази дата. Избери друг ден.', 'No available times on this date. Choose another day.'), dark)
+                    _emptyPanel(Icons.event_busy_rounded, tr('Няма свободни часове за тази дата. Избери друг ден.', 'No available times on this date. Choose another day.'))
                   else Wrap(spacing: 9, runSpacing: 9, children: slots.map((slot) {
                     final start = '${slot['start']}'; final selected = selectedStart == start;
                     return ChoiceChip(
@@ -215,7 +208,7 @@ class _BookingScreenState extends State<BookingScreen> {
                       selected: selected,
                       onSelected: (_) => setState(() => selectedStart = start),
                       selectedColor: PCWorkColors.violet,
-                      backgroundColor: dark ? PCWorkColors.electricBlue.withValues(alpha: .12) : const Color(0xFFE3EDF8),
+                      backgroundColor: PCWorkColors.electricBlue.withValues(alpha: .12),
                       side: BorderSide(color: selected ? PCWorkColors.cyan : PCWorkColors.electricBlue.withValues(alpha: .35)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
                     );
@@ -223,9 +216,9 @@ class _BookingScreenState extends State<BookingScreen> {
                   const SizedBox(height: 18),
                   _sectionHeading(Icons.devices_rounded, tr('Информация за устройството', 'Device information')),
                   const SizedBox(height: 10),
-                  TextField(controller: deviceController, decoration: _fieldDecoration(tr('Устройство / модел (по желание)', 'Device / model (optional)'), Icons.laptop_mac_rounded, dark)),
+                  TextField(controller: deviceController, decoration: _fieldDecoration(tr('Устройство / модел (по желание)', 'Device / model (optional)'), Icons.laptop_mac_rounded)),
                   const SizedBox(height: 10),
-                  TextField(controller: issueController, maxLines: 3, decoration: _fieldDecoration(tr('Опиши накратко проблема (по желание)', 'Briefly describe the issue (optional)'), Icons.notes_rounded, dark)),
+                  TextField(controller: issueController, maxLines: 3, decoration: _fieldDecoration(tr('Опиши накратко проблема (по желание)', 'Briefly describe the issue (optional)'), Icons.notes_rounded)),
                   const SizedBox(height: 18),
                   SizedBox(width: double.infinity, child: DecoratedBox(
                     decoration: BoxDecoration(gradient: const LinearGradient(colors: [PCWorkColors.electricBlue, PCWorkColors.cyan, PCWorkColors.violet]), borderRadius: BorderRadius.circular(17), boxShadow: [BoxShadow(color: PCWorkColors.electricBlue.withValues(alpha: .25), blurRadius: 20, offset: const Offset(0, 7))]),
@@ -243,7 +236,7 @@ class _BookingScreenState extends State<BookingScreen> {
             _sectionHeading(Icons.bookmark_added_rounded, tr('Моите резервации', 'My appointments')),
             const SizedBox(height: 10),
             if (bookings.isEmpty)
-              _emptyPanel(Icons.event_note_rounded, tr('Все още нямаш записани часове.', 'You do not have any appointments yet.'), dark)
+              _emptyPanel(Icons.event_note_rounded, tr('Все още нямаш записани часове.', 'You do not have any appointments yet.'))
             else ...bookings.map((b) {
               final status = '${b['status']}';
               final active = status == 'confirmed';
@@ -269,18 +262,18 @@ class _BookingScreenState extends State<BookingScreen> {
     Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -.2))),
   ]);
 
-  InputDecoration _fieldDecoration(String label, IconData icon, bool dark) => InputDecoration(
+  InputDecoration _fieldDecoration(String label, IconData icon) => InputDecoration(
     labelText: label,
     prefixIcon: Icon(icon, color: PCWorkColors.cyan),
     filled: true,
-    fillColor: dark ? const Color(0xFF0D192B) : const Color(0xFFF7FAFD),
+    fillColor: Colors.white.withValues(alpha: .045),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: PCWorkColors.electricBlue.withValues(alpha: .22))),
   );
 
-  Widget _emptyPanel(IconData icon, String message, bool dark) => PCWorkGlassPanel(
+  Widget _emptyPanel(IconData icon, String message) => PCWorkGlassPanel(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-    child: Row(children: [Icon(icon, color: PCWorkColors.cyan, size: 25), const SizedBox(width: 12), Expanded(child: Text(message, style: TextStyle(color: dark ? PCWorkColors.textSecondary : const Color(0xFF607187))))]),
+    child: Row(children: [Icon(icon, color: PCWorkColors.cyan, size: 25), const SizedBox(width: 12), Expanded(child: Text(message, style: const TextStyle(color: PCWorkColors.textSecondary)))]),
   );
 
   Widget _errorPanel(String message) => PCWorkGlassPanel(
