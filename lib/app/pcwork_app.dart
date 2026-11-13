@@ -80,7 +80,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 166);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 167);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -111,6 +111,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WidgetsBinding.instance.addObserver(this);
     // Apply persisted theme/language before the first frame to avoid the
     // brief default-theme flash while asynchronous settings are being loaded.
@@ -1135,10 +1136,10 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final labels = [tr('Начало', 'Home'), tr('Ремонти', 'Repairs'), tr('Обяви', 'Listings'), tr('Чат', 'Chat'), tr('Записване', 'Booking'), tr('Профил', 'Profile')];
     final overlayStyle = SystemUiOverlayStyle(
-      statusBarColor: isDarkTheme ? const Color(0xFF101D2D) : const Color(0xFFF1F5FA),
+      statusBarColor: Colors.transparent,
       statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
       statusBarBrightness: isDarkTheme ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF1F5FA),
+      systemNavigationBarColor: isDarkTheme ? const Color(0xFF0A101A) : const Color(0xFFF0F4F9),
       systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
     );
     SystemChrome.setSystemUIOverlayStyle(overlayStyle);
@@ -1152,13 +1153,18 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       // to the area above the navigation and can never cover it.
       builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
         value: overlayStyle,
-        child: Column(
-          children: [
-            // Keep route content below the Android status bar, including on
-            // edge-to-edge Android versions, without double-applying insets.
-            Expanded(child: SafeArea(top: true, bottom: false, child: ClipRect(child: child ?? const SizedBox.shrink()))),
-            _buildBottomNavigation(labels),
-          ],
+        child: DecoratedBox(
+          decoration: BoxDecoration(gradient: isDarkTheme
+              ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0D1826), Color(0xFF0A101A), Color(0xFF0B111B)])
+              : const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFF7F9FC), Color(0xFFF0F4F9)])),
+          child: Column(
+            children: [
+              // Let the primary AppBar paint its own surface behind the transparent
+              // status bar; this avoids a separate inset strip above the app.
+              Expanded(child: ClipRect(child: child ?? const SizedBox.shrink())),
+              _buildBottomNavigation(labels),
+            ],
+          ),
         ),
       ),
       theme: PCWorkTheme.build(dark: isDarkTheme),
@@ -1176,8 +1182,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: isDarkTheme
-                    ? const [Color(0xFF101D2D), Color(0xFF0A101A)]
-                    : const [Color(0xFFFFFFFF), Color(0xFFF2F7FA)],
+                    ? const [Color(0xFF0D1826), Color(0xFF0A101A)]
+                    : const [Color(0xFFF7F9FC), Color(0xFFF0F4F9)],
               ),
             ),
           ),
