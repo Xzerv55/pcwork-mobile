@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 167});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 168});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -171,6 +171,47 @@ class ApiService {
   Uri _uri(String path) {
     final base = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
     return Uri.parse('$base/wp-json/pcwork/v1/$path');
+  }
+
+  /// Crypto payments are created and verified server-side. The app never
+  /// receives wallet seed phrases, private keys, or signing credentials.
+  Future<Map<String, dynamic>> getCryptoPaymentStatus(String token) async {
+    final response = await _httpClient.get(
+      _uri('crypto/status'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> createCryptoPayment(String token, {required int orderId, required String asset}) async {
+    final response = await _httpClient.post(
+      _uri('crypto/invoices'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: jsonEncode({'order_id': orderId, 'asset': asset}),
+    ).timeout(const Duration(seconds: 25));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    if (decoded is! Map) throw Exception('Невалиден отговор от криптоплатежния сървър.');
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  Future<Map<String, dynamic>> getCryptoPayment(String token, String invoiceId) async {
+    final safeId = Uri.encodeComponent(invoiceId);
+    final response = await _httpClient.get(
+      _uri('crypto/invoices/$safeId'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 15));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    return decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
   }
 
   /// Public release manifest configured by a PCWork administrator in WordPress.

@@ -30,6 +30,7 @@ import '../screens/beach_game_screen.dart';
 import '../screens/booking_screen.dart';
 import '../screens/ai_assistant_chat_screen.dart';
 import '../screens/sync_center_screen.dart';
+import '../screens/crypto_payments_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -80,7 +81,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 167);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 168);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1416,6 +1417,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         _homeQuickAccessCard(Icons.location_on_outlined, tr('Сервизни обекти', 'Service locations'), _showLocations),
         if (isCustomerAccount) _homeQuickAccessCard(Icons.privacy_tip_outlined, tr('Общи условия и GDPR', 'Terms & GDPR'), () => _openWebsite('https://pcwork-bg.com/gdpr/')),
         _homeQuickAccessCard(Icons.monitor_heart_outlined, tr('PCWork Device Monitor', 'PCWork Device Monitor'), _openDeviceMonitor),
+        _homeQuickAccessCard(Icons.currency_bitcoin_rounded, tr('Криптоплащания', 'Crypto payments'), _openCryptoPayments),
       ]),
     ],
   );
@@ -2608,6 +2610,24 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     } catch (_) {
       try { await AppSettings.openAppSettings(); } catch (e) { _message('${tr('Неуспешно отваряне на настройките:','Could not open settings:')} $e'); }
     }
+  }
+
+  Future<void> _openCryptoPayments() async {
+    final token = await auth.token;
+    if (!mounted) return;
+    if (token == null || token.isEmpty) {
+      _message(tr('Влезте в профила си, за да използвате криптоплащания.', 'Sign in to use crypto payments.'));
+      await _openAuthScreen(register: false);
+      return;
+    }
+    await _navigatorKey.currentState?.push(MaterialPageRoute(
+      builder: (_) => CryptoPaymentsScreen(
+        api: api,
+        tokenProvider: _uiToken,
+        english: english,
+        isDarkTheme: isDarkTheme,
+      ),
+    ));
   }
 
   Future<void> _openDeviceMonitor() async {
