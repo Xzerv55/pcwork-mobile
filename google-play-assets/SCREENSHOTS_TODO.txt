@@ -1,9 +1,0 @@
-Google Play screenshots must be captured from the real v169 app build. Do not use mockups or fabricated screens as app screenshots.
-Recommended capture set:
-1. Home screen (PCWork Care branding visible only where supported by the actual app UI).
-2. My Devices.
-3. My Repairs and status filters.
-4. Appointment booking.
-5. Customer/service center.
-6. Profile and available user tools.
-Capture current, working screens on a real device or emulator after installation and runtime verification.
