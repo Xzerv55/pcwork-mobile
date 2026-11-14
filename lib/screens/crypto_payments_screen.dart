@@ -32,6 +32,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   bool refreshing = false;
   String? error;
   Timer? pollTimer;
+  Timer? countdownTimer;
 
   bool get en => widget.english;
   bool get dark => widget.isDarkTheme;
@@ -48,6 +49,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   @override
   void dispose() {
     pollTimer?.cancel();
+    countdownTimer?.cancel();
     orderIdController.dispose();
     super.dispose();
   }
@@ -87,6 +89,9 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     if (raw.contains('404') || raw.toLowerCase().contains('not found')) {
       return tr('Криптоплащанията все още не са конфигурирани на PCWork сървъра. Не се генерират адреси и не приемаме реални плащания, докато сървърната интеграция не бъде инсталирана и проверена.', 'Crypto payments are not configured on the PCWork server yet. No addresses are generated and real payments are not accepted until the server integration is installed and verified.');
     }
+    if (raw.toLowerCase().contains('частично') || raw.toLowerCase().contains('paidpartial')) {
+      return tr('По поръчката вече има частично BTC плащане. Не създавай нова заявка и не изпращай повторно пълната сума. Отвори същата BTCPay фактура за доплащане или се свържи с PCWork.', 'A partial BTC payment already exists for this order. Do not create another invoice or resend the full amount. Continue using the same BTCPay invoice or contact PCWork.');
+    }
     return raw;
   }
 
@@ -105,6 +110,10 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     }
     if (token == null || !enabled || !supportedAssets.contains(selectedAsset) || creating) {
       _message(tr('Тази валута все още не е активирана от PCWork сървъра.', 'This currency is not yet enabled by the PCWork server.'));
+      return;
+    }
+    if (!_canCreateInvoice) {
+      _message(tr('Има активна или вече платена заявка. Използвай съществуващата фактура и не създавай дубликат.', 'An active or already paid invoice exists. Continue with the existing invoice and do not create a duplicate.'));
       return;
     }
     setState(() { creating = true; error = null; invoice = null; });
@@ -131,7 +140,36 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
 
   void _startPolling() {
     pollTimer?.cancel();
+    countdownTimer?.cancel();
     pollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _refreshInvoice());
+    countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  void _stopPolling() {
+    pollTimer?.cancel();
+    countdownTimer?.cancel();
+  }
+
+  String _paymentState(Map<String, dynamic> data) {
+    final supplied = (data['payment_state'] ?? '').toString().toLowerCase();
+    if (supplied.isNotEmpty) return supplied;
+    final status = (data['status'] ?? '').toString().toLowerCase();
+    final additional = (data['additional_status'] ?? '').toString().toLowerCase();
+    if (status == 'settled') return additional == 'paidover' ? 'overpaid' : 'paid';
+    if (additional == 'paidlate') return 'late_payment_review';
+    if (additional == 'paidpartial') return ['expired', 'invalid'].contains(status) ? 'partial_expired' : 'partial';
+    if (['expired', 'invalid'].contains(status)) return 'expired';
+    if (status == 'processing') return 'confirming';
+    if (status == 'new') return 'pending';
+    return 'unknown';
+  }
+
+  bool get _canCreateInvoice {
+    if (invoice == null) return true;
+    return _paymentState(invoice!) == 'expired';
   }
 
   Future<void> _refreshInvoice() async {
@@ -142,9 +180,9 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       final result = await widget.api.getCryptoPayment(token!, id);
       final data = result['invoice'] is Map ? Map<String, dynamic>.from(result['invoice']) : result;
       if (!mounted) return;
-      setState(() => invoice = {...?invoice, ...data});
-      final status = (data['status'] ?? '').toString().toLowerCase();
-      if (['settled', 'expired', 'invalid'].contains(status)) pollTimer?.cancel();
+      final merged = {...?invoice, ...data};
+      setState(() => invoice = merged);
+      if (['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review'].contains(_paymentState(merged))) _stopPolling();
     } catch (_) {
       // A temporary network error must not change a payment to failed.
     }
@@ -254,39 +292,47 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     const SizedBox(height: 12),
     TextField(controller: orderIdController, keyboardType: TextInputType.number, style: TextStyle(color: foreground), decoration: InputDecoration(labelText: tr('Номер на поръчка', 'Order number'), prefixIcon: const Icon(Icons.receipt_long_outlined), filled: true, fillColor: dark ? const Color(0xFF09162A) : const Color(0xFFF5F7FA), border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)))),
     const SizedBox(height: 12),
-    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : tr('Генерирай адрес и QR код', 'Generate address and QR code')), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
+    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : tr('Генерирай BTC фактура', 'Create BTC invoice')), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
   ]));
 
   Widget _invoiceCard() {
     final data = invoice!;
     final status = (data['status'] ?? 'new').toString();
+    final paymentState = _paymentState(data);
     final checkout = (data['checkout_link'] ?? '').toString();
     final expires = int.tryParse((data['expires_at'] ?? '').toString()) ?? 0;
     final remaining = expires > 0 ? expires - DateTime.now().millisecondsSinceEpoch ~/ 1000 : 0;
-    final settled = status.toLowerCase() == 'settled';
-    final expired = ['expired', 'invalid'].contains(status.toLowerCase());
+    final settled = paymentState == 'paid' || paymentState == 'overpaid';
+    final expired = paymentState == 'expired' || paymentState == 'partial_expired' || paymentState == 'late_payment_review';
+    final partial = paymentState == 'partial' || paymentState == 'partial_expired';
     final uri = Uri.tryParse(checkout);
-    return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: settled ? const Color(0xFF20E39A) : const Color(0xFF168BFF).withValues(alpha: .55))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+    final stateColor = settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : partial ? const Color(0xFFFFC857) : const Color(0xFFFFC857);
+    return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: stateColor.withValues(alpha: .75))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Text(tr('BTC платежна заявка', 'BTC payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
       Text('Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
-      Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: (settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)).withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : Icons.hourglass_top, color: settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
+      Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: stateColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : partial ? Icons.payments_outlined : Icons.hourglass_top, color: stateColor), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(paymentState, status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
+      if (partial && !expired) Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Получено е частично плащане. Доплати по същата фактура преди изтичането ѝ. Не създавай нова заявка.', 'A partial payment was received. Complete payment using the same invoice before it expires. Do not create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (paymentState == 'partial_expired') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Фактурата е изтекла с частично плащане. Не изпращай повторно пълната сума. Свържи се с PCWork за проверка и инструкции.', 'The invoice expired with a partial payment. Do not resend the full amount. Contact PCWork for review and instructions.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (!settled && !expired && uri != null && uri.scheme == 'https') Padding(padding: const EdgeInsets.only(top: 12), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new), label: Text(tr('Отвори защитеното BTC плащане', 'Open secure BTC checkout'))))),
-      if (!settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума, адресът и таймерът се показват в защитената страница на BTCPay. Статусът тук се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount, address and countdown are displayed on the secure BTCPay page. Status here refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
+      if (!settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
     ]));
   }
 
-  String _statusLabel(String status) {
-    switch (status.toLowerCase()) {
-      case 'settled': case 'confirmed': case 'paid': case 'completed': return tr('Плащането е потвърдено', 'Payment confirmed');
-      case 'confirming': case 'detected': case 'processing': return tr('Транзакцията е открита – изчакват се потвърждения', 'Transaction detected – awaiting confirmations');
-      case 'expired': case 'invalid': return tr('Платежната заявка е изтекла или невалидна', 'Payment request expired or invalid');
-      case 'underpaid': return tr('Получена е по-ниска сума', 'Underpayment received');
-      case 'overpaid': return tr('Получена е по-висока сума', 'Overpayment received');
-      case 'cancelled': return tr('Плащането е отменено', 'Payment cancelled');
-      default: return tr('Очаква се плащане', 'Awaiting payment');
+  String _statusLabel(String paymentState, String rawStatus) {
+    switch (paymentState.toLowerCase()) {
+      case 'paid': return tr('Плащането е потвърдено', 'Payment confirmed');
+      case 'overpaid': return tr('Плащането е потвърдено – надплатена сума', 'Payment confirmed – overpaid');
+      case 'partial': return tr('Получено е частично плащане', 'Partial payment received');
+      case 'partial_expired': return tr('Изтекла фактура с частично плащане', 'Expired invoice with partial payment');
+      case 'late_payment_review': return tr('Късно плащане – необходима е проверка', 'Late payment – review required');
+      case 'confirming': return tr('Транзакцията е открита – изчакват се потвърждения', 'Transaction detected – awaiting confirmations');
+      case 'expired': return tr('Платежната заявка е изтекла или невалидна', 'Payment request expired or invalid');
+      case 'pending': return tr('Очаква се плащане', 'Awaiting payment');
+      default: return rawStatus.isNotEmpty ? rawStatus : tr('Статусът се проверява', 'Checking payment status');
     }
   }
 
