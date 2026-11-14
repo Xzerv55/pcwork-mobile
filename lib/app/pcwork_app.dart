@@ -81,7 +81,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 172);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 173);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -1369,7 +1369,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
             onTap: _openAiAssistant,
           ),
           _homeServiceCard(
-            image: 'assets/images/marketplace_listings.png',
+            image: 'assets/images/marketplace_listings.webp',
             title: tr('Обяви', 'Marketplace'),
             subtitle: tr('Купи, продай, открий повече', 'Buy, sell and discover'),
             icon: Icons.campaign_rounded,
