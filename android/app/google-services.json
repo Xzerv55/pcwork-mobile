@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "121815175186",
+    "firebase_url": "https://pcwork-livechat-default-rtdb.firebaseio.com",
+    "project_id": "pcwork-livechat",
+    "storage_bucket": "pcwork-livechat.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:121815175186:android:7848069600dc0a2e58c8cb",
+        "android_client_info": {
+          "package_name": "com.pcworkbg.pcwork_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCr12Zi3NRCjxkX2AAzm6McALN32uOoRW4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
