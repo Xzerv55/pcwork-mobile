@@ -50,7 +50,7 @@ flutter:
 # PCWork branded launcher icon (Android/iOS)
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: assets/images/pcwork_app_icon_white.png
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: assets/images/pcwork_adaptive_foreground.png
@@ -62,7 +62,7 @@ flutter_native_splash:
   color: "#0A101A"
   image: assets/images/pcwork_splash_logo.png
   android: true
-  ios: true
+  ios: false
   web: false
   android_12:
     color: "#0A101A"
