@@ -13,6 +13,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Run static analysis alongside the Android build so it no longer blocks APK creation.
+  analyze-dart:
+    name: Analyze Dart code
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          cache: true
+
+      - name: Cache Pub packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze Dart code
+        run: flutter analyze
+
   build-android:
     name: Build Android ARM64 release APK
     runs-on: ubuntu-latest
@@ -55,9 +84,6 @@ jobs:
         with:
           path: /usr/local/lib/android/sdk/ndk/28.2.13676358
           key: ${{ runner.os }}-android-ndk-28.2.13676358-v1
-
-      - name: Generate iOS asset catalog for shared branding assets
-        run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
 
       - name: Prepare Android project
         run: bash ./scripts/prepare_android.sh
@@ -258,9 +284,6 @@ jobs:
             echo "Removing stale GeneratedPluginRegistrant.java before Flutter regenerates it."
             rm -f "$REGISTRANT"
           fi
-
-      - name: Analyze Dart code
-        run: flutter analyze
 
       - name: Build single-ABI ARM64 release APK
         run: >-
