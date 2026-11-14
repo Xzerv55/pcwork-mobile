@@ -13,9 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Run static analysis alongside the Android build so it no longer blocks APK creation.
   analyze-dart:
-    name: Analyze Dart code
+    name: Analyze Dart code (parallel)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -36,11 +35,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pub-
 
-      - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Analyze Dart code
-        run: flutter analyze
+      - name: Resolve dependencies and analyze Dart code
+        run: |
+          flutter pub get
+          flutter analyze
 
   build-android:
     name: Build Android ARM64 release APK
@@ -49,6 +47,10 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
+
+      - name: Record build start time
+        shell: bash
+        run: echo "PCWORK_BUILD_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -270,10 +272,27 @@ jobs:
           print('Verified: splash generator is not registered as an Android plugin.')
           PYMETA
 
-      - name: Generate PCWork launcher icons and native splash
+      - name: Restore generated Android branding resources
+        uses: actions/cache@v5
+        with:
+          path: android/app/src/main/res
+          key: ${{ runner.os }}-pcwork-android-branding-v2-${{ hashFiles('assets/images/pcwork_app_icon_white.png', 'assets/images/pcwork_adaptive_foreground.png', 'assets/images/pcwork_splash_logo.png', 'android/app/src/main/res/**') }}
+
+      - name: Generate PCWork launcher icons and native splash when cache is incomplete
+        shell: bash
         run: |
-          dart run flutter_launcher_icons
-          dart run flutter_native_splash:create
+          set -euo pipefail
+          if [[ -s android/app/src/main/res/mipmap-mdpi/ic_launcher.png &&
+                -s android/app/src/main/res/mipmap-hdpi/ic_launcher.png &&
+                -s android/app/src/main/res/mipmap-xhdpi/ic_launcher.png &&
+                -s android/app/src/main/res/drawable/launch_background.xml &&
+                -s android/app/src/main/res/drawable-v21/launch_background.xml ]]; then
+            echo "Using cached Android launcher icons and splash resources."
+          else
+            echo "Generating missing Android launcher icons and splash resources."
+            dart run flutter_launcher_icons
+            dart run flutter_native_splash:create
+          fi
 
       - name: Verify generated Android plugin registrant
         shell: bash
@@ -286,13 +305,18 @@ jobs:
           fi
 
       - name: Build single-ABI ARM64 release APK
-        run: >-
-          flutter build apk --release --target-platform android-arm64 --no-pub
-          --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER"
-          --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID"
-          --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID"
-          --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
-          --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMPILE_STARTED_AT="$(date +%s)"
+          flutter build apk --release --target-platform android-arm64 --no-pub \
+            --dart-define=PCWORK_BUILD_NUMBER="$PCWORK_BUILD_NUMBER" \
+            --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+            --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
+            --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY" \
+            --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID"
+          COMPILE_SECONDS=$(( $(date +%s) - COMPILE_STARTED_AT ))
+          echo "Flutter ARM64 APK compilation: ${COMPILE_SECONDS}s." | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Verify ARM64 APK version metadata
         shell: bash
@@ -320,6 +344,15 @@ jobs:
             exit 1
           fi
           echo "Verified ARM64 APK metadata for $PUBSPEC_VERSION."
+
+      - name: Report Android build and verification duration
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          STARTED_AT="${PCWORK_BUILD_STARTED_AT:-$(date +%s)}"
+          ELAPSED_SECONDS=$(( $(date +%s) - STARTED_AT ))
+          echo "Android ARM64 build and verification duration: ${ELAPSED_SECONDS}s (${ELAPSED_SECONDS} seconds)." | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload ARM64 release APK
         uses: actions/upload-artifact@v6
