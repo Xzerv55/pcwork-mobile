@@ -92,7 +92,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
 
   bool get enabled => serverStatus?['enabled'] == true;
   List<String> get supportedAssets {
-    final configured = serverStatus?['assets'];
+    final configured = serverStatus?['assets'] ?? serverStatus?['active_assets'];
     if (configured is List) return configured.map((e) => e.toString().toUpperCase()).where(_assets.containsKey).toList();
     return <String>[];
   }
@@ -103,7 +103,10 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       _message(tr('Въведете валиден номер на поръчка.', 'Enter a valid order number.'));
       return;
     }
-    if (token == null || !enabled || creating) return;
+    if (token == null || !enabled || !supportedAssets.contains(selectedAsset) || creating) {
+      _message(tr('Тази валута все още не е активирана от PCWork сървъра.', 'This currency is not yet enabled by the PCWork server.'));
+      return;
+    }
     setState(() { creating = true; error = null; invoice = null; });
     try {
       final result = await widget.api.createCryptoPayment(token!, orderId: id, asset: selectedAsset);
@@ -161,6 +164,8 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
               const SizedBox(height: 16),
               if (error != null) _notice(error!, isError: true),
               if (!enabled) ...[
+                _assetPicker(),
+                const SizedBox(height: 12),
                 _notice((serverStatus?['message'] ?? tr('Сървърната услуга е изключена или все още не е инсталирана. Не се показват фиктивни адреси или потвърждения.', 'The server service is disabled or not installed yet. No fake addresses or confirmations are shown.')).toString(), isError: false),
                 const SizedBox(height: 12),
                 _securityNote(),
@@ -194,16 +199,53 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(isError ? Icons.error_outline : Icons.info_outline, color: isError ? const Color(0xFFFF647C) : const Color(0xFFFFC857)), const SizedBox(width: 10), Expanded(child: Text(text, style: TextStyle(color: foreground, fontSize: 12.5, height: 1.4))) ]),
   );
 
-  Widget _assetPicker() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(tr('Избери криптовалута', 'Choose cryptocurrency'), style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.w800)),
-    const SizedBox(height: 10),
-    ...supportedAssets.map((symbol) {
-      final asset = _assets[symbol]!;
-      final selected = selectedAsset == symbol;
-      final color = asset['color'] as Color;
-      return Padding(padding: const EdgeInsets.only(bottom: 8), child: Material(color: selected ? color.withValues(alpha: .13) : (dark ? const Color(0xFF101F38) : Colors.white), borderRadius: BorderRadius.circular(16), child: InkWell(borderRadius: BorderRadius.circular(16), onTap: () => setState(() => selectedAsset = symbol), child: Container(padding: const EdgeInsets.all(13), decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: selected ? color : (dark ? const Color(0xFF263B5A) : const Color(0xFFDCE4EF)), width: selected ? 1.5 : 1)), child: Row(children: [Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: color.withValues(alpha: .16), shape: BoxShape.circle), child: Text(asset['icon'].toString(), style: TextStyle(color: color, fontSize: 23, fontWeight: FontWeight.w900))), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(asset['name'].toString(), style: TextStyle(color: foreground, fontWeight: FontWeight.w800)), Text(symbol, style: TextStyle(color: muted, fontSize: 12))])), Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off, color: selected ? color : muted)])))));
-    }),
-  ]);
+  Widget _assetPicker() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(tr('Избери криптовалута', 'Choose cryptocurrency'), style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 10),
+      ..._assets.keys.map((symbol) {
+        final asset = _assets[symbol]!;
+        final active = supportedAssets.contains(symbol);
+        final selected = selectedAsset == symbol;
+        final color = asset['color'] as Color;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Material(
+            color: selected ? color.withValues(alpha: .13) : (dark ? const Color(0xFF101F38) : Colors.white),
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: active ? () => setState(() => selectedAsset = symbol) : null,
+              child: Opacity(
+                opacity: active ? 1 : .58,
+                child: Container(
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: selected ? color : (dark ? const Color(0xFF263B5A) : const Color(0xFFDCE4EF)), width: selected ? 1.5 : 1),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      width: 40, height: 40, alignment: Alignment.center,
+                      decoration: BoxDecoration(color: color.withValues(alpha: .16), shape: BoxShape.circle),
+                      child: Text(asset['icon'].toString(), style: TextStyle(color: color, fontSize: 23, fontWeight: FontWeight.w900)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(asset['name'].toString(), style: TextStyle(color: foreground, fontWeight: FontWeight.w800)),
+                      Text(active ? symbol : '$symbol · ${tr('Очаква интеграция', 'Integration pending')}', style: TextStyle(color: muted, fontSize: 12)),
+                    ])),
+                    Icon(active ? (selected ? Icons.radio_button_checked : Icons.radio_button_off) : Icons.lock_outline, color: selected ? color : muted),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    ],
+  );
 
   Widget _orderForm() => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: dark ? const Color(0xFF263B5A) : const Color(0xFFDCE4EF))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(tr('Плащане на поръчка', 'Pay an order'), style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.w800)),
@@ -227,7 +269,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: settled ? const Color(0xFF20E39A) : const Color(0xFF168BFF).withValues(alpha: .55))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Text(tr('BTC платежна заявка', 'BTC payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
-      const Text('Bitcoin (BTC)', style: TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
+      Text('Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
       Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: (settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)).withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : Icons.hourglass_top, color: settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
