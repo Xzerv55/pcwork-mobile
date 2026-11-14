@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 171});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 169});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -1355,15 +1355,6 @@ class ApiService {
     final response = await _httpClient.delete(_uri('customer/devices/$id'), headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 18));
     final decoded = _decodeResponse(response);
     if (response.statusCode != 200) throw Exception(_responseMessage(decoded, response.statusCode));
-  }
-
-  Future<Map<String, dynamic>> createJoystickReport(String token, Map<String, dynamic> report) async {
-    final response = await _httpClient.post(_uri('joystick/reports'), headers: {
-      'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json',
-    }, body: jsonEncode(report)).timeout(const Duration(seconds: 20));
-    final decoded = _decodeResponse(response);
-    if (response.statusCode != 200 && response.statusCode != 201) throw Exception(_responseMessage(decoded, response.statusCode));
-    return decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
   }
 
 }

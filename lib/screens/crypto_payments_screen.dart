@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class CryptoPaymentsScreen extends StatefulWidget {
@@ -62,7 +62,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       }
       final result = await widget.api.getCryptoPaymentStatus(token!);
       if (!mounted) return;
-      setState(() { serverStatus = result; loading = false; });
+      setState(() { serverStatus = result; loading = false; if (!supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first; });
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = _friendlyError(e); });
@@ -75,7 +75,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     try {
       final result = await widget.api.getCryptoPaymentStatus(token!);
       if (!mounted) return;
-      setState(() => serverStatus = result);
+      setState(() { serverStatus = result; if (!supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first; });
     } catch (e) {
       if (mounted) setState(() => error = _friendlyError(e));
     } finally {
@@ -95,7 +95,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   List<String> get supportedAssets {
     final configured = serverStatus?['assets'];
     if (configured is List) return configured.map((e) => e.toString().toUpperCase()).where(_assets.containsKey).toList();
-    return _assets.keys.toList();
+    return <String>[];
   }
 
   Future<void> _createInvoice() async {
@@ -110,11 +110,16 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       final result = await widget.api.createCryptoPayment(token!, orderId: id, asset: selectedAsset);
       if (!mounted) return;
       final data = result['invoice'] is Map ? Map<String, dynamic>.from(result['invoice']) : result;
-      if ((data['address'] ?? '').toString().isEmpty || (data['amount'] ?? '').toString().isEmpty || (data['id'] ?? '').toString().isEmpty) {
-        throw Exception(tr('Сървърът не върна пълни данни за платежната заявка.', 'The server did not return complete payment request details.'));
+      final checkout = (data['checkout_link'] ?? '').toString();
+      final invoiceId = (data['id'] ?? '').toString();
+      final checkoutUri = Uri.tryParse(checkout);
+      if (invoiceId.isEmpty || checkoutUri == null || checkoutUri.scheme != 'https' || checkoutUri.host.isEmpty) {
+        throw Exception(tr('Сървърът не върна валидна защитена BTCPay платежна страница.', 'The server did not return a valid secure BTCPay checkout page.'));
       }
       setState(() => invoice = data);
       _startPolling();
+      final opened = await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) _message(tr('Не успяхме да отворим BTCPay. Използвай бутона „Отвори плащането“.', 'Could not open BTCPay. Use the Open payment button.'));
     } catch (e) {
       if (mounted) setState(() => error = _friendlyError(e));
     } finally {
@@ -137,7 +142,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       if (!mounted) return;
       setState(() => invoice = {...?invoice, ...data});
       final status = (data['status'] ?? '').toString().toLowerCase();
-      if (['confirmed', 'paid', 'completed', 'expired', 'cancelled', 'underpaid', 'overpaid'].contains(status)) pollTimer?.cancel();
+      if (['settled', 'expired', 'invalid'].contains(status)) pollTimer?.cancel();
     } catch (_) {
       // A temporary network error must not change a payment to failed.
     }
@@ -178,9 +183,9 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Row(children: [Icon(Icons.currency_bitcoin_rounded, color: _cyan, size: 25), SizedBox(width: 8), Text('PCWORK CRYPTO', style: TextStyle(color: _cyan, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.6))]),
       const SizedBox(height: 10),
-      Text(tr('Плащане директно към портфейлите на PCWork', 'Pay directly to PCWork wallets'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.15)),
+      Text(tr('Сигурно BTC плащане към PCWork', 'Secure BTC payment to PCWork'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.15)),
       const SizedBox(height: 7),
-      Text(tr('BTC · ETH · SOL · ADA  |  Уникален адрес за всяка поръчка', 'BTC · ETH · SOL · ADA  |  Unique address for every order'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
+      Text(tr('Bitcoin · BTCPay Hosted Checkout · автоматично потвърждение', 'Bitcoin · BTCPay Hosted Checkout · automatic confirmation'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
     ]),
   );
 
@@ -213,37 +218,30 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
 
   Widget _invoiceCard() {
     final data = invoice!;
-    final address = (data['address'] ?? '').toString();
-    final amount = (data['amount'] ?? '').toString();
-    final network = (data['network'] ?? selectedAsset).toString();
-    final status = (data['status'] ?? 'pending').toString();
-    final uri = (data['payment_uri'] ?? address).toString();
-    final confirmed = ['confirmed', 'paid', 'completed'].contains(status.toLowerCase());
-    final expired = ['expired', 'cancelled'].contains(status.toLowerCase());
-    return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: confirmed ? const Color(0xFF20E39A) : const Color(0xFF168BFF).withValues(alpha: .55))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-      Text(tr('Платежна заявка', 'Payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 6),
-      Text('$amount $selectedAsset', style: const TextStyle(color: _cyan, fontSize: 24, fontWeight: FontWeight.w900)),
-      Text('${tr('Мрежа', 'Network')}: $network', style: TextStyle(color: muted, fontSize: 12)),
-      const SizedBox(height: 13),
-      Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15)), child: QrImageView(data: uri, version: QrVersions.auto, size: 190, backgroundColor: Colors.white)),
-      const SizedBox(height: 12),
-      Align(alignment: Alignment.centerLeft, child: Text(tr('Адрес за получаване', 'Receiving address'), style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w700))),
-      const SizedBox(height: 5),
-      SelectableText(address, textAlign: TextAlign.center, style: TextStyle(color: foreground, fontSize: 12, height: 1.35)),
+    final status = (data['status'] ?? 'new').toString();
+    final checkout = (data['checkout_link'] ?? '').toString();
+    final expires = int.tryParse((data['expires_at'] ?? '').toString()) ?? 0;
+    final remaining = expires > 0 ? expires - DateTime.now().millisecondsSinceEpoch ~/ 1000 : 0;
+    final settled = status.toLowerCase() == 'settled';
+    final expired = ['expired', 'invalid'].contains(status.toLowerCase());
+    final uri = Uri.tryParse(checkout);
+    return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: settled ? const Color(0xFF20E39A) : const Color(0xFF168BFF).withValues(alpha: .55))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Text(tr('BTC платежна заявка', 'BTC payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
-      OutlinedButton.icon(onPressed: () { Clipboard.setData(ClipboardData(text: address)); _message(tr('Адресът е копиран.', 'Address copied.')); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай адреса', 'Copy address'))),
-      const SizedBox(height: 9),
-      Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: (confirmed ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)).withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(confirmed ? Icons.verified : expired ? Icons.error_outline : Icons.hourglass_top, color: confirmed ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
-      if (!confirmed && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('Статусът се проверява автоматично на всеки 12 секунди. Изпрати точната сума по показаната мрежа.', 'Status is checked automatically every 12 seconds. Send the exact amount on the displayed network.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
+      Text('Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
+      if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
+      const SizedBox(height: 12),
+      Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: (settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)).withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : Icons.hourglass_top, color: settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : const Color(0xFFFFC857)), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
+      if (!settled && !expired && uri != null && uri.scheme == 'https') Padding(padding: const EdgeInsets.only(top: 12), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new), label: Text(tr('Отвори защитеното BTC плащане', 'Open secure BTC checkout'))))),
+      if (!settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума, адресът и таймерът се показват в защитената страница на BTCPay. Статусът тук се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount, address and countdown are displayed on the secure BTCPay page. Status here refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
     ]));
   }
 
   String _statusLabel(String status) {
     switch (status.toLowerCase()) {
-      case 'confirmed': case 'paid': case 'completed': return tr('Плащането е потвърдено', 'Payment confirmed');
+      case 'settled': case 'confirmed': case 'paid': case 'completed': return tr('Плащането е потвърдено', 'Payment confirmed');
       case 'confirming': case 'detected': case 'processing': return tr('Транзакцията е открита – изчакват се потвърждения', 'Transaction detected – awaiting confirmations');
-      case 'expired': return tr('Платежната заявка е изтекла', 'Payment request expired');
+      case 'expired': case 'invalid': return tr('Платежната заявка е изтекла или невалидна', 'Payment request expired or invalid');
       case 'underpaid': return tr('Получена е по-ниска сума', 'Underpayment received');
       case 'overpaid': return tr('Получена е по-висока сума', 'Overpayment received');
       case 'cancelled': return tr('Плащането е отменено', 'Payment cancelled');
