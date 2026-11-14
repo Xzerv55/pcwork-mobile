@@ -14,7 +14,7 @@ class JoystickLabScreen extends StatefulWidget {
 class _JoystickLabScreenState extends State<JoystickLabScreen> {
   static const cyan = Color(0xFF21D4D8);
   String _model = 'DualSense';
-  String _connection = 'not_connected';
+  final String _connection = 'not_connected';
   final Map<String, bool> _checks = <String, bool>{};
   bool _saving = false;
   String? _message;
@@ -96,7 +96,7 @@ class _JoystickLabScreenState extends State<JoystickLabScreen> {
         Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(t('Устройство', 'Controller'), style: theme.textTheme.titleMedium),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(value: _model, decoration: InputDecoration(labelText: t('Модел', 'Model')), items: const [DropdownMenuItem(value: 'DualSense', child: Text('Sony DualSense (PS5)')), DropdownMenuItem(value: 'DualShock 4', child: Text('Sony DualShock 4 (PS4)')), DropdownMenuItem(value: 'DualSense Edge', child: Text('Sony DualSense Edge'))], onChanged: (v) => setState(() => _model = v ?? _model)),
+          DropdownButtonFormField<String>(initialValue: _model, decoration: InputDecoration(labelText: t('Модел', 'Model')), items: const [DropdownMenuItem(value: 'DualSense', child: Text('Sony DualSense (PS5)')), DropdownMenuItem(value: 'DualShock 4', child: Text('Sony DualShock 4 (PS4)')), DropdownMenuItem(value: 'DualSense Edge', child: Text('Sony DualSense Edge'))], onChanged: (v) => setState(() => _model = v ?? _model)),
           const SizedBox(height: 10),
           Row(children: [const Icon(Icons.usb_rounded, color: cyan), const SizedBox(width: 8), Expanded(child: Text(t('USB статус: не е свързан (Android HID engine в разработка)', 'USB status: not connected (Android HID engine in development)')))]),
         ]))),
