@@ -31,6 +31,7 @@ import '../screens/booking_screen.dart';
 import '../screens/ai_assistant_chat_screen.dart';
 import '../screens/sync_center_screen.dart';
 import '../screens/crypto_payments_screen.dart';
+import '../screens/joystick_lab_screen.dart';
 
 class PCWorkApp extends StatefulWidget {
   const PCWorkApp({super.key, this.initialPreferences});
@@ -81,7 +82,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 169);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 170);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -2398,6 +2399,16 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     english: english,
   );
 
+  Future<void> _openJoystickLab() async {
+    final token = await _uiToken();
+    if (token == null || token.isEmpty) {
+      _message(tr('Необходим е служебен профил.', 'A staff account is required.'));
+      return;
+    }
+    if (!mounted) return;
+    await _navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => JoystickLabScreen(api: api, token: token, english: english)));
+  }
+
   Future<void> _openSyncCenter() async {
     if (!isAdministrator || !mounted) return;
     final token = await auth.token;
@@ -2458,6 +2469,8 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     ],
     if (visibleUser != null && canSeeStaffUi) ...[
       const SizedBox(height: 16),
+      OutlinedButton.icon(onPressed: _openJoystickLab, icon: const Icon(Icons.gamepad_rounded, color: cyan), label: Text(tr('PCWork Joystick Lab', 'PCWork Joystick Lab'))),
+      const SizedBox(height: 8),
       Text(tr('Достъпът за запис се проверява допълнително от WordPress според служебните права и сервизния обект.', 'WordPress separately verifies staff permissions and location access.'), style: TextStyle(color: isDarkTheme ? Colors.white54 : Colors.black54, fontSize: 12)),
     ],
     const SizedBox(height: 18), OutlinedButton.icon(onPressed: _showSettings, icon: const Icon(Icons.settings), label: Text(tr('Настройки на приложението', 'App settings'))),
