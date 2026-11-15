@@ -36,28 +36,6 @@ jobs:
             ${{ runner.os }}-mobile-
       - name: Generate iOS platform files
         run: flutter create --platforms=ios --org com.pcworkbg --project-name pcwork_mobile .
-      - name: Set iOS deployment target to 15.5
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PYTHON'
-          from pathlib import Path
-          import re
-
-          project = Path("ios/Runner.xcodeproj/project.pbxproj")
-          if not project.is_file():
-              raise SystemExit("Generated Xcode project was not found")
-          content = project.read_text()
-          content, count = re.subn(
-              r"IPHONEOS_DEPLOYMENT_TARGET = [^;]+;",
-              "IPHONEOS_DEPLOYMENT_TARGET = 15.5;",
-              content,
-          )
-          if count == 0:
-              raise SystemExit("No iOS deployment target settings found in Runner project")
-          project.write_text(content)
-          print(f"Updated {count} Runner deployment target setting(s) to iOS 15.5")
-          PYTHON
       - name: Remove generated placeholder test for MyApp
         run: rm -f test/widget_test.dart
       - name: Validate and export the single app version
@@ -74,7 +52,21 @@ jobs:
         run: |
           set -euo pipefail
           flutter pub get
-          SPLASH_VERSION="$(awk '/^  flutter_native_splash:/{found=1; next} found && /^  [^ ]/{exit} found && /version:/{print $2; exit}' pubspec.lock | tr -d '"')"
+          SPLASH_VERSION="$(python3 - <<'PYVERSION'
+          from pathlib import Path
+          lines = Path('pubspec.lock').read_text().splitlines()
+          active = False
+          for line in lines:
+              if line == '  flutter_native_splash:':
+                  active = True
+                  continue
+              if active and line.startswith('  ') and not line.startswith('    '):
+                  break
+              if active and line.startswith('    version:'):
+                  print(line.split(':', 1)[1].strip().strip('"\''))
+                  break
+          PYVERSION
+          )"
           echo "Resolved flutter_native_splash version: ${SPLASH_VERSION:-missing}"
           if [[ "$SPLASH_VERSION" != "2.4.8" ]]; then
             echo "ERROR: expected flutter_native_splash 2.4.8, got ${SPLASH_VERSION:-missing}."
