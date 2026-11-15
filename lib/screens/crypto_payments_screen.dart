@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
@@ -90,7 +92,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       return tr('Криптоплащанията все още не са конфигурирани на PCWork сървъра. Не се генерират адреси и не приемаме реални плащания, докато сървърната интеграция не бъде инсталирана и проверена.', 'Crypto payments are not configured on the PCWork server yet. No addresses are generated and real payments are not accepted until the server integration is installed and verified.');
     }
     if (raw.toLowerCase().contains('частично') || raw.toLowerCase().contains('paidpartial')) {
-      return tr('По поръчката вече има частично BTC плащане. Не създавай нова заявка и не изпращай повторно пълната сума. Отвори същата BTCPay фактура за доплащане или се свържи с PCWork.', 'A partial BTC payment already exists for this order. Do not create another invoice or resend the full amount. Continue using the same BTCPay invoice or contact PCWork.');
+      return tr('По поръчката вече има частично крипто плащане. Не създавай нова заявка и не изпращай повторно пълната сума. Използвай същата платежна заявка или се свържи с PCWork.', 'A partial crypto payment already exists for this order. Do not create another request or resend the full amount. Continue using the same payment request or contact PCWork.');
     }
     return raw;
   }
@@ -121,16 +123,26 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       final result = await widget.api.createCryptoPayment(token!, orderId: id, asset: selectedAsset);
       if (!mounted) return;
       final data = result['invoice'] is Map ? Map<String, dynamic>.from(result['invoice']) : result;
-      final checkout = (data['checkout_link'] ?? '').toString();
       final invoiceId = (data['id'] ?? '').toString();
-      final checkoutUri = Uri.tryParse(checkout);
-      if (invoiceId.isEmpty || checkoutUri == null || checkoutUri.scheme != 'https' || checkoutUri.host.isEmpty) {
-        throw Exception(tr('Сървърът не върна валидна защитена BTCPay платежна страница.', 'The server did not return a valid secure BTCPay checkout page.'));
+      if (selectedAsset == 'ADA') {
+        final address = (data['address'] ?? '').toString();
+        final amount = (data['amount_ada'] ?? data['amount'] ?? '').toString();
+        if (!invoiceId.startsWith('ada_') || !address.startsWith('addr_test1') || amount.isEmpty || (data['network'] ?? 'preprod') != 'preprod') {
+          throw Exception(tr('Gateway не върна валидна Cardano Preprod заявка.', 'Gateway did not return a valid Cardano Preprod payment request.'));
+        }
+        setState(() => invoice = data);
+        _startPolling();
+      } else {
+        final checkout = (data['checkout_link'] ?? '').toString();
+        final checkoutUri = Uri.tryParse(checkout);
+        if (invoiceId.isEmpty || checkoutUri == null || checkoutUri.scheme != 'https' || checkoutUri.host.isEmpty) {
+          throw Exception(tr('Сървърът не върна валидна защитена BTCPay платежна страница.', 'The server did not return a valid secure BTCPay checkout page.'));
+        }
+        setState(() => invoice = data);
+        _startPolling();
+        final opened = await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
+        if (!opened && mounted) _message(tr('Не успяхме да отворим BTCPay. Използвай бутона „Отвори плащането“.', 'Could not open BTCPay. Use the Open payment button.'));
       }
-      setState(() => invoice = data);
-      _startPolling();
-      final opened = await launchUrl(checkoutUri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) _message(tr('Не успяхме да отворим BTCPay. Използвай бутона „Отвори плащането“.', 'Could not open BTCPay. Use the Open payment button.'));
     } catch (e) {
       if (mounted) setState(() => error = _friendlyError(e));
     } finally {
@@ -182,7 +194,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       if (!mounted) return;
       final merged = {...?invoice, ...data};
       setState(() => invoice = merged);
-      if (['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review'].contains(_paymentState(merged))) _stopPolling();
+      if (['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review'].contains(_paymentState(merged))) _stopPolling();
     } catch (_) {
       // A temporary network error must not change a payment to failed.
     }
@@ -225,9 +237,9 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Row(children: [Icon(Icons.currency_bitcoin_rounded, color: _cyan, size: 25), SizedBox(width: 8), Text('PCWORK CRYPTO', style: TextStyle(color: _cyan, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.6))]),
       const SizedBox(height: 10),
-      Text(tr('Сигурно BTC плащане към PCWork', 'Secure BTC payment to PCWork'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.15)),
+      Text(tr('Криптоплащане към PCWork', 'Crypto payment to PCWork'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.15)),
       const SizedBox(height: 7),
-      Text(tr('Bitcoin · BTCPay Hosted Checkout · автоматично потвърждение', 'Bitcoin · BTCPay Hosted Checkout · automatic confirmation'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
+      Text(tr('Bitcoin чрез BTCPay · ADA чрез Cardano Preprod · сървърно потвърждение', 'Bitcoin via BTCPay · ADA via Cardano Preprod · server-side confirmation'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
     ]),
   );
 
@@ -292,7 +304,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     const SizedBox(height: 12),
     TextField(controller: orderIdController, keyboardType: TextInputType.number, style: TextStyle(color: foreground), decoration: InputDecoration(labelText: tr('Номер на поръчка', 'Order number'), prefixIcon: const Icon(Icons.receipt_long_outlined), filled: true, fillColor: dark ? const Color(0xFF09162A) : const Color(0xFFF5F7FA), border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)))),
     const SizedBox(height: 12),
-    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : tr('Генерирай BTC фактура', 'Create BTC invoice')), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
+    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : (selectedAsset == 'ADA' ? tr('Създай ADA заявка', 'Create ADA payment') : tr('Генерирай BTC фактура', 'Create BTC invoice'))), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
   ]));
 
   Widget _invoiceCard() {
@@ -303,22 +315,33 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     final expires = int.tryParse((data['expires_at'] ?? '').toString()) ?? 0;
     final remaining = expires > 0 ? expires - DateTime.now().millisecondsSinceEpoch ~/ 1000 : 0;
     final settled = paymentState == 'paid' || paymentState == 'overpaid';
-    final expired = paymentState == 'expired' || paymentState == 'partial_expired' || paymentState == 'late_payment_review';
+    final expired = paymentState == 'expired' || paymentState == 'partial_expired' || paymentState == 'late_payment_review' || paymentState == 'manual_review';
     final partial = paymentState == 'partial' || paymentState == 'partial_expired';
     final uri = Uri.tryParse(checkout);
     final stateColor = settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : partial ? const Color(0xFFFFC857) : const Color(0xFFFFC857);
     return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: stateColor.withValues(alpha: .75))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-      Text(tr('BTC платежна заявка', 'BTC payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
+      Text(tr('Крипто платежна заявка', 'Crypto payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
-      const Text('Bitcoin (BTC)', style: TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
+      Text(data['asset']?.toString() == 'ADA' ? 'Cardano (ADA)' : 'Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
       Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: stateColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : partial ? Icons.payments_outlined : Icons.hourglass_top, color: stateColor), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(paymentState, status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
       if (partial && !expired) Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Получено е частично плащане. Доплати по същата фактура преди изтичането ѝ. Не създавай нова заявка.', 'A partial payment was received. Complete payment using the same invoice before it expires. Do not create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'partial_expired') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Фактурата е изтекла с частично плащане. Не изпращай повторно пълната сума. Свържи се с PCWork за проверка и инструкции.', 'The invoice expired with a partial payment. Do not resend the full amount. Contact PCWork for review and instructions.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
-      if (!settled && !expired && uri != null && uri.scheme == 'https') Padding(padding: const EdgeInsets.only(top: 12), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new), label: Text(tr('Отвори защитеното BTC плащане', 'Open secure BTC checkout'))))),
-      if (!settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
+      if (data['asset']?.toString() == 'ADA' && !settled && !expired) ...[
+        const SizedBox(height: 12),
+        Text('${data['amount_ada'] ?? data['amount'] ?? '—'} ADA', style: TextStyle(color: foreground, fontSize: 22, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 10),
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)), child: QrImageView(data: (data['address'] ?? '').toString(), version: QrVersions.auto, size: 210, backgroundColor: Colors.white)),
+        const SizedBox(height: 10),
+        SelectableText((data['address'] ?? '').toString(), textAlign: TextAlign.center, style: TextStyle(color: foreground, fontSize: 12)),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: (data['address'] ?? '').toString())); if (mounted) _message(tr('Cardano адресът е копиран.', 'Cardano address copied.')); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай ADA адреса', 'Copy ADA address'))),
+        Text(tr('Мрежа: Cardano Preprod. Изпращай само тестови ADA. QR кодът съдържа адреса; провери сумата отделно преди изпращане.', 'Network: Cardano Preprod. Send test ADA only. The QR contains the address; verify the amount separately before sending.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35)),
+      ],
+      if (data['asset']?.toString() != 'ADA' && !settled && !expired && uri != null && uri.scheme == 'https') Padding(padding: const EdgeInsets.only(top: 12), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new), label: Text(tr('Отвори защитеното BTC плащане', 'Open secure BTC checkout'))))),
+      if (data['asset']?.toString() != 'ADA' && !settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
     ]));
   }
 
@@ -329,6 +352,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       case 'partial': return tr('Получено е частично плащане', 'Partial payment received');
       case 'partial_expired': return tr('Изтекла фактура с частично плащане', 'Expired invoice with partial payment');
       case 'late_payment_review': return tr('Късно плащане – необходима е проверка', 'Late payment – review required');
+      case 'manual_review': return tr('Необходима е ръчна проверка – не изпращай повторно', 'Manual review required – do not resend');
       case 'confirming': return tr('Транзакцията е открита – изчакват се потвърждения', 'Transaction detected – awaiting confirmations');
       case 'expired': return tr('Платежната заявка е изтекла или невалидна', 'Payment request expired or invalid');
       case 'pending': return tr('Очаква се плащане', 'Awaiting payment');
