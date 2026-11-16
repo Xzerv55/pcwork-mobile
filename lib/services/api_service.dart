@@ -55,7 +55,7 @@ class _TimedRepairCache {
 }
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 174});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 179});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -185,6 +185,22 @@ class ApiService {
       throw Exception(_responseMessage(decoded, response.statusCode));
     }
     return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
+
+  Future<List<Map<String, dynamic>>> getCryptoPaymentHistory(String token) async {
+    final response = await _httpClient.get(
+      _uri('crypto/invoices'),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 20));
+    final decoded = _decodeResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_responseMessage(decoded, response.statusCode));
+    }
+    if (decoded is! Map || decoded['items'] is! List) return <Map<String, dynamic>>[];
+    return (decoded['items'] as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> createCryptoPayment(String token, {required int orderId, required String asset}) async {

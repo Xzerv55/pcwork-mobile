@@ -6,11 +6,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 
 class CryptoPaymentsScreen extends StatefulWidget {
-  const CryptoPaymentsScreen({super.key, required this.api, required this.tokenProvider, required this.english, required this.isDarkTheme});
+  const CryptoPaymentsScreen({super.key, required this.api, required this.tokenProvider, required this.english, required this.isDarkTheme, this.initialOrderId, this.initialAsset = 'BTC'});
   final ApiService api;
   final Future<String?> Function() tokenProvider;
   final bool english;
   final bool isDarkTheme;
+  final int? initialOrderId;
+  final String initialAsset;
 
   @override
   State<CryptoPaymentsScreen> createState() => _CryptoPaymentsScreenState();
@@ -32,7 +34,13 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   bool loading = true;
   bool creating = false;
   bool refreshing = false;
+  bool refreshingInvoice = false;
+  bool _invoiceRefreshInProgress = false;
+  DateTime? lastInvoiceRefresh;
   String? error;
+  List<Map<String, dynamic>> paymentHistory = <Map<String, dynamic>>[];
+  bool historyLoading = false;
+  String? historyError;
   Timer? pollTimer;
   Timer? countdownTimer;
 
@@ -45,6 +53,8 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialOrderId != null && widget.initialOrderId! > 0) orderIdController.text = widget.initialOrderId.toString();
+    selectedAsset = widget.initialAsset.toUpperCase();
     _initialize();
   }
 
@@ -59,17 +69,66 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   Future<void> _initialize() async {
     try {
       token = await widget.tokenProvider();
-      if (token == null || token!.isEmpty) {
-        setState(() { loading = false; error = tr('Влезте в PCWork профила си, за да използвате криптоплащания.', 'Sign in to your PCWork account to use crypto payments.'); });
-        return;
-      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = _friendlyError(e);
+      });
+      return;
+    }
+    if (token == null || token!.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error = tr('Влезте в PCWork профила си, за да използвате криптоплащания.', 'Sign in to your PCWork account to use crypto payments.');
+      });
+      return;
+    }
+    try {
       final result = await widget.api.getCryptoPaymentStatus(token!);
       if (!mounted) return;
-      setState(() { serverStatus = result; loading = false; if (!supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first; });
+      setState(() {
+        serverStatus = result;
+        loading = false;
+        if (!supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = _friendlyError(e); });
     }
+    await _loadPaymentHistory();
+    if (mounted && widget.initialOrderId != null && widget.initialOrderId! > 0 &&
+        widget.initialAsset.toUpperCase() == 'ADA' && supportedAssets.contains('ADA')) {
+      await _createInvoice();
+    }
+  }
+
+  Future<void> _loadPaymentHistory() async {
+    if (token == null || token!.isEmpty || historyLoading) return;
+    setState(() { historyLoading = true; historyError = null; });
+    try {
+      final items = await widget.api.getCryptoPaymentHistory(token!);
+      if (!mounted) return;
+      setState(() { paymentHistory = items; });
+    } catch (e) {
+      if (mounted) setState(() { historyError = _friendlyError(e); });
+    } finally {
+      if (mounted) setState(() { historyLoading = false; });
+    }
+  }
+
+  Future<void> _openHistoryItem(Map<String, dynamic> item) async {
+    final id = (item['invoice_id'] ?? '').toString();
+    final asset = (item['asset'] ?? '').toString().toUpperCase();
+    if (id.isEmpty || !['BTC', 'ADA'].contains(asset) || token == null) return;
+    setState(() {
+      selectedAsset = asset;
+      invoice = Map<String, dynamic>.from(item)..['id'] = id;
+      error = null;
+    });
+    await _refreshInvoice(manual: true);
+    await _loadPaymentHistory();
   }
 
   Future<void> _refreshServerStatus() async {
@@ -184,19 +243,26 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     return _paymentState(invoice!) == 'expired';
   }
 
-  Future<void> _refreshInvoice() async {
+  Future<void> _refreshInvoice({bool manual = false}) async {
     final current = invoice;
     final id = current?['id']?.toString();
-    if (id == null || id.isEmpty || token == null) return;
+    if (id == null || id.isEmpty || token == null || _invoiceRefreshInProgress) return;
+    _invoiceRefreshInProgress = true;
+    if (manual && mounted) setState(() => refreshingInvoice = true);
     try {
       final result = await widget.api.getCryptoPayment(token!, id);
       final data = result['invoice'] is Map ? Map<String, dynamic>.from(result['invoice']) : result;
       if (!mounted) return;
       final merged = {...?invoice, ...data};
-      setState(() => invoice = merged);
+      setState(() { invoice = merged; lastInvoiceRefresh = DateTime.now(); });
       if (['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review'].contains(_paymentState(merged))) _stopPolling();
+      if (manual) _message(tr('Статусът е обновен от PCWork сървъра.', 'Payment status refreshed from the PCWork server.'));
     } catch (_) {
       // A temporary network error must not change a payment to failed.
+      if (manual && mounted) _message(tr('В момента няма връзка със сървъра. Последният потвърден статус се запазва.', 'The server is temporarily unavailable. The last confirmed status is preserved.'));
+    } finally {
+      _invoiceRefreshInProgress = false;
+      if (manual && mounted) setState(() => refreshingInvoice = false);
     }
   }
 
@@ -219,11 +285,15 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
                 _notice((serverStatus?['message'] ?? tr('Сървърната услуга е изключена или все още не е инсталирана. Не се показват фиктивни адреси или потвърждения.', 'The server service is disabled or not installed yet. No fake addresses or confirmations are shown.')).toString(), isError: false),
                 const SizedBox(height: 12),
                 _securityNote(),
+                const SizedBox(height: 18),
+                _historySection(),
               ] else ...[
                 _assetPicker(),
                 const SizedBox(height: 14),
                 _orderForm(),
                 if (invoice != null) ...[const SizedBox(height: 16), _invoiceCard()],
+                const SizedBox(height: 18),
+                _historySection(),
                 const SizedBox(height: 14),
                 _securityNote(),
               ],
@@ -321,7 +391,13 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
     final stateColor = settled ? const Color(0xFF20E39A) : expired ? const Color(0xFFFF647C) : partial ? const Color(0xFFFFC857) : const Color(0xFFFFC857);
     return Container(padding: const EdgeInsets.all(17), decoration: BoxDecoration(color: dark ? const Color(0xFF101F38) : Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: stateColor.withValues(alpha: .75))), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       Text(tr('Крипто платежна заявка', 'Crypto payment request'), style: TextStyle(color: foreground, fontSize: 17, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 8),
+      const SizedBox(height: 6),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (lastInvoiceRefresh != null) Text('${tr('Последна проверка', 'Last checked')}: ${TimeOfDay.fromDateTime(lastInvoiceRefresh!).format(context)}', style: TextStyle(color: muted, fontSize: 10.5)),
+        if (lastInvoiceRefresh != null) const SizedBox(width: 8),
+        TextButton.icon(onPressed: refreshingInvoice ? null : () => _refreshInvoice(manual: true), icon: refreshingInvoice ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh, size: 16), label: Text(tr('Провери сега', 'Check now'))),
+      ]),
+      const SizedBox(height: 4),
       Text(data['asset']?.toString() == 'ADA' ? 'Cardano (ADA)' : 'Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
@@ -329,6 +405,38 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       if (partial && !expired) Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Получено е частично плащане. Доплати по същата фактура преди изтичането ѝ. Не създавай нова заявка.', 'A partial payment was received. Complete payment using the same invoice before it expires. Do not create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'partial_expired') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Фактурата е изтекла с частично плащане. Не изпращай повторно пълната сума. Свържи се с PCWork за проверка и инструкции.', 'The invoice expired with a partial payment. Do not resend the full amount. Contact PCWork for review and instructions.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (data['asset']?.toString() == 'ADA') ...[
+        const SizedBox(height: 10),
+        Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: dark ? const Color(0xFF0B1930) : const Color(0xFFF2F6FC), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Разбивка на плащането', 'Payment breakdown'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
+          const SizedBox(height: 7),
+          _amountRow(tr('Изисквана сума', 'Required amount'), '${data['amount_ada'] ?? data['amount'] ?? _formatLovelace(data['expected_lovelace'])} ADA'),
+          _amountRow(tr('Получена сума', 'Received amount'), '${_formatLovelace(data['received_lovelace'])} ADA'),
+          if (_lovelaceValue(data['expected_lovelace']) > 0) ...[
+            const SizedBox(height: 8),
+            ClipRRect(borderRadius: BorderRadius.circular(8), child: LinearProgressIndicator(value: (_lovelaceValue(data['received_lovelace']) / _lovelaceValue(data['expected_lovelace'])).clamp(0.0, 1.0).toDouble(), minHeight: 7, backgroundColor: muted.withValues(alpha: .18), valueColor: AlwaysStoppedAnimation<Color>(settled ? const Color(0xFF20E39A) : const Color(0xFF21A5D8)))),
+          ],
+          if (data['transactions'] is List && (data['transactions'] as List).isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(tr('Наблюдавани блокчейн транзакции', 'Observed blockchain transactions'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
+            const SizedBox(height: 5),
+            ...(data['transactions'] as List).take(10).whereType<Map>().map((tx) {
+              final txId = (tx['tx_id'] ?? '').toString();
+              final index = (tx['output_index'] ?? '').toString();
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    SelectableText(txId.isEmpty ? '—' : '${txId.substring(0, txId.length > 18 ? 18 : txId.length)}… #$index', style: TextStyle(color: muted, fontSize: 10.5)),
+                    Text('${tx['confirmations'] ?? 0}/${tx['required_confirmations'] ?? 2160} ${tr('потвърждения', 'confirmations')}', style: TextStyle(color: muted, fontSize: 9.5)),
+                  ])),
+                  IconButton(tooltip: tr('Копирай transaction ID', 'Copy transaction ID'), visualDensity: VisualDensity.compact, onPressed: txId.isEmpty ? null : () async { await Clipboard.setData(ClipboardData(text: txId)); if (mounted) _message(tr('Transaction ID е копиран.', 'Transaction ID copied.')); }, icon: const Icon(Icons.copy, size: 15)),
+                ]),
+              );
+            }),
+          ],
+        ])),
+      ],
       if (data['asset']?.toString() == 'ADA' && !settled && !expired) ...[
         const SizedBox(height: 12),
         Text('${data['amount_ada'] ?? data['amount'] ?? '—'} ADA', style: TextStyle(color: foreground, fontSize: 22, fontWeight: FontWeight.w900)),
@@ -344,6 +452,53 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       if (data['asset']?.toString() != 'ADA' && !settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
     ]));
   }
+
+  Widget _historySection() => Container(
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(
+      color: dark ? const Color(0xFF101F38) : Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: dark ? const Color(0xFF263B5A) : const Color(0xFFDCE4EF)),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text(tr('История на криптоплащанията', 'Crypto payment history'), style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.w900))),
+        IconButton(onPressed: historyLoading ? null : _loadPaymentHistory, tooltip: tr('Обнови историята', 'Refresh history'), icon: historyLoading ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh)),
+      ]),
+      if (historyError != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(historyError!, style: const TextStyle(color: Color(0xFFFF647C), fontSize: 11.5))),
+      if (historyLoading && paymentHistory.isEmpty) const LinearProgressIndicator(minHeight: 2),
+      if (!historyLoading && paymentHistory.isEmpty && historyError == null)
+        Text(tr('Все още няма криптоплащания по този профил.', 'There are no crypto payments for this account yet.'), style: TextStyle(color: muted, fontSize: 12)),
+      ...paymentHistory.map((item) {
+        final asset = (item['asset'] ?? '').toString().toUpperCase();
+        final orderNo = (item['order_number'] ?? item['order_id'] ?? '').toString();
+        final status = (item['status'] ?? 'unknown').toString();
+        final state = asset == 'ADA' ? status : _paymentState(item);
+        final amount = (item['expected_amount'] ?? item['total'] ?? '—').toString();
+        final currency = (item['currency'] ?? (asset == 'ADA' ? 'ADA' : 'EUR')).toString();
+        final txCount = item['transactions'] is List ? (item['transactions'] as List).length : 0;
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(backgroundColor: asset == 'ADA' ? const Color(0xFF3978F6).withValues(alpha: .15) : const Color(0xFFF7931A).withValues(alpha: .15), child: Text(asset == 'ADA' ? '₳' : '₿', style: TextStyle(color: asset == 'ADA' ? const Color(0xFF3978F6) : const Color(0xFFF7931A), fontWeight: FontWeight.w900))),
+          title: Text('#$orderNo · $asset', style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)),
+          subtitle: Text('${_statusLabel(state, status)}${txCount > 0 ? ' · $txCount ${tr('транзакции', 'transactions')}' : ''}', style: TextStyle(color: muted, fontSize: 11)),
+          trailing: Text('$amount $currency', style: TextStyle(color: foreground, fontSize: 11, fontWeight: FontWeight.w800)),
+          onTap: () => _openHistoryItem(item),
+        );
+      }),
+    ]),
+  );
+
+  int _lovelaceValue(dynamic value) => int.tryParse((value ?? '0').toString()) ?? 0;
+
+  String _formatLovelace(dynamic value) {
+    final amount = _lovelaceValue(value);
+    final whole = amount ~/ 1000000;
+    final fraction = (amount % 1000000).toString().padLeft(6, '0');
+    return '$whole.$fraction';
+  }
+
+  Widget _amountRow(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [Expanded(child: Text(label, style: TextStyle(color: muted, fontSize: 12))), Text(value, style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w800))]));
 
   String _statusLabel(String paymentState, String rawStatus) {
     switch (paymentState.toLowerCase()) {

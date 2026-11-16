@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import 'crypto_payments_screen.dart';
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key, required this.api, required this.tokenProvider, required this.profileProvider, required this.english, this.notificationOrderId, this.openOrdersOnEntry = false, this.onNotificationHandled});
@@ -479,7 +480,7 @@ class _ShopScreenState extends State<ShopScreen> {
             const SizedBox(height: 8),
             Text('${detail['date'] ?? ''} · ${detail['status'] ?? ''}'),
             const SizedBox(height: 8),
-            ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Метод на плащане', 'Payment method')), subtitle: Text((detail['payment_method_title'] ?? tr('Наложен платеж', 'Cash on delivery')).toString())),
+            ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Метод на плащане', 'Payment method')), subtitle: Text(((detail['payment_method_title'] ?? '').toString().trim().isNotEmpty ? detail['payment_method_title'] : _paymentMethodFallback(detail['payment_method'])).toString())),
             if (detail['shipping_methods'] is List && (detail['shipping_methods'] as List).isNotEmpty) ListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Куриерска услуга', 'Courier service')), subtitle: Text((detail['shipping_methods'] as List).join(', '))),
             ...(detail['items'] is List ? (detail['items'] as List).whereType<Map>().map((line) => ListTile(
               contentPadding: EdgeInsets.zero, title: Text('${line['name'] ?? ''}'),
@@ -494,6 +495,15 @@ class _ShopScreenState extends State<ShopScreen> {
         )),
       );
     } catch (e) { _message('$e'); }
+  }
+
+  String _paymentMethodFallback(dynamic method) {
+    switch ((method ?? '').toString()) {
+      case 'crypto_ada': return tr('Cardano (ADA) – Preprod', 'Cardano (ADA) – Preprod');
+      case 'cash_on_site': return tr('Плащане в брой на място в PCWork', 'Cash at PCWork location');
+      case 'cash_courier': return tr('Наложен платеж – плащане в брой на куриера', 'Cash to courier on delivery');
+      default: return tr('Наложен платеж', 'Cash on delivery');
+    }
   }
 
   void _showCart() {
@@ -585,6 +595,20 @@ class _ShopScreenState extends State<ShopScreen> {
     }
     if (cart.isEmpty) return;
 
+    // Marketplace exposes only server-confirmed Cardano Preprod readiness.
+    // Gateway credentials remain server-side; cash checkout works if status is offline.
+    List<String> checkoutCryptoAssets = [];
+    bool cryptoStatusChecked = false;
+    try {
+      final cryptoStatus = await widget.api.getCryptoPaymentStatus(token);
+      final rawAssets = cryptoStatus['assets'] ?? cryptoStatus['active_assets'];
+      cryptoStatusChecked = true;
+      if (cryptoStatus['enabled'] == true && rawAssets is List) {
+        checkoutCryptoAssets = rawAssets.map((value) => value.toString().toUpperCase()).where((value) => value == 'ADA').toList();
+      }
+    } catch (_) {}
+    if (!mounted) return;
+
     AuthUser? profile;
     try { profile = await widget.profileProvider(); } catch (_) {}
     if (!mounted) return;
@@ -626,7 +650,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
-        if (!initialRatesRequested && selectedPaymentMethod == 'cash_courier' && selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
+        if (!initialRatesRequested && selectedPaymentMethod != 'cash_on_site' && selectedCourier.isNotEmpty && city.text.trim().isNotEmpty && address.text.trim().isNotEmpty) {
           initialRatesRequested = true;
           WidgetsBinding.instance.addPostFrameCallback((_) { if (ctx.mounted) unawaited(refreshShippingRates(setDialogState)); });
         }
@@ -644,10 +668,26 @@ class _ShopScreenState extends State<ShopScreen> {
                 DropdownButtonFormField<String>(
                   initialValue: selectedPaymentMethod,
                   decoration: InputDecoration(labelText: tr('Метод на плащане *', 'Payment method *')),
-                  items: [DropdownMenuItem(value: 'cash_on_site', child: Text(tr('В брой на място в PCWork', 'Cash at PCWork location'))), DropdownMenuItem(value: 'cash_courier', child: Text(tr('В брой на куриера при доставка', 'Cash to courier on delivery')))],
-                  onChanged: (value) => setDialogState(() { selectedPaymentMethod = value ?? 'cash_courier'; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; }),
+                  items: [
+                    DropdownMenuItem(value: 'cash_on_site', child: Text(tr('В брой на място в PCWork', 'Cash at PCWork location'))),
+                    DropdownMenuItem(value: 'cash_courier', child: Text(tr('В брой на куриера при доставка', 'Cash to courier on delivery'))),
+                    if (checkoutCryptoAssets.contains('ADA')) DropdownMenuItem(value: 'crypto_ada', child: Text(tr('Cardano ADA – Preprod (тестова мрежа)', 'Cardano ADA – Preprod (test network)'))),
+                  ],
+                  onChanged: (value) => setDialogState(() { selectedPaymentMethod = value ?? 'cash_courier'; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; initialRatesRequested = false; }),
                 ),
-                if (selectedPaymentMethod == 'cash_courier') ...[
+                if (!checkoutCryptoAssets.contains('ADA')) Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      cryptoStatusChecked
+                        ? tr('ADA Preprod временно не е налична. Опцията ще се появи автоматично след потвърдена готовност на PCWork сървъра.', 'ADA Preprod is temporarily unavailable. The option will appear automatically after PCWork server readiness is confirmed.')
+                        : tr('Статусът на криптоплащанията не е достъпен. Може да продължите с плащане в брой.', 'Crypto payment status is unavailable. You can continue with cash payment.'),
+                      style: const TextStyle(color: Colors.orangeAccent, fontSize: 11, height: 1.35),
+                    ),
+                  ),
+                ),
+                if (selectedPaymentMethod != 'cash_on_site') ...[
                 _checkoutField(city, tr('Град/село *', 'City/village *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 _checkoutField(address, tr('Личен адрес или офис / Box на куриер *', 'Home address or courier office / Box *'), onChanged: (_) => setDialogState(() { selectedShippingRateId = ''; shippingRates = []; })),
                 DropdownButtonFormField<String>(
@@ -669,8 +709,22 @@ class _ShopScreenState extends State<ShopScreen> {
                   validator: (value) => (value == null || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value.trim())) ? tr('Невалиден регистрационен имейл.', 'Invalid registration email.') : null,
                 ),
                 const SizedBox(height: 12),
-                Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(dense: true, leading: const Icon(Icons.payments_outlined, color: Color(0xFF21D4D8)), title: Text(selectedPaymentMethod == 'cash_on_site' ? tr('Плащане в брой на място', 'Cash at PCWork location') : tr('Плащане в брой на куриера', 'Cash to courier'), style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')))),
-                if (selectedPaymentMethod == 'cash_courier') ...[
+                Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(
+                   dense: true,
+                   leading: Icon(selectedPaymentMethod == 'crypto_ada' ? Icons.currency_bitcoin_rounded : Icons.payments_outlined, color: const Color(0xFF21D4D8)),
+                   title: Text(
+                     selectedPaymentMethod == 'cash_on_site'
+                       ? tr('Плащане в брой на място', 'Cash at PCWork location')
+                       : selectedPaymentMethod == 'crypto_ada'
+                         ? tr('Онлайн плащане с ADA (Preprod)', 'Online payment with ADA (Preprod)')
+                         : tr('Плащане в брой на куриера', 'Cash to courier'),
+                     style: const TextStyle(fontWeight: FontWeight.w700),
+                   ),
+                   subtitle: Text(selectedPaymentMethod == 'crypto_ada'
+                     ? tr('Ще получиш уникален Cardano Preprod адрес и QR код. Използвай само тестови ADA. Поръчката остава неплатена до сървърно потвърждение.', 'You will receive a unique Cardano Preprod address and QR code. Use test ADA only. The order remains unpaid until server confirmation.')
+                     : tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')),
+                 )),
+                if (selectedPaymentMethod != 'cash_on_site') ...[
                 Align(alignment: Alignment.centerLeft, child: Text(tr('Куриерска услуга', 'Courier service'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
                 Align(alignment: Alignment.centerLeft, child: TextButton.icon(
                   onPressed: loadingShippingRates ? null : () => refreshShippingRates(setDialogState),
@@ -712,7 +766,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final selectedAddress = address.text.trim();
     final selectedCity = city.text.trim();
     try {
-      await widget.api.createShopOrder(
+      final createdOrder = await widget.api.createShopOrder(
         token,
         items: orderItems,
         billing: {
@@ -725,11 +779,28 @@ class _ShopScreenState extends State<ShopScreen> {
           'city': selectedCity, 'postcode': postcode.text.trim(), 'state': (shipping['state'] ?? billing['state'] ?? '').toString(), 'country': 'BG', 'courier': selectedCourier,
         },
         paymentMethod: selectedPaymentMethod,
-        shippingRateId: selectedPaymentMethod == 'cash_courier' ? selectedShippingRateId : null,
+        shippingRateId: selectedPaymentMethod != 'cash_on_site' ? selectedShippingRateId : null,
       );
       if (!mounted) return;
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
+      if (selectedPaymentMethod == 'crypto_ada' && mounted) {
+        final orderId = int.tryParse('${createdOrder['id'] ?? ''}') ?? 0;
+        if (orderId > 0) {
+          await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => CryptoPaymentsScreen(
+              api: widget.api,
+              tokenProvider: widget.tokenProvider,
+              english: widget.english,
+              isDarkTheme: Theme.of(context).brightness == Brightness.dark,
+              initialOrderId: orderId,
+              initialAsset: 'ADA',
+            ),
+          ));
+        } else {
+          _message(tr('Поръчката е създадена, но липсва номер за ADA плащане. Отвори поръчката и се свържи с PCWork.', 'The order was created, but its ID is missing for ADA payment. Open the order and contact PCWork.'));
+        }
+      }
       // The server sends a transactional push notification; keep the in-app flow free of duplicate info cards.
     } catch (e) {
       _message('$e');
