@@ -782,10 +782,31 @@ class _ShopScreenState extends State<ShopScreen> {
         shippingRateId: selectedPaymentMethod != 'cash_on_site' ? selectedShippingRateId : null,
       );
       if (!mounted) return;
+      final orderId = int.tryParse('${createdOrder['id'] ?? ''}') ?? 0;
+      if (selectedPaymentMethod == 'crypto_ada') {
+        final returnedMethod = (createdOrder['payment_method'] ?? '').toString();
+        final paymentRequired = createdOrder['payment_required'] == true;
+        if (orderId <= 0 || returnedMethod != 'crypto_ada') {
+          // The server may already have accepted the order. Do not leave the
+          // cart ready for a fresh request with a different idempotency key.
+          setState(() { cart.clear(); cartProducts.clear(); });
+          await _saveCart();
+          _message(tr('Сървърът прие заявка, но върна несъответстващи данни за ADA плащането. Провери „Моите поръчки“ преди нов опит.', 'The server accepted a request but returned inconsistent ADA payment details. Check My Orders before trying again.'));
+          return;
+        }
+        if (!paymentRequired) {
+          setState(() { cart.clear(); cartProducts.clear(); });
+          await _saveCart();
+          final paymentStatus = (createdOrder['payment_status'] ?? '').toString().toLowerCase();
+          _message(paymentStatus == 'paid'
+              ? tr('Поръчката вече е платена. Не е необходима нова ADA заявка.', 'The order is already paid. No new ADA request is needed.')
+              : tr('Поръчката е намерена, но сървърът не изисква ново плащане. Провери статуса в „Моите поръчки“.', 'The order was found, but the server does not require a new payment. Check its status in My Orders.'));
+          return;
+        }
+      }
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
       if (selectedPaymentMethod == 'crypto_ada' && mounted) {
-        final orderId = int.tryParse('${createdOrder['id'] ?? ''}') ?? 0;
         if (orderId > 0) {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => CryptoPaymentsScreen(

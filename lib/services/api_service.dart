@@ -54,8 +54,10 @@ class _TimedRepairCache {
   final Repair repair;
 }
 
+class _ShopOrderRequestInProgress implements Exception {}
+
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 179});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 180});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -109,6 +111,38 @@ class ApiService {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
+  }
+
+  String _shopOrderPendingKey(String token, String fingerprint) =>
+      'pcwork_shop_order_pending_${crypto.sha256.convert(utf8.encode(baseUrl.trim())).toString().substring(0, 16)}_${_scope(token)}_$fingerprint';
+
+  Future<String> _getShopOrderRequestId(String token, String fingerprint) async {
+    final key = _shopOrderPendingKey(token, fingerprint);
+    final raw = await _offlineStorage.read(key: key);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final saved = jsonDecode(raw);
+        final requestId = (saved is Map ? saved['request_id'] : null)?.toString() ?? '';
+        final createdAt = int.tryParse((saved is Map ? saved['created_at'] : null)?.toString() ?? '') ?? 0;
+        final age = DateTime.now().millisecondsSinceEpoch - createdAt;
+        if (requestId.isNotEmpty && age >= 0 && age < const Duration(hours: 24).inMilliseconds) {
+          return requestId;
+        }
+      } catch (_) {
+        // Replace malformed or obsolete pending checkout metadata below.
+      }
+      await _offlineStorage.delete(key: key);
+    }
+    final requestId = _newRequestId();
+    await _offlineStorage.write(key: key, value: jsonEncode({
+      'request_id': requestId,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    }));
+    return requestId;
+  }
+
+  Future<void> _clearShopOrderRequestId(String token, String fingerprint) async {
+    await _offlineStorage.delete(key: _shopOrderPendingKey(token, fingerprint));
   }
   bool _isNetworkError(Object error) {
     final value = error.toString();
@@ -362,24 +396,51 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> createShopOrder(String token, {required List<Map<String, dynamic>> items, required Map<String, dynamic> billing, required Map<String, dynamic> shipping, String paymentMethod = 'cash_courier', String? shippingRateId}) async {
-    // Keep one idempotency key across a retry: a lost HTTP response must not
-    // create a second WooCommerce order.
-    final requestId = _newRequestId();
-    final body = jsonEncode({'items': items, 'billing': billing, 'shipping': shipping, 'payment_method': paymentMethod, 'shipping_rate_id': shippingRateId, 'client_request_id': requestId});
+    // Persist the idempotency key for this exact checkout payload. If the app is
+    // closed or the user retries after an ambiguous network result, WordPress
+    // receives the same key and returns the original order instead of creating
+    // a duplicate. A changed cart/address/payment choice gets a different key.
+    final payload = <String, dynamic>{
+      'items': items,
+      'billing': billing,
+      'shipping': shipping,
+      'payment_method': paymentMethod,
+      'shipping_rate_id': shippingRateId,
+    };
+    final fingerprint = crypto.sha256.convert(utf8.encode(jsonEncode(payload))).toString().substring(0, 24);
+    final requestId = await _getShopOrderRequestId(token, fingerprint);
+    final body = jsonEncode({...payload, 'client_request_id': requestId});
+
     Future<Map<String, dynamic>> sendOnce() async {
       final response = await _httpClient.post(_uri('shop/orders'), headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: body).timeout(const Duration(seconds: 35));
       final decoded = _decodeResponse(response);
+      if (response.statusCode == 409 && decoded is Map && decoded['code'] == 'pcw_order_request_in_progress') {
+        throw _ShopOrderRequestInProgress();
+      }
       if (response.statusCode != 200 && response.statusCode != 201) throw Exception(decoded is Map ? _responseMessage(decoded, response.statusCode) : 'HTTP ${response.statusCode}');
       final data = decoded is Map ? (decoded['data'] ?? decoded) : decoded;
       if (data is! Map) throw Exception('Невалиден отговор при създаване на поръчка.');
       _shopCache.remove('${baseUrl.trim()}:orders:${_scope(token)}');
       return Map<String, dynamic>.from(data);
     }
-    try { return await sendOnce(); }
-    catch (error) {
-      if (error is TimeoutException || _isNetworkError(error)) return await sendOnce();
-      rethrow;
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final result = await sendOnce();
+        await _clearShopOrderRequestId(token, fingerprint);
+        return result;
+      } on _ShopOrderRequestInProgress {
+        if (attempt >= 2) rethrow;
+        await Future<void>.delayed(const Duration(seconds: 2));
+      } catch (error) {
+        if ((error is TimeoutException || _isNetworkError(error)) && attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+          continue;
+        }
+        rethrow;
+      }
     }
+    throw Exception('Поръчката все още се обработва. Проверете „Моите поръчки“, преди да опитате отново.');
   }
 
   Future<List<Map<String, dynamic>>> getShopOrders(String token, {bool forceRefresh = false}) async {
