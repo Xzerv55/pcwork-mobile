@@ -17,7 +17,7 @@ checks = {
     "pending ID cleared after successful response": "_clearShopOrderRequestId(token, fingerprint)" in API,
     "ADA response method checked": "returnedMethod != 'crypto_ada'" in SHOP,
     "ADA payment_required checked before invoice screen": "createdOrder['payment_required'] == true" in SHOP and "if (!paymentRequired)" in SHOP,
-    "app build metadata is 180": "defaultValue: 180" in APP and "version: 1.80.0+180" in PUBSPEC and "clientBuild = 180" in API,
+    "app build metadata is 181": "defaultValue: 181" in APP and "version: 1.81.0+181" in PUBSPEC and "clientBuild = 181" in API,
 }
 failed = [name for name, ok in checks.items() if not ok]
 for name, ok in checks.items():
