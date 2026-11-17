@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,7 +19,7 @@ class CryptoPaymentsScreen extends StatefulWidget {
   State<CryptoPaymentsScreen> createState() => _CryptoPaymentsScreenState();
 }
 
-class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
+class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with WidgetsBindingObserver {
   static const _cyan = Color(0xFF21D4D8);
   static const _assets = <String, Map<String, dynamic>>{
     'BTC': {'name': 'Bitcoin', 'icon': '₿', 'color': Color(0xFFF7931A)},
@@ -43,6 +44,8 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   String? historyError;
   Timer? pollTimer;
   Timer? countdownTimer;
+  int _pollFailureCount = 0;
+  bool _pollingStopped = false;
 
   bool get en => widget.english;
   bool get dark => widget.isDarkTheme;
@@ -53,6 +56,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.initialOrderId != null && widget.initialOrderId! > 0) orderIdController.text = widget.initialOrderId.toString();
     selectedAsset = widget.initialAsset.toUpperCase();
     _initialize();
@@ -60,6 +64,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     pollTimer?.cancel();
     countdownTimer?.cancel();
     orderIdController.dispose();
@@ -212,16 +217,39 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
   void _startPolling() {
     pollTimer?.cancel();
     countdownTimer?.cancel();
-    pollTimer = Timer.periodic(const Duration(seconds: 12), (_) => _refreshInvoice());
+    _pollFailureCount = 0;
+    _pollingStopped = false;
+    _scheduleInvoicePoll(const Duration(seconds: 12));
     countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {});
     });
   }
 
+  void _scheduleInvoicePoll(Duration delay) {
+    pollTimer?.cancel();
+    if (!mounted || _pollingStopped) return;
+    pollTimer = Timer(delay, () async {
+      await _refreshInvoice();
+      if (!mounted || _pollingStopped) return;
+      final seconds = _pollFailureCount == 0
+          ? 12
+          : (12 * (1 << (_pollFailureCount.clamp(1, 5).toInt() - 1))).clamp(24, 300).toInt();
+      _scheduleInvoicePoll(Duration(seconds: seconds));
+    });
+  }
+
   void _stopPolling() {
+    _pollingStopped = true;
     pollTimer?.cancel();
     countdownTimer?.cancel();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && invoice != null && !_pollingStopped) {
+      _scheduleInvoicePoll(Duration.zero);
+    }
   }
 
   String _paymentState(Map<String, dynamic> data) {
@@ -255,10 +283,16 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> {
       if (!mounted) return;
       final merged = {...?invoice, ...data};
       setState(() { invoice = merged; lastInvoiceRefresh = DateTime.now(); });
-      if (['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review'].contains(_paymentState(merged))) _stopPolling();
+      _pollFailureCount = 0;
+      final terminal = ['paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review'].contains(_paymentState(merged));
+      if (terminal) {
+        _stopPolling();
+        await _loadPaymentHistory();
+      }
       if (manual) _message(tr('Статусът е обновен от PCWork сървъра.', 'Payment status refreshed from the PCWork server.'));
     } catch (_) {
       // A temporary network error must not change a payment to failed.
+      _pollFailureCount = (_pollFailureCount + 1).clamp(1, 6);
       if (manual && mounted) _message(tr('В момента няма връзка със сървъра. Последният потвърден статус се запазва.', 'The server is temporarily unavailable. The last confirmed status is preserved.'));
     } finally {
       _invoiceRefreshInProgress = false;
