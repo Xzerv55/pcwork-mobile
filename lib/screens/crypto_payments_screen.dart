@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
+import '../models/crypto_payment_state.dart';
 
 class CryptoPaymentsScreen extends StatefulWidget {
   const CryptoPaymentsScreen({super.key, required this.api, required this.tokenProvider, required this.english, required this.isDarkTheme, this.initialOrderId, this.initialAsset = 'BTC'});
@@ -255,19 +256,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     }
   }
 
-  String _paymentState(Map<String, dynamic> data) {
-    final supplied = (data['payment_state'] ?? '').toString().toLowerCase();
-    if (supplied.isNotEmpty) return supplied;
-    final status = (data['status'] ?? '').toString().toLowerCase();
-    final additional = (data['additional_status'] ?? '').toString().toLowerCase();
-    if (status == 'settled') return additional == 'paidover' ? 'overpaid' : 'paid';
-    if (additional == 'paidlate') return 'late_payment_review';
-    if (additional == 'paidpartial') return ['expired', 'invalid'].contains(status) ? 'partial_expired' : 'partial';
-    if (['expired', 'invalid'].contains(status)) return 'expired';
-    if (status == 'processing') return 'confirming';
-    if (status == 'new') return 'pending';
-    return 'unknown';
-  }
+  String _paymentState(Map<String, dynamic> data) => CryptoPaymentState.resolve(data);
 
   bool get _canCreateInvoice {
     if (invoice == null) return true;
@@ -439,10 +428,21 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
       Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: stateColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : expired ? Icons.error_outline : partial ? Icons.payments_outlined : Icons.hourglass_top, color: stateColor), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(paymentState, status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
+      if (data['asset']?.toString() != 'ADA' && ((data['amount'] ?? '').toString().isNotEmpty || (data['paid_amount'] ?? '').toString().isNotEmpty)) ...[
+        const SizedBox(height: 10),
+        Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: dark ? const Color(0xFF0B1930) : const Color(0xFFF2F6FC), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Разбивка на BTC плащането', 'BTC payment breakdown'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
+          const SizedBox(height: 7),
+          if ((data['amount'] ?? '').toString().isNotEmpty) _amountRow(tr('Изисквана сума', 'Required amount'), '${data['amount']} ${data['currency'] ?? 'EUR'}'),
+          if ((data['paid_amount'] ?? '').toString().isNotEmpty) _amountRow(tr('Получена сума', 'Received amount'), '${data['paid_amount']} ${data['currency'] ?? 'EUR'}'),
+          Text(tr('Сумите се показват само когато са върнати от сървъра; точната BTC инструкция остава в защитената BTCPay страница.', 'Amounts are shown only when returned by the server; the exact BTC payment instructions remain on the secure BTCPay checkout page.'), style: TextStyle(color: muted, fontSize: 10.5, height: 1.35)),
+        ])),
+      ],
       if (data['asset']?.toString() == 'ADA' && data['settlement_enabled'] != true) Padding(padding: const EdgeInsets.only(top: 10), child: Container(width: double.infinity, padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: const Color(0xFFFFC857).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Text(tr('ТЕСТОВА МРЕЖА PREPROD: дори при потвърден трансфер поръчката не се маркира като платена. Това е тест на адреса, наблюдението и известяването, а не реално разплащане.', 'PREPROD TEST NETWORK: even after a confirmed transfer, the order is not marked as paid. This tests address generation, monitoring and notifications—not real settlement.'), style: TextStyle(color: foreground, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w600)))) ,
       if (partial && !expired) Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Получено е частично плащане. Доплати по същата фактура преди изтичането ѝ. Не създавай нова заявка.', 'A partial payment was received. Complete payment using the same invoice before it expires. Do not create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'partial_expired') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Фактурата е изтекла с частично плащане. Не изпращай повторно пълната сума. Свържи се с PCWork за проверка и инструкции.', 'The invoice expired with a partial payment. Do not resend the full amount. Contact PCWork for review and instructions.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (paymentState == 'manual_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Плащането изисква ръчна проверка от PCWork. Не изпращай повторно средства и не създавай нова заявка.', 'This payment requires manual review by PCWork. Do not resend funds or create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (data['asset']?.toString() == 'ADA') ...[
         const SizedBox(height: 10),
         Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: dark ? const Color(0xFF0B1930) : const Color(0xFFF2F6FC), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
