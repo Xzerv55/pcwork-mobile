@@ -81,7 +81,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _returnToCustomerCenterOnBack = false;
   Map<String, dynamic>? _appUpdateInfo;
   // Keep this in sync with the build number in pubspec.yaml.
-  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 182);
+  static const int _currentBuildNumber = int.fromEnvironment('PCWORK_BUILD_NUMBER', defaultValue: 184);
   static const MethodChannel _updaterChannel = MethodChannel('com.pcworkbg.pcwork_mobile/updater');
   static const MethodChannel _phoneChannel = MethodChannel('com.pcworkbg.pcwork_mobile/phone');
   bool _installingUpdate = false;
@@ -599,34 +599,61 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   }
 
   Future<void> _requestSystemNotifications() async {
+    if (!mounted || _pushDialogShowing) return;
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('pcwork_first_run_push_prompt_v1') == true) {
-      final granted = await push.requestPermission();
-      final bearer = await auth.token;
-      if (granted && (bearer == null || bearer.isEmpty)) {
-        await push.registerAnonymous(marketingOptIn: prefs.getBool('pcwork_anonymous_marketing_opt_in') == true);
-      }
-      return;
+    final permissionGranted = await push.hasNotificationPermission();
+    var marketingGranted = prefs.getBool('pcwork_anonymous_marketing_opt_in') == true;
+    final existingBearer = await auth.token;
+    if (!marketingGranted && existingBearer != null && existingBearer.isNotEmpty) {
+      try {
+        marketingGranted = await push.getMarketingConsent(existingBearer);
+        if (marketingGranted) await prefs.setBool('pcwork_anonymous_marketing_opt_in', true);
+      } catch (_) {}
     }
+    if (permissionGranted && marketingGranted) return;
     if (!mounted) return;
-    var marketingConsent = false;
+    _pushDialogShowing = true;
+    var marketingConsent = marketingGranted;
     final allow = await showDialog<bool>(context: context, barrierDismissible: false, builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
       title: Text(tr('Известия от PCWork', 'PCWork notifications')),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(tr('Разреши известия, за да получаваш важни съобщения и актуална информация от PCWork. Можеш да ги управляваш и по-късно.', 'Allow notifications to receive important messages and updates from PCWork. You can manage them later.')),
+        Text(permissionGranted
+          ? tr('Разрешението за известия вече е дадено. Избери дали желаеш и промоционални кампании.', 'Notifications are already allowed. Choose whether you also want promotional campaigns.')
+          : tr('Разреши известията, за да получаваш важни съобщения за ремонти и услуги от PCWork.', 'Allow notifications to receive important repair and service updates from PCWork.')),
         const SizedBox(height: 12),
-        CheckboxListTile(contentPadding: EdgeInsets.zero, value: marketingConsent, onChanged: (v) => setDialogState(() => marketingConsent = v == true), title: Text(tr('Съгласен/на съм да получавам промоции и маркетингови кампании.', 'I agree to receive promotions and marketing campaigns.')), controlAffinity: ListTileControlAffinity.leading),
+        CheckboxListTile(contentPadding: EdgeInsets.zero, value: marketingConsent, onChanged: marketingGranted ? null : (v) => setDialogState(() => marketingConsent = v == true), title: Text(tr('Съгласен/на съм да получавам промоции и маркетингови кампании.', 'I agree to receive promotions and marketing campaigns.')), controlAffinity: ListTileControlAffinity.leading),
       ]),
-      actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('По-късно', 'Later'))), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(tr('Разреши известия', 'Allow notifications')))],
+      actions: [
+        if (!permissionGranted) TextButton(onPressed: () { Navigator.pop(dialogContext, false); unawaited(_openNotificationSettings()); }, child: Text(tr('Настройки', 'Settings'))),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(tr('Отказвам', 'Not now'))),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text(permissionGranted ? tr('Запази избора', 'Save choice') : tr('Продължи', 'Continue'))),
+      ],
     )));
-    await prefs.setBool('pcwork_first_run_push_prompt_v1', true);
-    await prefs.setBool('pcwork_anonymous_marketing_opt_in', allow == true && marketingConsent);
-    if (allow != true) return;
-    final granted = await push.requestPermission();
-    final bearer = await auth.token;
-    if (granted && (bearer == null || bearer.isEmpty)) {
-      await push.registerAnonymous(marketingOptIn: marketingConsent);
+    _pushDialogShowing = false;
+    if (!mounted) return;
+    if (marketingConsent && !marketingGranted) {
+      await prefs.setBool('pcwork_anonymous_marketing_opt_in', true);
+      final bearer = await auth.token;
+      if (bearer == null || bearer.isEmpty) {
+        if (permissionGranted) await push.registerAnonymous(marketingOptIn: true);
+      } else {
+        try { await push.setMarketingConsent(bearer, true); } catch (_) {}
+      }
     }
+    if (allow == true && !permissionGranted) {
+      final granted = await push.requestPermission();
+      final bearer = await auth.token;
+      if (granted) {
+        if (bearer == null || bearer.isEmpty) {
+          await push.registerAnonymous(marketingOptIn: marketingConsent || marketingGranted);
+        } else {
+          await _enablePush(knownToken: bearer);
+        }
+      }
+    }
+    // If either permission/consent is declined, the rationale is shown again
+    // on the next app launch. The OS itself may require opening Settings after
+    // repeated denials; requestPermission() is only called after an explicit tap.
   }
 
   Future<void> _retryPushRegistration() async {
@@ -1583,7 +1610,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       return;
     }
     await _navigatorKey.currentState?.push(MaterialPageRoute(
-      builder: (_) => AiAssistantChatScreen(api: api, token: token, english: english, staffMode: canSeeStaffUi),
+      builder: (_) => AiAssistantChatScreen(api: api, token: token, english: english, staffMode: canSeeStaffUi, isAdministrator: isAdministrator),
     ));
   }
 
@@ -2437,17 +2464,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         OutlinedButton.icon(onPressed: _openSyncCenter, icon: const Icon(Icons.sync_alt_rounded), label: Text(tr('Център за синхронизация', 'Synchronization center'))),
       ],
       const SizedBox(height: 12),
-      Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Icon(Icons.notifications_active_outlined, color: cyan), const SizedBox(width: 10), Expanded(child: Text(tr('Известия от PCWork', 'PCWork notifications'), style: const TextStyle(fontWeight: FontWeight.bold)))]),
-        const SizedBox(height: 6),
-        Text(tr('Известия за ремонтите и важни сервизни съобщения се управляват от разрешението на телефона.', 'Repair updates and important service messages are controlled by your phone notification permission.'), style: const TextStyle(fontSize: 12)),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(onPressed: _openNotificationSettings, icon: const Icon(Icons.notifications), label: Text(tr('Настройки на известията', 'Notification settings'))),
-        const SizedBox(height: 6),
-        if (_pushStatusMessage != null) Padding(padding: const EdgeInsets.only(top:6), child: Text(_pushStatusMessage!, style: const TextStyle(fontSize:11))),
-        const Divider(),
-        SwitchListTile(contentPadding: EdgeInsets.zero, value: _marketingOptIn, onChanged: _marketingPreferenceLoaded ? _setMarketingPreference : null, title: Text(tr('Промоции и новини', 'Promotions and news')), subtitle: Text(tr('По желание. Съгласието е отделно от известията за ремонт и може да бъде оттеглено по всяко време.', 'Optional. This consent is separate from repair updates and can be withdrawn at any time.'))),
-      ]))),
       OutlinedButton.icon(onPressed: _logout, icon: const Icon(Icons.logout), label: Text(tr('Изход', 'Sign out'))),
     ] else ...[
       const SizedBox(height: 18),

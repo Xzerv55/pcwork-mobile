@@ -499,6 +499,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   String _paymentMethodFallback(dynamic method) {
     switch ((method ?? '').toString()) {
+      case 'crypto_btc': return tr('Bitcoin (BTC) – BTCPay', 'Bitcoin (BTC) – BTCPay');
       case 'crypto_ada': return tr('Cardano (ADA) – Preprod', 'Cardano (ADA) – Preprod');
       case 'cash_on_site': return tr('Плащане в брой на място в PCWork', 'Cash at PCWork location');
       case 'cash_courier': return tr('Наложен платеж – плащане в брой на куриера', 'Cash to courier on delivery');
@@ -604,7 +605,7 @@ class _ShopScreenState extends State<ShopScreen> {
       final rawAssets = cryptoStatus['assets'] ?? cryptoStatus['active_assets'];
       cryptoStatusChecked = true;
       if (cryptoStatus['enabled'] == true && rawAssets is List) {
-        checkoutCryptoAssets = rawAssets.map((value) => value.toString().toUpperCase()).where((value) => value == 'ADA').toList();
+        checkoutCryptoAssets = rawAssets.map((value) => value.toString().toUpperCase()).where((value) => value == 'BTC' || value == 'ADA').toList();
       }
     } catch (_) {}
     if (!mounted) return;
@@ -671,17 +672,18 @@ class _ShopScreenState extends State<ShopScreen> {
                   items: [
                     DropdownMenuItem(value: 'cash_on_site', child: Text(tr('В брой на място в PCWork', 'Cash at PCWork location'))),
                     DropdownMenuItem(value: 'cash_courier', child: Text(tr('В брой на куриера при доставка', 'Cash to courier on delivery'))),
+                    if (checkoutCryptoAssets.contains('BTC')) DropdownMenuItem(value: 'crypto_btc', child: Text(tr('Bitcoin BTC – защитено плащане', 'Bitcoin BTC – secure checkout'))),
                     if (checkoutCryptoAssets.contains('ADA')) DropdownMenuItem(value: 'crypto_ada', child: Text(tr('Cardano ADA – Preprod (тестова мрежа)', 'Cardano ADA – Preprod (test network)'))),
                   ],
                   onChanged: (value) => setDialogState(() { selectedPaymentMethod = value ?? 'cash_courier'; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; initialRatesRequested = false; }),
                 ),
-                if (!checkoutCryptoAssets.contains('ADA')) Padding(
+                if (checkoutCryptoAssets.isEmpty) Padding(
                   padding: const EdgeInsets.only(top: 6, bottom: 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       cryptoStatusChecked
-                        ? tr('ADA Preprod временно не е налична. Опцията ще се появи автоматично след потвърдена готовност на PCWork сървъра.', 'ADA Preprod is temporarily unavailable. The option will appear automatically after PCWork server readiness is confirmed.')
+                        ? tr('BTC/ADA криптоплащанията временно не са налични. Опциите се показват само след потвърдена готовност на съответния Gateway.', 'BTC/ADA crypto payments are temporarily unavailable. Options appear only after the corresponding Gateway reports readiness.')
                         : tr('Статусът на криптоплащанията не е достъпен. Може да продължите с плащане в брой.', 'Crypto payment status is unavailable. You can continue with cash payment.'),
                       style: const TextStyle(color: Colors.orangeAccent, fontSize: 11, height: 1.35),
                     ),
@@ -711,18 +713,22 @@ class _ShopScreenState extends State<ShopScreen> {
                 const SizedBox(height: 12),
                 Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(
                    dense: true,
-                   leading: Icon(selectedPaymentMethod == 'crypto_ada' ? Icons.currency_bitcoin_rounded : Icons.payments_outlined, color: const Color(0xFF21D4D8)),
+                   leading: Icon(selectedPaymentMethod == 'crypto_ada' || selectedPaymentMethod == 'crypto_btc' ? Icons.currency_bitcoin_rounded : Icons.payments_outlined, color: const Color(0xFF21D4D8)),
                    title: Text(
                      selectedPaymentMethod == 'cash_on_site'
                        ? tr('Плащане в брой на място', 'Cash at PCWork location')
-                       : selectedPaymentMethod == 'crypto_ada'
-                         ? tr('Онлайн плащане с ADA (Preprod)', 'Online payment with ADA (Preprod)')
-                         : tr('Плащане в брой на куриера', 'Cash to courier'),
+                       : selectedPaymentMethod == 'crypto_btc'
+                         ? tr('Онлайн плащане с Bitcoin (BTC)', 'Online payment with Bitcoin (BTC)')
+                         : selectedPaymentMethod == 'crypto_ada'
+                           ? tr('Онлайн плащане с ADA (Preprod)', 'Online payment with ADA (Preprod)')
+                           : tr('Плащане в брой на куриера', 'Cash to courier'),
                      style: const TextStyle(fontWeight: FontWeight.w700),
                    ),
-                   subtitle: Text(selectedPaymentMethod == 'crypto_ada'
-                     ? tr('Ще получиш уникален Cardano Preprod адрес и QR код. Използвай само тестови ADA. Поръчката остава неплатена до сървърно потвърждение.', 'You will receive a unique Cardano Preprod address and QR code. Use test ADA only. The order remains unpaid until server confirmation.')
-                     : tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')),
+                   subtitle: Text(selectedPaymentMethod == 'crypto_btc'
+                     ? tr('Ще се отвори защитена BTCPay страница за Bitcoin. Поръчката остава неплатена до потвърждение.', 'A secure BTCPay Bitcoin checkout page will open. The order remains unpaid until confirmation.')
+                     : selectedPaymentMethod == 'crypto_ada'
+                       ? tr('Ще получиш уникален Cardano Preprod адрес и QR код. Използвай само тестови ADA. Поръчката остава неплатена до сървърно потвърждение.', 'You will receive a unique Cardano Preprod address and QR code. Use test ADA only. The order remains unpaid until server confirmation.')
+                       : tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')),
                  )),
                 if (selectedPaymentMethod != 'cash_on_site') ...[
                 Align(alignment: Alignment.centerLeft, child: Text(tr('Куриерска услуга', 'Courier service'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
@@ -783,15 +789,15 @@ class _ShopScreenState extends State<ShopScreen> {
       );
       if (!mounted) return;
       final orderId = int.tryParse('${createdOrder['id'] ?? ''}') ?? 0;
-      if (selectedPaymentMethod == 'crypto_ada') {
+      if (selectedPaymentMethod == 'crypto_btc' || selectedPaymentMethod == 'crypto_ada') {
         final returnedMethod = (createdOrder['payment_method'] ?? '').toString();
         final paymentRequired = createdOrder['payment_required'] == true;
-        if (orderId <= 0 || returnedMethod != 'crypto_ada') {
+        if (orderId <= 0 || returnedMethod != selectedPaymentMethod) {
           // The server may already have accepted the order. Do not leave the
           // cart ready for a fresh request with a different idempotency key.
           setState(() { cart.clear(); cartProducts.clear(); });
           await _saveCart();
-          _message(tr('Сървърът прие заявка, но върна несъответстващи данни за ADA плащането. Провери „Моите поръчки“ преди нов опит.', 'The server accepted a request but returned inconsistent ADA payment details. Check My Orders before trying again.'));
+          _message(tr('Сървърът прие заявка, но върна несъответстващи данни за криптоплащането. Провери „Моите поръчки“ преди нов опит.', 'The server accepted a request but returned inconsistent crypto payment details. Check My Orders before trying again.'));
           return;
         }
         if (!paymentRequired) {
@@ -799,14 +805,14 @@ class _ShopScreenState extends State<ShopScreen> {
           await _saveCart();
           final paymentStatus = (createdOrder['payment_status'] ?? '').toString().toLowerCase();
           _message(paymentStatus == 'paid'
-              ? tr('Поръчката вече е платена. Не е необходима нова ADA заявка.', 'The order is already paid. No new ADA request is needed.')
+              ? tr('Поръчката вече е платена. Не е необходима нова криптозаявка.', 'The order is already paid. No new crypto request is needed.')
               : tr('Поръчката е намерена, но сървърът не изисква ново плащане. Провери статуса в „Моите поръчки“.', 'The order was found, but the server does not require a new payment. Check its status in My Orders.'));
           return;
         }
       }
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
-      if (selectedPaymentMethod == 'crypto_ada' && mounted) {
+      if ((selectedPaymentMethod == 'crypto_btc' || selectedPaymentMethod == 'crypto_ada') && mounted) {
         if (orderId > 0) {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => CryptoPaymentsScreen(
@@ -815,11 +821,11 @@ class _ShopScreenState extends State<ShopScreen> {
               english: widget.english,
               isDarkTheme: Theme.of(context).brightness == Brightness.dark,
               initialOrderId: orderId,
-              initialAsset: 'ADA',
+              initialAsset: selectedPaymentMethod == 'crypto_btc' ? 'BTC' : 'ADA',
             ),
           ));
         } else {
-          _message(tr('Поръчката е създадена, но липсва номер за ADA плащане. Отвори поръчката и се свържи с PCWork.', 'The order was created, but its ID is missing for ADA payment. Open the order and contact PCWork.'));
+          _message(tr('Поръчката е създадена, но липсва номер за криптоплащане. Отвори поръчката и се свържи с PCWork.', 'The order was created, but its ID is missing for crypto payment. Open the order and contact PCWork.'));
         }
       }
       // The server sends a transactional push notification; keep the in-app flow free of duplicate info cards.

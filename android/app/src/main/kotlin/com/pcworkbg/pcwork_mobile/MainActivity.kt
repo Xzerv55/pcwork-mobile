@@ -134,6 +134,11 @@ class MainActivity : FlutterActivity() {
                     }
                     return@setMethodCallHandler
                 }
+                if (call.method == "hasNotificationPermission") {
+                    val granted = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    result.success(granted)
+                    return@setMethodCallHandler
+                }
                 if (call.method == "getPendingNotification") {
                     val data = pendingNotificationData ?: readNotificationIntent(intent)
                     pendingNotificationData = null
@@ -153,18 +158,10 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                     return@setMethodCallHandler
                 }
-                val preferences = getSharedPreferences("pcwork_notification_permissions", MODE_PRIVATE)
-                if (preferences.getBoolean("first_prompt_requested", false)) {
-                    // Android may no longer show the system dialog after a denial.
-                    // The app's notification settings action remains available.
-                    result.success(false)
-                    return@setMethodCallHandler
-                }
                 if (pendingNotificationResult != null) {
                     result.error("permission_in_progress", "Notification permission request is already running.", null)
                     return@setMethodCallHandler
                 }
-                preferences.edit().putBoolean("first_prompt_requested", true).apply()
                 pendingNotificationResult = result
                 requestPermissions(
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),

@@ -185,6 +185,21 @@ class PushNotificationService {
 
   /// Requests the operating-system notification permission independently
   /// of account login. Token registration is deferred until a user session exists.
+  Future<bool> hasNotificationPermission() async {
+    try {
+      if (Platform.isAndroid) {
+        final granted = await _androidNotificationChannel.invokeMethod<bool>('hasNotificationPermission');
+        if (granted == true) return true;
+        if (granted == false) return false;
+      }
+      if (!DefaultFirebaseOptions.isConfigured) return false;
+      await initialize();
+      final status = await FirebaseMessaging.instance.getNotificationSettings();
+      return status.authorizationStatus == AuthorizationStatus.authorized ||
+          status.authorizationStatus == AuthorizationStatus.provisional;
+    } catch (_) { return false; }
+  }
+
   Future<bool> requestPermission() async {
     try {
       if (Platform.isAndroid) {

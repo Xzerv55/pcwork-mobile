@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class AiAssistantChatScreen extends StatefulWidget {
-  const AiAssistantChatScreen({super.key, required this.api, required this.token, required this.english, this.staffMode = false});
+  const AiAssistantChatScreen({super.key, required this.api, required this.token, required this.english, this.staffMode = false, this.isAdministrator = false});
   final ApiService api;
   final String token;
   final bool english;
   final bool staffMode;
+  final bool isAdministrator;
   @override
   State<AiAssistantChatScreen> createState() => _AiAssistantChatScreenState();
 }
@@ -47,7 +48,9 @@ class _AiAssistantChatScreenState extends State<AiAssistantChatScreen> {
       if (!mounted) return;
       setState(() => _messages.add({
         'role': 'assistant',
-        'content': '${tr('Не успях да получа отговор: ', 'I could not get a response: ')}${e.toString().replaceFirst('Exception: ', '')}',
+        'content': widget.isAdministrator
+            ? '${tr('AI техническа грешка: ', 'AI technical error: ')}${e.toString().replaceFirst('Exception: ', '')}'
+            : tr('Извиняваме се, но в момента AI асистентът не е на линия поради технически причини. Моля, опитай отново по-късно.', 'Sorry, the AI assistant is currently unavailable due to technical reasons. Please try again later.'),
       }));
     } finally {
       if (mounted) {

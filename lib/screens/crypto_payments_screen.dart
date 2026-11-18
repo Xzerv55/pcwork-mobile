@@ -96,16 +96,20 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
       setState(() {
         serverStatus = result;
         loading = false;
-        if (!supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first;
+        if (widget.initialOrderId == null && !supportedAssets.contains(selectedAsset) && supportedAssets.isNotEmpty) selectedAsset = supportedAssets.first;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() { loading = false; error = _friendlyError(e); });
     }
     await _loadPaymentHistory();
-    if (mounted && widget.initialOrderId != null && widget.initialOrderId! > 0 &&
-        widget.initialAsset.toUpperCase() == 'ADA' && supportedAssets.contains('ADA')) {
-      await _createInvoice();
+    final initialAsset = widget.initialAsset.toUpperCase();
+    if (mounted && widget.initialOrderId != null && widget.initialOrderId! > 0) {
+      if ((initialAsset == 'BTC' || initialAsset == 'ADA') && supportedAssets.contains(initialAsset)) {
+        await _createInvoice();
+      } else if (mounted) {
+        setState(() => error = tr('Избраният за поръчката актив вече не е наличен. Не избирай друга валута за същата поръчка; свържи се с PCWork.', 'The asset selected for this order is no longer available. Do not choose another currency for this order; contact PCWork.'));
+      }
     }
   }
 
@@ -358,7 +362,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     children: [
       Text(tr('Избери криптовалута', 'Choose cryptocurrency'), style: TextStyle(color: foreground, fontSize: 16, fontWeight: FontWeight.w800)),
       const SizedBox(height: 10),
-      ..._assets.keys.map((symbol) {
+      ..._assets.keys.where((symbol) => widget.initialOrderId == null || symbol == widget.initialAsset.toUpperCase()).map((symbol) {
         final asset = _assets[symbol]!;
         final active = supportedAssets.contains(symbol);
         final selected = selectedAsset == symbol;
@@ -370,7 +374,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
             borderRadius: BorderRadius.circular(16),
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
-              onTap: active ? () => setState(() => selectedAsset = symbol) : null,
+              onTap: active && widget.initialOrderId == null ? () => setState(() => selectedAsset = symbol) : null,
               child: Opacity(
                 opacity: active ? 1 : .58,
                 child: Container(
@@ -408,7 +412,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     const SizedBox(height: 12),
     TextField(controller: orderIdController, keyboardType: TextInputType.number, style: TextStyle(color: foreground), decoration: InputDecoration(labelText: tr('Номер на поръчка', 'Order number'), prefixIcon: const Icon(Icons.receipt_long_outlined), filled: true, fillColor: dark ? const Color(0xFF09162A) : const Color(0xFFF5F7FA), border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)))),
     const SizedBox(height: 12),
-    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : (selectedAsset == 'ADA' ? tr('Създай ADA заявка', 'Create ADA payment') : tr('Генерирай BTC фактура', 'Create BTC invoice'))), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
+    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice || !supportedAssets.contains(selectedAsset) ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : (selectedAsset == 'ADA' ? tr('Създай ADA заявка', 'Create ADA payment') : tr('Генерирай BTC фактура', 'Create BTC invoice'))), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
   ]));
 
   Widget _invoiceCard() {
