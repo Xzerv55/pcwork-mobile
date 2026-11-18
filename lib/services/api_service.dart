@@ -57,7 +57,7 @@ class _TimedRepairCache {
 class _ShopOrderRequestInProgress implements Exception {}
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 187});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 194});
   final String baseUrl;
   final int userId;
   final int clientBuild;
