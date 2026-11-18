@@ -2,6 +2,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pcwork_mobile/models/crypto_payment_state.dart';
 
 void main() {
+  group('CryptoPaymentState review policy', () {
+    test('overpayment is terminal but requires manual review', () {
+      expect(CryptoPaymentState.isTerminal('overpaid'), isTrue);
+      expect(CryptoPaymentState.requiresManualReview('overpaid'), isTrue);
+    });
+
+    test('normal settled payment does not require manual review', () {
+      expect(CryptoPaymentState.isTerminal('paid'), isTrue);
+      expect(CryptoPaymentState.requiresManualReview('paid'), isFalse);
+    });
+
+    test('partial payment remains non-terminal until expiry or settlement', () {
+      expect(CryptoPaymentState.isTerminal('partial'), isFalse);
+      expect(CryptoPaymentState.requiresManualReview('partial'), isFalse);
+    });
+  });
+
   group('CryptoPaymentState.resolve', () {
     test('PaidLate overrides Settled and stale supplied paid state', () {
       expect(CryptoPaymentState.resolve({
@@ -76,6 +93,18 @@ void main() {
     test('additionalStatus separator variants normalize', () {
       expect(CryptoPaymentState.resolve({'status': 'Settled', 'additionalStatus': 'Paid_Late'}), 'late_payment_review');
       expect(CryptoPaymentState.resolve({'status': 'Expired', 'additional_status': 'Paid-Partial'}), 'partial_expired');
+    });
+
+
+    test('unknown provider state never promotes stale cached paid state', () {
+      expect(CryptoPaymentState.resolve({
+        'status': 'UnknownProviderState',
+        'payment_state': 'paid',
+      }), 'unknown');
+    });
+
+    test('empty provider state with no cached state remains unknown', () {
+      expect(CryptoPaymentState.resolve({'status': ''}), 'unknown');
     });
 
     test('unknown status remains unknown', () {

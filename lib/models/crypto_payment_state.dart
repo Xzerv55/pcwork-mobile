@@ -7,6 +7,16 @@ class CryptoPaymentState {
     'manual_review', 'confirming', 'expired', 'pending', 'unknown',
   };
 
+  /// States that must never be presented as a normal successful settlement.
+  static bool requiresManualReview(String state) => const {
+    'overpaid', 'partial_expired', 'late_payment_review', 'manual_review', 'unknown',
+  }.contains(state);
+
+  /// States for which automatic polling can stop; manual refresh remains available.
+  static bool isTerminal(String state) => const {
+    'paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review', 'unknown',
+  }.contains(state);
+
   /// Resolves the canonical payment state. BTCPay additionalStatus exceptions
   /// always take precedence over base status and any cached summary field.
   static String resolve(Map<String, dynamic> data) {
