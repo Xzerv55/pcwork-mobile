@@ -13,6 +13,12 @@ void main() {
       expect(CryptoPaymentState.requiresManualReview('paid'), isFalse);
     });
 
+    test('testnet verification is terminal but never a settled payment', () {
+      expect(CryptoPaymentState.isTerminal('testnet_verified'), isTrue);
+      expect(CryptoPaymentState.requiresManualReview('testnet_verified'), isFalse);
+      expect(CryptoPaymentState.resolve({'status': 'testnet_verified'}), 'testnet_verified');
+    });
+
     test('partial payment remains non-terminal until expiry or settlement', () {
       expect(CryptoPaymentState.isTerminal('partial'), isFalse);
       expect(CryptoPaymentState.requiresManualReview('partial'), isFalse);
@@ -63,6 +69,13 @@ void main() {
         'status': 'Unexpected',
         'payment_state': 'paid',
       }), 'unknown');
+    });
+
+    test('ETH/SOL testnet states remain distinct from paid', () {
+      expect(CryptoPaymentState.resolve({'status': 'awaiting_payment'}), 'awaiting_payment');
+      expect(CryptoPaymentState.resolve({'status': 'confirming'}), 'confirming');
+      expect(CryptoPaymentState.resolve({'status': 'testnet_verified'}), 'testnet_verified');
+      expect(CryptoPaymentState.resolve({'status': 'testnet_verified'}), isNot('paid'));
     });
 
     test('canonical Cardano state remains supported', () {

@@ -26,6 +26,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     'ETH': {'name': 'Ethereum', 'icon': '◆', 'color': Color(0xFF8A9CFF)},
     'SOL': {'name': 'Solana', 'icon': '◎', 'color': Color(0xFF8B6CFF)},
     'ADA': {'name': 'Cardano', 'icon': '₳', 'color': Color(0xFF3978F6)},
+    'GIBORIS': {'name': 'GIBORIS', 'icon': 'G', 'color': Color(0xFF21D4D8)},
   };
   final orderIdController = TextEditingController();
   String selectedAsset = 'BTC';
@@ -105,7 +106,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     await _loadPaymentHistory();
     final initialAsset = widget.initialAsset.toUpperCase();
     if (mounted && widget.initialOrderId != null && widget.initialOrderId! > 0) {
-      if ((initialAsset == 'BTC' || initialAsset == 'ADA') && supportedAssets.contains(initialAsset)) {
+      if (['BTC', 'ADA', 'ETH', 'SOL'].contains(initialAsset) && supportedAssets.contains(initialAsset)) {
         await _createInvoice();
       } else if (mounted) {
         setState(() => error = tr('Избраният за поръчката актив вече не е наличен. Не избирай друга валута за същата поръчка; свържи се с PCWork.', 'The asset selected for this order is no longer available. Do not choose another currency for this order; contact PCWork.'));
@@ -130,7 +131,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
   Future<void> _openHistoryItem(Map<String, dynamic> item) async {
     final id = (item['invoice_id'] ?? '').toString();
     final asset = (item['asset'] ?? '').toString().toUpperCase();
-    if (id.isEmpty || !['BTC', 'ADA'].contains(asset) || token == null) return;
+    if (id.isEmpty || !['BTC', 'ADA', 'ETH', 'SOL'].contains(asset) || token == null) return;
     setState(() {
       selectedAsset = asset;
       invoice = Map<String, dynamic>.from(item)..['id'] = id;
@@ -192,7 +193,16 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
       if (!mounted) return;
       final data = result['invoice'] is Map ? Map<String, dynamic>.from(result['invoice']) : result;
       final invoiceId = (data['id'] ?? '').toString();
-      if (selectedAsset == 'ADA') {
+      if (selectedAsset == 'ETH' || selectedAsset == 'SOL') {
+        final address = (data['address'] ?? '').toString();
+        final amount = (data['amount'] ?? '').toString();
+        final expectedNetwork = selectedAsset == 'ETH' ? 'sepolia' : 'devnet';
+        if (!invoiceId.startsWith('${selectedAsset.toLowerCase()}_') || address.isEmpty || amount.isEmpty || (data['network'] ?? '') != expectedNetwork || data['settlement_enabled'] == true) {
+          throw Exception(tr('Gateway не върна валидна ETH/SOL testnet заявка.', 'Gateway did not return a valid ETH/SOL testnet payment request.'));
+        }
+        setState(() => invoice = data);
+        _startPolling();
+      } else if (selectedAsset == 'ADA') {
         final address = (data['address'] ?? '').toString();
         final amount = (data['amount_ada'] ?? data['amount'] ?? '').toString();
         if (!invoiceId.startsWith('ada_') || !address.startsWith('addr_test1') || amount.isEmpty || (data['network'] ?? 'preprod') != 'preprod') {
@@ -304,6 +314,8 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
           : ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 28), children: [
               _hero(),
               const SizedBox(height: 16),
+              _chainDiagnostics(),
+              const SizedBox(height: 12),
               if (error != null) _notice(error!, isError: true),
               if (!enabled) ...[
                 _assetPicker(),
@@ -327,6 +339,56 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     );
   }
 
+
+  Widget _chainDiagnostics() {
+    final readiness = serverStatus?['asset_readiness'];
+    if (readiness is! Map) return const SizedBox.shrink();
+    final rows = <Map<String, dynamic>>[];
+    for (final symbol in ['ETH', 'SOL', 'GIBORIS']) {
+      final raw = readiness[symbol];
+      if (raw is Map) rows.add({'symbol': symbol, ...Map<String, dynamic>.from(raw)});
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF101F38) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _cyan.withValues(alpha: .25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(tr('Състояние на допълнителните мрежи', 'Additional network status'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 14)),
+        const SizedBox(height: 8),
+        ...rows.map((row) {
+          final symbol = row['symbol'].toString();
+          final connected = row['connected'] == true;
+          final active = row['active'] == true && row['payment_creation_enabled'] == true;
+          final network = (row['network'] ?? (symbol == 'GIBORIS' ? 'Cardano' : '—')).toString();
+          final detail = symbol == 'GIBORIS'
+              ? tr('Идентичността на токена и платежният поток се подготвят.', 'Token identity and payment flow are being prepared.')
+              : active
+                  ? tr('Testnet адресният пул и RPC са готови. Тестовите трансфери не маркират поръчките като платени.', 'Testnet address pool and RPC are ready. Test transfers do not mark orders as paid.')
+                  : connected
+                      ? tr('RPC връзката е налична, но адресният пул или готовността за заявки липсва.', 'RPC is connected, but the address pool or invoice readiness is missing.')
+                      : tr('Няма активна RPC връзка или мрежата не е конфигурирана.', 'No active RPC connection or network is not configured.');
+          return Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(width: 58, child: Text(symbol, style: TextStyle(color: foreground, fontWeight: FontWeight.w900))),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('$network · ${active ? tr('Активен', 'Active') : (connected ? tr('Диагностика', 'Diagnostics only') : tr('Неактивен', 'Inactive'))}', style: TextStyle(color: active ? const Color(0xFF27AE80) : muted, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                Text(detail, style: TextStyle(color: muted, fontSize: 11, height: 1.3)),
+              ])),
+              Icon(active ? Icons.check_circle : (connected ? Icons.info_outline : Icons.hourglass_empty), size: 17, color: active ? const Color(0xFF27AE80) : muted),
+            ]),
+          );
+        }),
+        const SizedBox(height: 8),
+        Text(tr('ETH използва Sepolia, а SOL – Devnet. Използват се предварително генерирани публични адреси и read-only наблюдение. Няма частни ключове, подписване, Mainnet или settlement.', 'ETH uses Sepolia and SOL uses Devnet. Pre-generated public addresses and read-only observation are used. No private keys, signing, Mainnet or settlement.'), style: TextStyle(color: muted, fontSize: 10.5, height: 1.35)),
+      ]),
+    );
+  }
+
   Widget _hero() => Container(
     padding: const EdgeInsets.all(19),
     decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF102A50), Color(0xFF15204A), Color(0xFF30205C)]), borderRadius: BorderRadius.circular(25), border: Border.all(color: _cyan.withValues(alpha: .55)), boxShadow: [BoxShadow(color: _cyan.withValues(alpha: .12), blurRadius: 24, offset: const Offset(0, 8))]),
@@ -335,7 +397,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
       const SizedBox(height: 10),
       Text(tr('Криптоплащане към PCWork', 'Crypto payment to PCWork'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.15)),
       const SizedBox(height: 7),
-      Text(tr('Bitcoin чрез BTCPay · ADA чрез Cardano Preprod · сървърно потвърждение', 'Bitcoin via BTCPay · ADA via Cardano Preprod · server-side confirmation'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
+      Text(tr('BTC чрез BTCPay · ADA чрез Cardano Preprod · ETH Sepolia · SOL Devnet · GIBORIS в подготовка', 'BTC via BTCPay · ADA via Cardano Preprod · ETH Sepolia · SOL Devnet · GIBORIS in preparation'), style: const TextStyle(color: Color(0xFFD4E5FF), fontSize: 12, height: 1.35)),
     ]),
   );
 
@@ -400,7 +462,7 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
     const SizedBox(height: 12),
     TextField(controller: orderIdController, keyboardType: TextInputType.number, style: TextStyle(color: foreground), decoration: InputDecoration(labelText: tr('Номер на поръчка', 'Order number'), prefixIcon: const Icon(Icons.receipt_long_outlined), filled: true, fillColor: dark ? const Color(0xFF09162A) : const Color(0xFFF5F7FA), border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)))),
     const SizedBox(height: 12),
-    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice || !supportedAssets.contains(selectedAsset) ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : (selectedAsset == 'ADA' ? tr('Създай ADA заявка', 'Create ADA payment') : tr('Генерирай BTC фактура', 'Create BTC invoice'))), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
+    SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: creating || !_canCreateInvoice || !supportedAssets.contains(selectedAsset) ? null : _createInvoice, icon: creating ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2), label: Text(creating ? tr('Създаване...', 'Creating...') : !_canCreateInvoice ? tr('Има съществуваща заявка', 'Existing payment request') : (selectedAsset == 'ADA' ? tr('Създай ADA заявка', 'Create ADA payment') : (selectedAsset == 'ETH' || selectedAsset == 'SOL') ? tr('Създай testnet заявка', 'Create testnet request') : tr('Генерирай BTC фактура', 'Create BTC invoice'))), style: FilledButton.styleFrom(backgroundColor: const Color(0xFF087BFF), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)))),
   ]));
 
   Widget _invoiceCard() {
@@ -425,11 +487,11 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
         TextButton.icon(onPressed: refreshingInvoice ? null : () => _refreshInvoice(manual: true), icon: refreshingInvoice ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh, size: 16), label: Text(tr('Провери сега', 'Check now'))),
       ]),
       const SizedBox(height: 4),
-      Text(data['asset']?.toString() == 'ADA' ? 'Cardano (ADA)' : 'Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
+      Text(data['asset']?.toString() == 'ADA' ? 'Cardano (ADA)' : data['asset']?.toString() == 'ETH' ? 'Ethereum (Sepolia)' : data['asset']?.toString() == 'SOL' ? 'Solana (Devnet)' : 'Bitcoin (BTC)', style: const TextStyle(color: _cyan, fontSize: 22, fontWeight: FontWeight.w900)),
       if (remaining > 0 && !settled && !expired) Text('${tr('Оставащо време', 'Time remaining')}: ${remaining ~/ 60} мин. ${remaining % 60} сек.', style: TextStyle(color: muted, fontSize: 12)),
       const SizedBox(height: 12),
       Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: stateColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)), child: Row(children: [Icon(settled ? Icons.verified : reviewRequired ? Icons.warning_amber_rounded : expired ? Icons.error_outline : partial ? Icons.payments_outlined : Icons.hourglass_top, color: stateColor), const SizedBox(width: 9), Expanded(child: Text(_statusLabel(paymentState, status), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)))])),
-      if (data['asset']?.toString() != 'ADA' && ((data['amount'] ?? '').toString().isNotEmpty || (data['paid_amount'] ?? '').toString().isNotEmpty)) ...[
+      if (!['ADA','ETH','SOL'].contains(data['asset']?.toString()) && ((data['amount'] ?? '').toString().isNotEmpty || (data['paid_amount'] ?? '').toString().isNotEmpty)) ...[
         const SizedBox(height: 10),
         Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: dark ? const Color(0xFF0B1930) : const Color(0xFFF2F6FC), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(tr('Разбивка на BTC плащането', 'BTC payment breakdown'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
@@ -439,11 +501,28 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
           Text(tr('Сумите се показват само когато са върнати от сървъра; точната BTC инструкция остава в защитената BTCPay страница.', 'Amounts are shown only when returned by the server; the exact BTC payment instructions remain on the secure BTCPay checkout page.'), style: TextStyle(color: muted, fontSize: 10.5, height: 1.35)),
         ])),
       ],
+      if (['ETH','SOL'].contains(data['asset']?.toString())) ...[
+        const SizedBox(height: 10),
+        Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: dark ? const Color(0xFF0B1930) : const Color(0xFFF2F6FC), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Testnet платежни данни', 'Testnet payment details'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
+          const SizedBox(height: 7),
+          _amountRow(tr('Изисквана сума', 'Required amount'), '${data['amount'] ?? '—'} ${data['asset']}'),
+          _amountRow(tr('Получена сума', 'Received amount'), '${data['received_amount'] ?? '0'} ${data['asset']}'),
+          _amountRow(tr('Потвърждения', 'Confirmations'), '${data['confirmations'] ?? 0}/${data['required_confirmations'] ?? (data['asset'] == 'ETH' ? 12 : 1)}'),
+          if ((data['fiat_amount_eur'] ?? '').toString().isNotEmpty) _amountRow(tr('Стойност на поръчката', 'Order value'), '${data['fiat_amount_eur']} EUR'),
+          if (data['transactions'] is List && (data['transactions'] as List).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(tr('Наблюдавани транзакции', 'Observed transactions'), style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 11)),
+            ...(data['transactions'] as List).take(8).whereType<Map>().map((tx) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: SelectableText('${tx['tx_hash'] ?? '—'} · ${tx['amount'] ?? ''} · ${tx['confirmations'] ?? 0} conf.', style: TextStyle(color: muted, fontSize: 10)))),
+          ],
+        ])),
+        Padding(padding: const EdgeInsets.only(top: 10), child: Container(width: double.infinity, padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: const Color(0xFFFFC857).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Text(tr('ТЕСТОВА МРЕЖА: потвърденият трансфер е само testnet verification. WooCommerce поръчката не се маркира като платена и settlement е изключен.', 'TEST NETWORK: a confirmed transfer is testnet verification only. The WooCommerce order is not marked as paid and settlement is disabled.'), style: TextStyle(color: foreground, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w600)))),
+      ],
       if (data['asset']?.toString() == 'ADA' && data['settlement_enabled'] != true) Padding(padding: const EdgeInsets.only(top: 10), child: Container(width: double.infinity, padding: const EdgeInsets.all(11), decoration: BoxDecoration(color: const Color(0xFFFFC857).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)), child: Text(tr('ТЕСТОВА МРЕЖА PREPROD: дори при потвърден трансфер поръчката не се маркира като платена. Това е тест на адреса, наблюдението и известяването, а не реално разплащане.', 'PREPROD TEST NETWORK: even after a confirmed transfer, the order is not marked as paid. This tests address generation, monitoring and notifications—not real settlement.'), style: TextStyle(color: foreground, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w600)))) ,
       if (partial && !expired) Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Получено е частично плащане. Доплати по същата фактура преди изтичането ѝ. Не създавай нова заявка.', 'A partial payment was received. Complete payment using the same invoice before it expires. Do not create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'partial_expired') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Фактурата е изтекла с частично плащане. Не изпращай повторно пълната сума. Свържи се с PCWork за проверка и инструкции.', 'The invoice expired with a partial payment. Do not resend the full amount. Contact PCWork for review and instructions.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
-      if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
-      if (paymentState == 'overpaid') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('BTCPay отчита надплатена сума. Това не е автоматично окончателно потвърждение за поръчката. Не изпращай повторно средства; PCWork трябва да провери сумата.', 'BTCPay reports an overpayment. This is not an automatic final order confirmation. Do not send additional funds; PCWork must review the amount.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (paymentState == 'late_payment_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(['ETH','SOL'].contains(data['asset']?.toString()) ? tr('Testnet трансферът е засечен след изтичане на заявката. Поръчката не се маркира като платена и изисква ръчна проверка.', 'The testnet transfer was detected after the request expired. The order is not marked as paid and requires manual review.') : tr('BTCPay отчита късно плащане след изтичане на фактурата. Поръчката не се маркира автоматично като платена и изисква проверка от PCWork.', 'BTCPay reports a late payment after invoice expiry. The order is not automatically marked as paid and requires PCWork review.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
+      if (paymentState == 'overpaid') Padding(padding: const EdgeInsets.only(top: 10), child: Text(['ETH','SOL'].contains(data['asset']?.toString()) ? tr('Получената testnet сума е над очакваната. Поръчката не се маркира като платена; необходима е ръчна проверка от PCWork.', 'The received testnet amount exceeds the expected amount. The order is not marked as paid and requires PCWork review.') : tr('BTCPay отчита надплатена сума. Това не е автоматично окончателно потвърждение за поръчката. Не изпращай повторно средства; PCWork трябва да провери сумата.', 'BTCPay reports an overpayment. This is not an automatic final order confirmation. Do not send additional funds; PCWork must review the amount.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (paymentState == 'manual_review') Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('Плащането изисква ръчна проверка от PCWork. Не изпращай повторно средства и не създавай нова заявка.', 'This payment requires manual review by PCWork. Do not resend funds or create another request.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12, height: 1.4))),
       if (data['asset']?.toString() == 'ADA') ...[
         const SizedBox(height: 10),
@@ -488,8 +567,18 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
         OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: (data['address'] ?? '').toString())); if (mounted) _message(tr('Cardano адресът е копиран.', 'Cardano address copied.')); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай ADA адреса', 'Copy ADA address'))),
         Text(tr('Мрежа: Cardano Preprod. Изпращай само тестови ADA. QR кодът съдържа адреса; провери сумата отделно преди изпращане.', 'Network: Cardano Preprod. Send test ADA only. The QR contains the address; verify the amount separately before sending.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35)),
       ],
+      if (['ETH','SOL'].contains(data['asset']?.toString()) && !expired) ...[
+        const SizedBox(height: 12),
+        Text('${data['amount'] ?? '—'} ${data['asset']}', style: TextStyle(color: foreground, fontSize: 22, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 10),
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)), child: QrImageView(data: (data['address'] ?? '').toString(), version: QrVersions.auto, size: 210, backgroundColor: Colors.white)),
+        const SizedBox(height: 10),
+        SelectableText((data['address'] ?? '').toString(), textAlign: TextAlign.center, style: TextStyle(color: foreground, fontSize: 12)),
+        OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: (data['address'] ?? '').toString())); if (mounted) _message(tr('Адресът е копиран.', 'Address copied.')); }, icon: const Icon(Icons.copy), label: Text(tr('Копирай адреса', 'Copy address'))),
+        Text('Мрежа: ${data['network']}. Изпращай само тестови средства в тази мрежа.', textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35)),
+      ],
       if (data['asset']?.toString() != 'ADA' && !settled && !expired && uri != null && uri.scheme == 'https') Padding(padding: const EdgeInsets.only(top: 12), child: SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => launchUrl(uri, mode: LaunchMode.externalApplication), icon: const Icon(Icons.open_in_new), label: Text(tr('Отвори защитеното BTC плащане', 'Open secure BTC checkout'))))),
-      if (data['asset']?.toString() != 'ADA' && !settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
+      if (!['ADA','ETH','SOL'].contains(data['asset']?.toString()) && !settled && !expired) Padding(padding: const EdgeInsets.only(top: 8), child: Text(tr('QR кодът, точната BTC сума и адресът се показват в защитената BTCPay страница. Статусът се обновява автоматично на всеки 12 секунди.', 'The QR code, exact BTC amount and address are shown on the secure BTCPay page. Status refreshes automatically every 12 seconds.'), textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11.5, height: 1.35))),
     ]));
   }
 
@@ -513,13 +602,13 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
         final asset = (item['asset'] ?? '').toString().toUpperCase();
         final orderNo = (item['order_number'] ?? item['order_id'] ?? '').toString();
         final status = (item['status'] ?? 'unknown').toString();
-        final state = asset == 'ADA' ? status : _paymentState(item);
+        final state = ['ADA','ETH','SOL'].contains(asset) ? status : _paymentState(item);
         final amount = (item['expected_amount'] ?? item['total'] ?? '—').toString();
-        final currency = (item['currency'] ?? (asset == 'ADA' ? 'ADA' : 'EUR')).toString();
+        final currency = (item['currency'] ?? (['ADA','ETH','SOL'].contains(asset) ? asset : 'EUR')).toString();
         final txCount = item['transactions'] is List ? (item['transactions'] as List).length : 0;
         return ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: CircleAvatar(backgroundColor: asset == 'ADA' ? const Color(0xFF3978F6).withValues(alpha: .15) : const Color(0xFFF7931A).withValues(alpha: .15), child: Text(asset == 'ADA' ? '₳' : '₿', style: TextStyle(color: asset == 'ADA' ? const Color(0xFF3978F6) : const Color(0xFFF7931A), fontWeight: FontWeight.w900))),
+          leading: CircleAvatar(backgroundColor: asset == 'ADA' ? const Color(0xFF3978F6).withValues(alpha: .15) : asset == 'ETH' ? const Color(0xFF8A9CFF).withValues(alpha: .15) : asset == 'SOL' ? const Color(0xFF8B6CFF).withValues(alpha: .15) : const Color(0xFFF7931A).withValues(alpha: .15), child: Text(asset == 'ADA' ? '₳' : asset == 'ETH' ? '◆' : asset == 'SOL' ? '◎' : '₿', style: TextStyle(color: asset == 'ADA' ? const Color(0xFF3978F6) : asset == 'ETH' ? const Color(0xFF8A9CFF) : asset == 'SOL' ? const Color(0xFF8B6CFF) : const Color(0xFFF7931A), fontWeight: FontWeight.w900))),
           title: Text('#$orderNo · $asset', style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 13)),
           subtitle: Text('${_statusLabel(state, status)}${txCount > 0 ? ' · $txCount ${tr('транзакции', 'transactions')}' : ''}', style: TextStyle(color: muted, fontSize: 11)),
           trailing: Text('$amount $currency', style: TextStyle(color: foreground, fontSize: 11, fontWeight: FontWeight.w800)),
@@ -543,6 +632,8 @@ class _CryptoPaymentsScreenState extends State<CryptoPaymentsScreen> with Widget
   String _statusLabel(String paymentState, String rawStatus) {
     switch (paymentState.toLowerCase()) {
       case 'paid': return tr('Плащането е потвърдено', 'Payment confirmed');
+      case 'testnet_verified': return tr('Testnet трансферът е потвърден · без settlement', 'Testnet transfer verified · no settlement');
+      case 'awaiting_payment': return tr('Очаква се тестов трансфер', 'Awaiting test transfer');
       case 'overpaid': return tr('Надплатена сума – необходима е проверка', 'Overpayment – review required');
       case 'partial': return tr('Получено е частично плащане', 'Partial payment received');
       case 'partial_expired': return tr('Изтекла фактура с частично плащане', 'Expired invoice with partial payment');

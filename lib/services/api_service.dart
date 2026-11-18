@@ -57,7 +57,7 @@ class _TimedRepairCache {
 class _ShopOrderRequestInProgress implements Exception {}
 
 class ApiService {
-  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 194});
+  ApiService({required this.baseUrl, this.userId = 0, this.clientBuild = 196});
   final String baseUrl;
   final int userId;
   final int clientBuild;
@@ -256,7 +256,7 @@ class ApiService {
     final response = await _httpClient.get(
       _uri('crypto/invoices/$safeId'),
       headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    ).timeout(const Duration(seconds: 15));
+    ).timeout(const Duration(seconds: 35));
     final decoded = _decodeResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_responseMessage(decoded, response.statusCode));

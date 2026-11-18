@@ -5,6 +5,7 @@ class CryptoPaymentState {
   static const Set<String> _knownStates = {
     'paid', 'overpaid', 'partial', 'partial_expired', 'late_payment_review',
     'manual_review', 'confirming', 'expired', 'pending', 'unknown',
+    'awaiting_payment', 'testnet_verified',
   };
 
   /// States that must never be presented as a normal successful settlement.
@@ -14,7 +15,7 @@ class CryptoPaymentState {
 
   /// States for which automatic polling can stop; manual refresh remains available.
   static bool isTerminal(String state) => const {
-    'paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review', 'unknown',
+    'paid', 'overpaid', 'expired', 'partial_expired', 'late_payment_review', 'manual_review', 'unknown', 'testnet_verified',
   }.contains(state);
 
   /// Resolves the canonical payment state. BTCPay additionalStatus exceptions

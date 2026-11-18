@@ -501,6 +501,8 @@ class _ShopScreenState extends State<ShopScreen> {
     switch ((method ?? '').toString()) {
       case 'crypto_btc': return tr('Bitcoin (BTC) – BTCPay', 'Bitcoin (BTC) – BTCPay');
       case 'crypto_ada': return tr('Cardano (ADA) – Preprod', 'Cardano (ADA) – Preprod');
+      case 'crypto_eth': return tr('Ethereum (ETH) – Sepolia testnet', 'Ethereum (ETH) – Sepolia testnet');
+      case 'crypto_sol': return tr('Solana (SOL) – Devnet testnet', 'Solana (SOL) – Devnet testnet');
       case 'cash_on_site': return tr('Плащане в брой на място в PCWork', 'Cash at PCWork location');
       case 'cash_courier': return tr('Наложен платеж – плащане в брой на куриера', 'Cash to courier on delivery');
       default: return tr('Наложен платеж', 'Cash on delivery');
@@ -596,8 +598,8 @@ class _ShopScreenState extends State<ShopScreen> {
     }
     if (cart.isEmpty) return;
 
-    // Marketplace exposes only server-confirmed Cardano Preprod readiness.
-    // Gateway credentials remain server-side; cash checkout works if status is offline.
+    // Marketplace exposes only assets whose Gateway readiness and address-pool state are confirmed.
+    // ETH/SOL remain testnet-only; Gateway credentials remain server-side.
     List<String> checkoutCryptoAssets = [];
     bool cryptoStatusChecked = false;
     try {
@@ -605,7 +607,7 @@ class _ShopScreenState extends State<ShopScreen> {
       final rawAssets = cryptoStatus['assets'] ?? cryptoStatus['active_assets'];
       cryptoStatusChecked = true;
       if (cryptoStatus['enabled'] == true && rawAssets is List) {
-        checkoutCryptoAssets = rawAssets.map((value) => value.toString().toUpperCase()).where((value) => value == 'BTC' || value == 'ADA').toList();
+        checkoutCryptoAssets = rawAssets.map((value) => value.toString().toUpperCase()).where((value) => ['BTC', 'ADA', 'ETH', 'SOL'].contains(value)).toList();
       }
     } catch (_) {}
     if (!mounted) return;
@@ -674,6 +676,8 @@ class _ShopScreenState extends State<ShopScreen> {
                     DropdownMenuItem(value: 'cash_courier', child: Text(tr('В брой на куриера при доставка', 'Cash to courier on delivery'))),
                     if (checkoutCryptoAssets.contains('BTC')) DropdownMenuItem(value: 'crypto_btc', child: Text(tr('Bitcoin BTC – защитено плащане', 'Bitcoin BTC – secure checkout'))),
                     if (checkoutCryptoAssets.contains('ADA')) DropdownMenuItem(value: 'crypto_ada', child: Text(tr('Cardano ADA – Preprod (тестова мрежа)', 'Cardano ADA – Preprod (test network)'))),
+                    if (checkoutCryptoAssets.contains('ETH')) DropdownMenuItem(value: 'crypto_eth', child: Text(tr('Ethereum ETH – Sepolia (тестова мрежа)', 'Ethereum ETH – Sepolia (test network)'))),
+                    if (checkoutCryptoAssets.contains('SOL')) DropdownMenuItem(value: 'crypto_sol', child: Text(tr('Solana SOL – Devnet (тестова мрежа)', 'Solana SOL – Devnet (test network)'))),
                   ],
                   onChanged: (value) => setDialogState(() { selectedPaymentMethod = value ?? 'cash_courier'; shippingRates = []; selectedShippingRateId = ''; shippingRateError = null; initialRatesRequested = false; }),
                 ),
@@ -683,7 +687,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       cryptoStatusChecked
-                        ? tr('BTC/ADA криптоплащанията временно не са налични. Опциите се показват само след потвърдена готовност на съответния Gateway.', 'BTC/ADA crypto payments are temporarily unavailable. Options appear only after the corresponding Gateway reports readiness.')
+                        ? tr('Криптоплащанията временно не са налични. Опциите се показват само след потвърдена готовност на съответния Gateway.', 'Crypto payments are temporarily unavailable. Options appear only after the corresponding Gateway reports readiness.')
                         : tr('Статусът на криптоплащанията не е достъпен. Може да продължите с плащане в брой.', 'Crypto payment status is unavailable. You can continue with cash payment.'),
                       style: const TextStyle(color: Colors.orangeAccent, fontSize: 11, height: 1.35),
                     ),
@@ -713,7 +717,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 const SizedBox(height: 12),
                 Card(margin: const EdgeInsets.only(top: 6, bottom: 10), child: ListTile(
                    dense: true,
-                   leading: Icon(selectedPaymentMethod == 'crypto_ada' || selectedPaymentMethod == 'crypto_btc' ? Icons.currency_bitcoin_rounded : Icons.payments_outlined, color: const Color(0xFF21D4D8)),
+                   leading: Icon(['crypto_ada','crypto_btc','crypto_eth','crypto_sol'].contains(selectedPaymentMethod) ? Icons.currency_bitcoin_rounded : Icons.payments_outlined, color: const Color(0xFF21D4D8)),
                    title: Text(
                      selectedPaymentMethod == 'cash_on_site'
                        ? tr('Плащане в брой на място', 'Cash at PCWork location')
@@ -721,14 +725,20 @@ class _ShopScreenState extends State<ShopScreen> {
                          ? tr('Онлайн плащане с Bitcoin (BTC)', 'Online payment with Bitcoin (BTC)')
                          : selectedPaymentMethod == 'crypto_ada'
                            ? tr('Онлайн плащане с ADA (Preprod)', 'Online payment with ADA (Preprod)')
-                           : tr('Плащане в брой на куриера', 'Cash to courier'),
+                           : selectedPaymentMethod == 'crypto_eth'
+                             ? tr('Онлайн плащане с ETH (Sepolia)', 'Online payment with ETH (Sepolia)')
+                             : selectedPaymentMethod == 'crypto_sol'
+                               ? tr('Онлайн плащане със SOL (Devnet)', 'Online payment with SOL (Devnet)')
+                               : tr('Плащане в брой на куриера', 'Cash to courier'),
                      style: const TextStyle(fontWeight: FontWeight.w700),
                    ),
                    subtitle: Text(selectedPaymentMethod == 'crypto_btc'
                      ? tr('Ще се отвори защитена BTCPay страница за Bitcoin. Поръчката остава неплатена до потвърждение.', 'A secure BTCPay Bitcoin checkout page will open. The order remains unpaid until confirmation.')
                      : selectedPaymentMethod == 'crypto_ada'
                        ? tr('Ще получиш уникален Cardano Preprod адрес и QR код. Използвай само тестови ADA. Поръчката остава неплатена до сървърно потвърждение.', 'You will receive a unique Cardano Preprod address and QR code. Use test ADA only. The order remains unpaid until server confirmation.')
-                       : tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')),
+                       : selectedPaymentMethod == 'crypto_eth' || selectedPaymentMethod == 'crypto_sol'
+                         ? tr('Ще получиш уникален публичен адрес и QR код в тестова мрежа. Дори при потвърден трансфер поръчката остава неплатена.', 'You will receive a unique public address and QR code on a test network. Even after confirmation, the order remains unpaid.')
+                         : tr('Онлайн плащане не се извършва. Поръчката се маркира като неплатена до реалното плащане.', 'No online payment is taken. The order remains unpaid until payment is received.')),
                  )),
                 if (selectedPaymentMethod != 'cash_on_site') ...[
                 Align(alignment: Alignment.centerLeft, child: Text(tr('Куриерска услуга', 'Courier service'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
@@ -789,7 +799,7 @@ class _ShopScreenState extends State<ShopScreen> {
       );
       if (!mounted) return;
       final orderId = int.tryParse('${createdOrder['id'] ?? ''}') ?? 0;
-      if (selectedPaymentMethod == 'crypto_btc' || selectedPaymentMethod == 'crypto_ada') {
+      if (['crypto_btc','crypto_ada','crypto_eth','crypto_sol'].contains(selectedPaymentMethod)) {
         final returnedMethod = (createdOrder['payment_method'] ?? '').toString();
         final paymentRequired = createdOrder['payment_required'] == true;
         if (orderId <= 0 || returnedMethod != selectedPaymentMethod) {
@@ -812,7 +822,7 @@ class _ShopScreenState extends State<ShopScreen> {
       }
       setState(() { cart.clear(); cartProducts.clear(); });
       await _saveCart();
-      if ((selectedPaymentMethod == 'crypto_btc' || selectedPaymentMethod == 'crypto_ada') && mounted) {
+      if (['crypto_btc','crypto_ada','crypto_eth','crypto_sol'].contains(selectedPaymentMethod) && mounted) {
         if (orderId > 0) {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => CryptoPaymentsScreen(
@@ -821,7 +831,7 @@ class _ShopScreenState extends State<ShopScreen> {
               english: widget.english,
               isDarkTheme: Theme.of(context).brightness == Brightness.dark,
               initialOrderId: orderId,
-              initialAsset: selectedPaymentMethod == 'crypto_btc' ? 'BTC' : 'ADA',
+              initialAsset: selectedPaymentMethod == 'crypto_btc' ? 'BTC' : selectedPaymentMethod == 'crypto_ada' ? 'ADA' : selectedPaymentMethod == 'crypto_eth' ? 'ETH' : 'SOL',
             ),
           ));
         } else {
