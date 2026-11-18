@@ -71,9 +71,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   bool _syncingOfflineQueue = false;
   bool _autoSyncEnabled = true;
   int _pendingSyncCount = 0;
-  bool _marketingOptIn = false;
-  bool _marketingPreferenceLoaded = false;
-  String? _pushStatusMessage;
   bool _pushRegistering = false;
   bool _pushDialogShowing = false;
   final Set<String> _marketingCampaignsHandled = <String>{};
@@ -183,7 +180,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       final user = await auth.me();
       if (!mounted) return;
       setState(() { signedInUser = user; repairsFuture = _loadRepairsFuture(); });
-      unawaited(_loadMarketingPreference(token));
       unawaited(_enablePush(knownToken: token));
       _startOfflineSync(token);
     } catch (_) {
@@ -276,54 +272,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         ]),
       ),
     );
-  }
-
-  Future<void> _loadMarketingPreference(String bearer) async {
-    try {
-      final enabled = await push.getMarketingConsent(bearer);
-      if (mounted) setState(() { _marketingOptIn = enabled; _marketingPreferenceLoaded = true; });
-    } catch (_) { if (mounted) setState(() => _marketingPreferenceLoaded = true); }
-  }
-
-  Future<void> _setMarketingPreference(bool enabled) async {
-    final bearer = await auth.token;
-    if (bearer == null || bearer.isEmpty) return;
-    final previous = _marketingOptIn;
-    setState(() => _marketingOptIn = enabled);
-    try {
-      await push.setMarketingConsent(bearer, enabled);
-      _message(enabled
-          ? tr('Съгласието за промоционални известия е записано.', 'Marketing notification consent saved.')
-          : tr('Отписахте се от промоционални известия.', 'You unsubscribed from marketing notifications.'));
-    } catch (e) {
-      if (mounted) setState(() => _marketingOptIn = previous);
-      _message('${tr('Неуспешно записване:', 'Could not save:')} $e');
-    }
-  }
-
-
-  Future<void> _checkNotificationStatus({bool showMessage = false}) async {
-    final bearer = await auth.token;
-    if (bearer == null || bearer.isEmpty) {
-      if (mounted) setState(() => _pushStatusMessage = tr('Влезте в профила си, за да проверите регистрацията на устройството.', 'Sign in to check device registration.'));
-      return;
-    }
-    try {
-      final status = await push.getDiagnostics(bearer);
-      final permission = (status['permission'] ?? 'unknown').toString();
-      final registered = status['device_registered'] == true;
-      final configured = status['firebase_configured'] == true;
-      final pushEnabled = status['push_enabled'] == true;
-      final marketing = status['marketing_opt_in'] == true;
-      final message = tr(
-        'Android: ${permission == 'granted' ? 'Разрешено' : permission == 'denied' ? 'Забранено' : 'Неизвестно'} · Firebase: ${configured ? 'Конфигуриран' : 'Непроверен/изключен'} · Push: ${pushEnabled ? 'Включен' : 'Изключен'} · Устройство: ${registered ? 'Регистрирано' : 'Нерегистрирано'} · Промоции: ${marketing ? 'Включени' : 'Изключени'}',
-        'Android: ${permission == 'granted' ? 'Allowed' : permission == 'denied' ? 'Denied' : 'Unknown'} · Firebase: ${configured ? 'Configured' : 'Not configured/disabled'} · Push: ${pushEnabled ? 'Enabled' : 'Disabled'} · Device: ${registered ? 'Registered' : 'Not registered'} · Promotions: ${marketing ? 'On' : 'Off'}');
-      if (mounted) setState(() => _pushStatusMessage = message);
-      if (showMessage) _message(message);
-    } catch (e) {
-      if (mounted) setState(() => _pushStatusMessage = '${tr('Проверката не успя:', 'Status check failed:')} $e');
-      if (showMessage) _message('${tr('Проверката не успя:', 'Status check failed:')} $e');
-    }
   }
 
   Future<void> _loadSettings() async {
@@ -659,7 +607,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
   Future<void> _retryPushRegistration() async {
     final bearer = await auth.token;
     if (bearer != null && bearer.isNotEmpty) await _enablePush(knownToken: bearer);
-    unawaited(_checkNotificationStatus());
   }
 
   Future<void> _enablePush({String? knownToken}) async {
@@ -676,7 +623,7 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         }
         return;
       }
-      final registered = await push.register(bearer, onForeground: (title, body, data) {
+      await push.register(bearer, onForeground: (title, body, data) {
         if (!mounted) return;
         final destinationTab = _notificationDestinationTab(data);
         final event = (data['event'] ?? '').toString().toLowerCase();
@@ -741,11 +688,6 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
         await _openNotificationRecord(record);
       });
       unawaited(_loadNotificationHistory());
-      if (mounted) {
-        setState(() => _pushStatusMessage = registered
-            ? tr('Устройството е регистрирано за push известия.', 'Device registered for push notifications.')
-            : tr('Push регистрацията не е потвърдена. Провери системното разрешение и Firebase настройките.', 'Push registration was not confirmed. Check system permission and Firebase settings.'));
-      }
     } finally {
       _pushRegistering = false;
     }
@@ -923,16 +865,9 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
     try {
       final bearer = await auth.token;
       if (bearer == null || bearer.isEmpty) return;
-      final results = await Future.wait<dynamic>([
-        auth.me(),
-        push.getMarketingConsent(bearer),
-      ]);
+      final user = await auth.me();
       if (!mounted) return;
-      setState(() {
-        signedInUser = results[0] as AuthUser;
-        _marketingOptIn = results[1] as bool;
-        _marketingPreferenceLoaded = true;
-      });
+      setState(() { signedInUser = user; });
     } catch (_) {
       // Refresh is opportunistic; never block navigation or discard current data.
     } finally {
@@ -2791,14 +2726,11 @@ class _PCWorkAppState extends State<PCWorkApp> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         signedInUser = user;
-        _marketingOptIn = false;
-        _marketingPreferenceLoaded = false;
         repairsFuture = _loadRepairsFuture();
         tab = 5;
         _visitedTabs.add(5);
       });
       if (bearer != null && bearer.isNotEmpty) {
-        unawaited(_loadMarketingPreference(bearer));
         unawaited(_enablePush(knownToken: bearer));
         _startOfflineSync(bearer);
       }
